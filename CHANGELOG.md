@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/diplodoc-platform/lint/compare/v1.2.0...v1.2.1) (2025-01-29)
+
+
+### Bug Fixes
+
+* use `project: true` for @typescript-eslint/parser ([7ff1cad](https://github.com/diplodoc-platform/lint/commit/7ff1cadb73841072cdc48acb5ca151db2b5af82d))
+
 ## [1.2.0](https://github.com/diplodoc-platform/lint/compare/v1.1.3...v1.2.0) (2024-09-05)
 
 
