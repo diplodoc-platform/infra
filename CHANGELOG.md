@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/diplodoc-platform/lint/compare/v1.2.1...v1.3.0) (2025-07-02)
+
+
+### Features
+
+* add @typescript-eslint/consistent-type-imports rule ([797126d](https://github.com/diplodoc-platform/lint/commit/797126d02acfff1202cb413b4d4f5cf83cbd918a))
+
+
+### Bug Fixes
+
+* Fix release actions ([926b7bf](https://github.com/diplodoc-platform/lint/commit/926b7bf0a0c36d657e0a990a6b1488994b2680a7))
+* Update ignore list ([7a68c87](https://github.com/diplodoc-platform/lint/commit/7a68c87ef9f0bd5950343e1d1ee22c235ffbb242))
+
 ## [1.2.1](https://github.com/diplodoc-platform/lint/compare/v1.2.0...v1.2.1) (2025-01-29)
 
 
