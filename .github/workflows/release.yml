@@ -16,6 +16,6 @@ jobs:
         with:
           github-token: ${{ secrets.YC_UI_BOT_GITHUB_TOKEN }}
           npm-token: ${{ secrets.ROBOT_DATAUI_NPM_TOKEN }}
-          node-version: 18
+          node-version: 22
           default-branch: ${{ github.ref_name != 'master' && github.ref_name || null }}
           npm-dist-tag: ${{ github.ref_name != 'master' && 'untagged' || 'latest' }}
