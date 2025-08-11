@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/diplodoc-platform/lint/compare/v1.3.0...v1.3.1) (2025-08-11)
+
+
+### Bug Fixes
+
+* update version actions, node 22 ([1427e52](https://github.com/diplodoc-platform/lint/commit/1427e521eaaf762f506913bd7272233ef73225f9))
+
 ## [1.3.0](https://github.com/diplodoc-platform/lint/compare/v1.2.1...v1.3.0) (2025-07-02)
 
 
