@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.2](https://github.com/diplodoc-platform/lint/compare/v1.3.1...v1.3.2) (2025-08-20)
+
+
+### Bug Fixes
+
+* Update release script ([f2a5b13](https://github.com/diplodoc-platform/lint/commit/f2a5b13ec792bab090fb70b0dd6d5504ae4cb3f5))
+* Update release script ([80d6a60](https://github.com/diplodoc-platform/lint/commit/80d6a6008b9375fe3aba8a3d4d5df126a89b3053))
+* Update release script ([cb2cd4d](https://github.com/diplodoc-platform/lint/commit/cb2cd4d50f7699659e9fc79cbadc59498d2a0302))
+
 ## [1.3.1](https://github.com/diplodoc-platform/lint/compare/v1.3.0...v1.3.1) (2025-08-11)
 
 
