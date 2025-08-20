@@ -4,6 +4,7 @@ module.exports = {
         '@gravity-ui/eslint-config',
         process.env.npm_command && '@gravity-ui/eslint-config/prettier',
     ].filter(Boolean),
+    parser: '@typescript-eslint/parser',
     parserOptions: {
         requireConfigFile: false,
         babelOptions: {

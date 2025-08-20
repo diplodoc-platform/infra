@@ -12,6 +12,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@diplodoc/lint": "^1.2.0"
+    "@diplodoc/lint": "^1.2.0",
+    "@diplodoc/tsconfig": "^1.0.2"
   }
 }

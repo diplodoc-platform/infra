@@ -1,0 +1,12 @@
+{
+  "extends": "@diplodoc/tsconfig",
+  "compilerOptions": {
+    "target": "es2020",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "declaration": true,
+    "baseUrl": "."
+  },
+  "include": ["./*.ts", "./*.js", "./.*.js"],
+  "exclude": ["node_modules"]
+}
