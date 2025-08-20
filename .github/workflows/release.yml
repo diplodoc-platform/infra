@@ -21,7 +21,7 @@ jobs:
         shell: bash
       - uses: codex-team/action-nodejs-package-info@v1
         id: package
-      - uses: GoogleCloudPlatform/release-please-action@v4
+      - uses: release-please-oss/release-please-action@v4
         id: release
         with:
           token: ${{secrets.YC_UI_BOT_GITHUB_TOKEN}}

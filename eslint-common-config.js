@@ -1,3 +1,5 @@
+// https://a.yandex-team.ru/arcadia/kikimr/docs/ru/reference/ydb-cli/index.md?edit=true&preview=true
+
 module.exports = {
     root: true,
     extends: [
