@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/diplodoc-platform/lint/compare/v1.3.2...v1.3.3) (2025-08-21)
+
+
+### Bug Fixes
+
+* Update @typescript-eslint/parser ([60cf215](https://github.com/diplodoc-platform/lint/commit/60cf215e7bea2fd50953ea1f8ce1fe234b5bc75a))
+
 ## [1.3.2](https://github.com/diplodoc-platform/lint/compare/v1.3.1...v1.3.2) (2025-08-20)
 
 
