@@ -11,6 +11,10 @@
     "lint-staged": "./bin/lint-staged",
     "svgo": "./bin/svgo"
   },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:diplodoc-platform/lint.git"
+  },
   "scripts": {
     "test": "cd test && npm start"
   },
