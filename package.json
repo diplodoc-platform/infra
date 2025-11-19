@@ -11,6 +11,9 @@
     "lint-staged": "./bin/lint-staged",
     "svgo": "./bin/svgo"
   },
+  "engines": {
+    "npm": ">=11.5.1"
+  },
   "repository": {
     "type": "git",
     "url": "git@github.com:diplodoc-platform/lint.git"
