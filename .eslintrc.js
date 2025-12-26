@@ -5,6 +5,8 @@ module.exports = {
         tsconfigRootDir: __dirname,
         project: true,
     },
+    // ignorePatterns is needed because ESLint may not read .eslintignore
+    // when using glob patterns in command line
     ignorePatterns: [
         'lib/**',
         'dist/**',
