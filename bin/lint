@@ -32,12 +32,13 @@ if [[ -n "$INIT$UPDATE" ]]; then
 
   echo "[@diplodoc/lint] Add initial lint configs"
   # Copy all scaffolding files except templates and workflows (handled separately)
+  # Use -f flag to force overwrite existing files
   find "$SRCDIR/scaffolding" -type f ! -name "*.template" ! -path "*/.github/workflows/*" -exec sh -c '
     src="$1"
     base="$2"
     target="${src#$base/}"
     mkdir -p "$(dirname "$target")"
-    cp "$src" "$target"
+    cp -f "$src" "$target"
   ' _ {} "$SRCDIR/scaffolding" \;
   
   echo "[@diplodoc/lint] Update GitHub Actions workflows"
