@@ -35,8 +35,6 @@ const targetDir = process.cwd();
 // Verify scaffolding directory exists
 if (!existsSync(srcDir)) {
     console.error(`[@diplodoc/lint] Error: scaffolding directory not found at ${srcDir}`);
-    console.error(`[@diplodoc/lint] Script location: ${__dirname}`);
-    console.error(`[@diplodoc/lint] Target directory: ${targetDir}`);
     process.exit(1);
 }
 
@@ -79,10 +77,6 @@ function copyScaffoldingFiles(excludePatterns = []) {
                 // Force overwrite existing files
                 try {
                     copyFileSync(srcPath, targetPath);
-                    // Log important files being copied for debugging
-                    if (entry.name === '.eslintrc.js' || entry.name === '.prettierrc.js' || entry.name === '.stylelintrc.js') {
-                        console.log(`[@diplodoc/lint] Copied ${entry.name} from ${srcPath} to ${targetPath}`);
-                    }
                 } catch (error) {
                     console.error(`[@diplodoc/lint] Error copying ${srcPath} to ${targetPath}:`, error.message);
                     throw error;
@@ -117,7 +111,6 @@ function copyWorkflows() {
 }
 
 // Copy scaffolding files (exclude templates and workflows)
-console.log(`[@diplodoc/lint] Copying scaffolding files from ${srcDir} to ${targetDir}`);
 copyScaffoldingFiles([
     '.template',
     '.github/workflows',
@@ -125,5 +118,4 @@ copyScaffoldingFiles([
 
 // Copy workflows separately (always overwrite)
 copyWorkflows();
-console.log(`[@diplodoc/lint] Finished copying scaffolding files`);
 

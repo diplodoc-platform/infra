@@ -194,28 +194,12 @@ test('should run update before lint when using npm script', async () => {
 
         // Execute via npm script (which runs "lint update && lint")
         try {
-            const result = await execInDir('npm run lint', tempDir);
-            // Log output for debugging
-            if (result.stdout) {
-                console.log('STDOUT:', result.stdout);
-            }
-            if (result.stderr) {
-                console.log('STDERR:', result.stderr);
-            }
+            await execInDir('npm run lint', tempDir);
 
             // Verify file was updated (update runs before lint via npm script)
             const updatedContent = readFile(tempDir, '.eslintrc.js');
             assert(updatedContent.includes('@diplodoc/lint/eslint-config'), 'Should update before linting');
         } catch (error) {
-            // Log error for debugging
-            console.log('Error executing npm run lint:', error.message);
-            if (error.stdout) {
-                console.log('STDOUT:', error.stdout);
-            }
-            if (error.stderr) {
-                console.log('STDERR:', error.stderr);
-            }
-            
             // Even if lint fails, update should have run
             const updatedContent = readFile(tempDir, '.eslintrc.js');
             assert(updatedContent.includes('@diplodoc/lint/eslint-config'), 'Should update before linting');
