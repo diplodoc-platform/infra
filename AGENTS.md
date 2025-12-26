@@ -42,9 +42,13 @@ This file contains instructions for AI agents working with the `@diplodoc/lint` 
 
 ## Tech Stack
 
-- **Language**: JavaScript (Node.js)
+This package follows the standard Diplodoc platform tech stack. See `.agents/dev-infrastructure.md` and `.agents/style-and-testing.md` in the metapackage root for detailed information.
+
+**Package-specific details**:
+
+- **Language**: JavaScript (Node.js) - no TypeScript, pure JavaScript
 - **Runtime**: Node.js >=11.5.1 (npm requirement)
-- **Testing**: Custom test setup in `test/` directory
+- **Testing**: Custom test setup in `test/` directory (Node.js `assert` and `child_process`, no testing framework)
 - **Build**: No build step required (pure JavaScript package)
 
 ## Usage Modes
