@@ -31,23 +31,9 @@ if [[ -n "$INIT$UPDATE" ]]; then
   fi
 
   echo "[@diplodoc/lint] Add initial lint configs"
-  # Copy all scaffolding files except templates and workflows (handled separately)
-  # Use -f flag to force overwrite existing files
-  find "$SRCDIR/scaffolding" -type f ! -name "*.template" ! -path "*/.github/workflows/*" -exec sh -c '
-    src="$1"
-    base="$2"
-    target="${src#$base/}"
-    mkdir -p "$(dirname "$target")"
-    cp -f "$src" "$target"
-  ' _ {} "$SRCDIR/scaffolding" \;
-  
-  echo "[@diplodoc/lint] Update GitHub Actions workflows"
-  # Always update workflows from scaffolding to ensure consistency
-  # This prevents workflows from diverging across submodules
-  if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
-    mkdir -p .github/workflows
-    cp -a "$SRCDIR/scaffolding/.github/workflows/." .github/workflows/
-  fi
+  # Copy all scaffolding files using Node.js for cross-platform compatibility
+  # This handles Windows paths correctly and ensures files are overwritten
+  node "$SRCDIR/scripts/copy-scaffolding.js"
 
   echo "[@diplodoc/lint] Extend .ignore configuration"
   node "$SRCDIR/scripts/modify-ignore.js"
