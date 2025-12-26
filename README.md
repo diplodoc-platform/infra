@@ -6,13 +6,13 @@ Centralized linting and code formatting toolkit for Diplodoc projects. Combines 
 
 ## Features
 
-- 🔧 **Automatic setup** — one command to initialize all tools
-- 🔄 **Automatic updates** — synchronizes configurations across packages
-- 📦 **Metapackage and standalone support** — works as part of the metapackage and as a standalone npm package
-- 🎯 **Unified standards** — shared linting rules for all Diplodoc packages
-- 🚀 **Git hooks** — automatic pre-commit hook setup via Husky
-- 📝 **TypeScript/JavaScript** — full support for both languages
-- 🎨 **CSS/SCSS** — style support via Stylelint
+- **Automatic setup** — one command to initialize all tools
+- **Automatic updates** — synchronizes configurations across packages
+- **Metapackage and standalone support** — works as part of the metapackage and as a standalone npm package
+- **Unified standards** — shared linting rules for all Diplodoc packages
+- **Git hooks** — automatic pre-commit hook setup via Husky
+- **TypeScript/JavaScript** — full support for both languages
+- **CSS/SCSS** — style support via Stylelint
 
 ## Installation
 
