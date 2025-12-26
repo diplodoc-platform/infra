@@ -184,6 +184,11 @@ test('should run update before lint when using npm script', async () => {
 
         await runLintCommand('init', tempDir);
 
+        // Install @diplodoc/lint so npm run lint can find it
+        // Use the local package path
+        const lintPackagePath = join(__dirname, '../..');
+        await execInDir(`npm install ${lintPackagePath}`, tempDir);
+
         // Modify scaffolding file to simulate outdated version
         writeFile(tempDir, '.eslintrc.js', 'module.exports = { old: true };');
 
