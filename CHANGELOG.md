@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.0](https://github.com/diplodoc-platform/lint/compare/v1.4.1...v1.5.0) (2025-12-26)
+
+
+### Features
+
+* add GitHub Actions workflows to scaffolding ([315614e](https://github.com/diplodoc-platform/lint/commit/315614eb288a448ffe45953b4294226b394bcfb3))
+
+
+### Bug Fixes
+
+* improve workflow copying to avoid overwriting existing workflows ([2245114](https://github.com/diplodoc-platform/lint/commit/224511473f253283a29868fdd0669554f823146f))
+* prevent overwriting existing workflows during scaffolding copy ([777a7ad](https://github.com/diplodoc-platform/lint/commit/777a7ade09b8af8d43ef789cc213147c9ae9626e))
+* simplify workflow copying logic ([0d6cb67](https://github.com/diplodoc-platform/lint/commit/0d6cb67cfb22273ed84d23dc387e4510a5e9e39c))
+* update release.yml to publish only on release events ([024dc38](https://github.com/diplodoc-platform/lint/commit/024dc38cfcd2a7338fabcb5d43d88edfca00b15e))
+* use cross-platform file copying in bin/lint ([3cad582](https://github.com/diplodoc-platform/lint/commit/3cad582177f900fe8fcdb50cff9f825904dae7f3))
+
 ## [1.4.1](https://github.com/diplodoc-platform/lint/compare/v1.4.0...v1.4.1) (2025-12-26)
 
 
