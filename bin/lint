@@ -29,33 +29,15 @@ if [[ -n "$INIT$UPDATE" ]]; then
   fi
 
   echo "[@diplodoc/lint] Add initial lint configs"
-  # Copy all scaffolding files except .github/workflows (handled separately)
-  if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
-    # Temporarily move workflows out of the way
-    mkdir -p /tmp/lint-scaffolding-workflows
-    mv "$SRCDIR/scaffolding/.github/workflows" /tmp/lint-scaffolding-workflows/
-  fi
-  
+  # Copy all scaffolding files
   cp -a "$SRCDIR/scaffolding/." .
   
-  # Restore workflows in scaffolding
-  if [[ -d /tmp/lint-scaffolding-workflows/workflows ]]; then
-    mv /tmp/lint-scaffolding-workflows/workflows "$SRCDIR/scaffolding/.github/workflows"
-    rmdir /tmp/lint-scaffolding-workflows 2>/dev/null || true
-  fi
-  
-  echo "[@diplodoc/lint] Add GitHub Actions workflows"
+  echo "[@diplodoc/lint] Update GitHub Actions workflows"
+  # Always update workflows from scaffolding to ensure consistency
+  # This prevents workflows from diverging across submodules
   if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
     mkdir -p .github/workflows
-    # Only copy workflows that don't exist yet (don't overwrite existing)
-    for workflow in "$SRCDIR/scaffolding/.github/workflows"/*.yml; do
-      if [[ -f "$workflow" ]]; then
-        workflow_name=$(basename "$workflow")
-        if [[ ! -f ".github/workflows/$workflow_name" ]]; then
-          cp "$workflow" ".github/workflows/$workflow_name"
-        fi
-      fi
-    done
+    cp -a "$SRCDIR/scaffolding/.github/workflows/." .github/workflows/
   fi
 
   echo "[@diplodoc/lint] Extend .ignore configuration"
