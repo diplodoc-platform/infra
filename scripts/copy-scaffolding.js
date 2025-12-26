@@ -1,8 +1,16 @@
 const {join, relative, dirname} = require('node:path');
 const {readdirSync, copyFileSync, mkdirSync, existsSync} = require('node:fs');
 
+// Use __dirname to find scaffolding relative to this script
+// Script is in scripts/, scaffolding is in package root
 const srcDir = join(__dirname, '../scaffolding');
 const targetDir = process.cwd();
+
+// Verify scaffolding directory exists
+if (!existsSync(srcDir)) {
+    console.error(`[@diplodoc/lint] Error: scaffolding directory not found at ${srcDir}`);
+    process.exit(1);
+}
 
 function copyScaffoldingFiles(excludePatterns = []) {
     function shouldExclude(filePath) {
@@ -41,7 +49,12 @@ function copyScaffoldingFiles(excludePatterns = []) {
                     mkdirSync(targetParent, {recursive: true});
                 }
                 // Force overwrite existing files
-                copyFileSync(srcPath, targetPath);
+                try {
+                    copyFileSync(srcPath, targetPath);
+                } catch (error) {
+                    console.error(`[@diplodoc/lint] Error copying ${srcPath} to ${targetPath}:`, error.message);
+                    throw error;
+                }
             }
         }
     }
