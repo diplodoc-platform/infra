@@ -33,6 +33,11 @@ const ignores = {
         // Test files and scripts use Node.js globals
         'test/',
         'scripts/',
+        // Config files use CommonJS
+        '.lintstagedrc.js',
+        '.eslintrc.js',
+        '.prettierrc.js',
+        '.stylelintrc.js',
     ],
     '.prettierignore': [
         ...SYSTEM,

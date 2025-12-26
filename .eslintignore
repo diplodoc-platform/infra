@@ -14,3 +14,8 @@ node_modules
 test/
 # Scripts use Node.js globals
 scripts/
+
+.lintstagedrc.js
+.eslintrc.js
+.prettierrc.js
+.stylelintrc.js
