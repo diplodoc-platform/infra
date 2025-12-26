@@ -372,15 +372,18 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
 **`.lintstagedrc.js`**:
 
 - Configures lint-staged to run on staged files:
-  - JS/TS files: Prettier + ESLint (with auto-fix)
+  - JS/TS files: Prettier + ESLint (with auto-fix, excludes config files and scripts)
   - CSS/SCSS files: Prettier + Stylelint (with auto-fix)
   - JSON/YAML/MD files: Prettier
   - SVG files: SVGO optimization
+  - **Unit tests**: Automatically runs `npm test` when test files (`.test.ts`, `.spec.ts`) or source files (`src/`) are changed
+  - Config files (`.lintstagedrc.js`, `.eslintrc.js`, etc.) are excluded from ESLint checks (they use CommonJS)
 
 **`.husky/pre-commit`**:
 
 - Runs `npm run pre-commit` before each commit
 - Pre-commit script runs `lint update && lint-staged`
+- lint-staged automatically runs unit tests when relevant files are changed
 
 **Ignore Files** (updated via `modify-ignore.js`):
 
