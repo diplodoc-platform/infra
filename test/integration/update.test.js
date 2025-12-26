@@ -15,6 +15,22 @@ function getLintBin() {
     return join(__dirname, '../../bin/lint');
 }
 
+// Helper to run lint command in a cross-platform way
+async function runLintCommand(command, cwd) {
+    const lintBin = getLintBin();
+    const isWindows = process.platform === 'win32';
+    
+    if (isWindows) {
+        try {
+            return await execInDir(`sh ${lintBin} ${command}`, cwd);
+        } catch (error) {
+            throw new Error(`Failed to run lint command: ${error.message}`);
+        }
+    } else {
+        return await execInDir(`bash ${lintBin} ${command}`, cwd);
+    }
+}
+
 test('should update scaffolding files when they are outdated', async () => {
     let tempDir = await createTempDir();
     try {
@@ -24,15 +40,14 @@ test('should update scaffolding files when they are outdated', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Modify scaffolding file to simulate outdated version
         const oldContent = 'module.exports = { old: true };';
         writeFile(tempDir, '.eslintrc.js', oldContent);
 
         // Execute update
-        await execInDir(`bash ${lintBin} update`, tempDir);
+        await runLintCommand('update', tempDir);
 
         // Verify file was updated
         const newContent = readFile(tempDir, '.eslintrc.js');
@@ -52,8 +67,7 @@ test('should update ignore files with missing patterns', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Remove some patterns from ignore file
         const gitignore = readFile(tempDir, '.gitignore');
@@ -61,7 +75,7 @@ test('should update ignore files with missing patterns', async () => {
         writeFile(tempDir, '.gitignore', modifiedGitignore);
 
         // Execute update
-        await execInDir(`bash ${lintBin} update`, tempDir);
+        await runLintCommand('update', tempDir);
 
         // Verify missing pattern was added back
         const updatedGitignore = readFile(tempDir, '.gitignore');
@@ -80,8 +94,7 @@ test('should not re-initialize Husky on update', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Modify husky pre-commit hook
         const customHook = '#!/usr/bin/env sh\ncustom-command\n';
@@ -89,7 +102,7 @@ test('should not re-initialize Husky on update', async () => {
         const originalHookContent = readFile(tempDir, '.husky/pre-commit');
 
         // Execute update
-        await execInDir(`bash ${lintBin} update`, tempDir);
+        await runLintCommand('update', tempDir);
 
         // Verify husky hook was NOT overwritten (update doesn't touch husky)
         // Actually, update copies scaffolding which includes .husky/pre-commit
@@ -111,8 +124,7 @@ test('should not modify package.json scripts on update', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Add custom script
         const pkg = readJson(tempDir, 'package.json');
@@ -120,7 +132,7 @@ test('should not modify package.json scripts on update', async () => {
         writeJson(tempDir, 'package.json', pkg);
 
         // Execute update
-        await execInDir(`bash ${lintBin} update`, tempDir);
+        await runLintCommand('update', tempDir);
 
         // Verify custom script is preserved
         const updatedPkg = readJson(tempDir, 'package.json');
@@ -140,8 +152,7 @@ test('should update all scaffolding files', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Modify all scaffolding files
         writeFile(tempDir, '.eslintrc.js', 'old');
@@ -150,7 +161,7 @@ test('should update all scaffolding files', async () => {
         writeFile(tempDir, '.lintstagedrc.js', 'old');
 
         // Execute update
-        await execInDir(`bash ${lintBin} update`, tempDir);
+        await runLintCommand('update', tempDir);
 
         // Verify all files were updated
         const eslintrc = readFile(tempDir, '.eslintrc.js');
@@ -176,15 +187,14 @@ test('should handle update when files are already up-to-date', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Get original content
         const originalEslintrc = readFile(tempDir, '.eslintrc.js');
         const originalGitignore = readFile(tempDir, '.gitignore');
 
         // Execute update (should be idempotent)
-        await execInDir(`bash ${lintBin} update`, tempDir);
+        await runLintCommand('update', tempDir);
 
         // Verify files are unchanged (or at least functionally equivalent)
         const updatedEslintrc = readFile(tempDir, '.eslintrc.js');

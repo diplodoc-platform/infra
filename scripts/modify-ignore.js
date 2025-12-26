@@ -30,6 +30,9 @@ const ignores = {
         ...SYSTEM,
         ...INSTALL,
         ...ARTIFACTS,
+        // Test files and scripts use Node.js globals
+        'test/',
+        'scripts/',
     ],
     '.prettierignore': [
         ...SYSTEM,

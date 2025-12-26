@@ -15,6 +15,22 @@ function getLintBin() {
     return join(__dirname, '../../bin/lint');
 }
 
+// Helper to run lint command in a cross-platform way
+async function runLintCommand(command, cwd) {
+    const lintBin = getLintBin();
+    const isWindows = process.platform === 'win32';
+    
+    if (isWindows) {
+        try {
+            return await execInDir(`sh ${lintBin} ${command}`, cwd);
+        } catch (error) {
+            throw new Error(`Failed to run lint command: ${error.message}`);
+        }
+    } else {
+        return await execInDir(`bash ${lintBin} ${command}`, cwd);
+    }
+}
+
 test('should run lint check on valid JavaScript file', async () => {
     let tempDir = await createTempDir();
     try {
@@ -24,15 +40,14 @@ test('should run lint check on valid JavaScript file', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Create valid JS file
         writeFile(tempDir, 'test.js', 'const x = 1;\nconsole.log(x);\n');
 
         // Execute lint (should pass)
         try {
-            await execInDir(`bash ${lintBin}`, tempDir);
+            await runLintCommand('', tempDir);
             // If we get here, lint passed
             assert(true, 'Lint should pass for valid file');
         } catch (error) {
@@ -54,15 +69,14 @@ test('should run lint fix and format files', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Create file with formatting issues (extra spaces, etc)
         writeFile(tempDir, 'test.js', 'const x=1;const y=2;\n');
 
         // Execute lint fix
         try {
-            await execInDir(`bash ${lintBin} fix`, tempDir);
+            await runLintCommand('fix', tempDir);
 
             // Verify file was formatted (read it back)
             const fixedContent = readFile(tempDir, 'test.js');
@@ -86,15 +100,14 @@ test('should skip stylelint when no CSS files exist', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Create only JS file (no CSS)
         writeFile(tempDir, 'test.js', 'const x = 1;\n');
 
         // Execute lint (should not try to run stylelint)
         try {
-            await execInDir(`bash ${lintBin}`, tempDir);
+            await runLintCommand('', tempDir);
             // If we get here without stylelint errors, test passes
             assert(true, 'Should not run stylelint when no CSS files');
         } catch (error) {
@@ -115,15 +128,14 @@ test('should run stylelint when CSS files exist', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Create CSS file
         writeFile(tempDir, 'test.css', '.test { color: red; }\n');
 
         // Execute lint (should run stylelint)
         try {
-            await execInDir(`bash ${lintBin}`, tempDir);
+            await runLintCommand('', tempDir);
             // If we get here, stylelint ran (or passed)
             assert(true, 'Should run stylelint when CSS files exist');
         } catch (error) {
@@ -144,8 +156,7 @@ test('should respect ignore files', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Create file in ignored directory
         const {mkdirSync} = require('node:fs');
@@ -154,7 +165,7 @@ test('should respect ignore files', async () => {
 
         // Execute lint (should not lint ignored file)
         try {
-            await execInDir(`bash ${lintBin}`, tempDir);
+            await runLintCommand('', tempDir);
             // If we get here, ignored file was not linted (good)
             assert(true, 'Should ignore files in node_modules');
         } catch (error) {
@@ -175,8 +186,7 @@ test('should run update before lint when using npm script', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Modify scaffolding file to simulate outdated version
         writeFile(tempDir, '.eslintrc.js', 'module.exports = { old: true };');
@@ -207,15 +217,14 @@ test('should handle lint errors gracefully', async () => {
             version: '1.0.0',
         });
 
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Create file with lint errors
         writeFile(tempDir, 'test.js', 'const unused = 1;\nconsole.log("test");\n');
 
         // Execute lint (should fail with error code)
         try {
-            await execInDir(`bash ${lintBin}`, tempDir);
+            await runLintCommand('', tempDir);
             // If we get here, lint passed (no unused vars rule or it's allowed)
             assert(true, 'Lint may pass or fail depending on rules');
         } catch (error) {

@@ -15,6 +15,28 @@ function getLintBin() {
     return join(__dirname, '../../bin/lint');
 }
 
+// Helper to run lint command in a cross-platform way
+async function runLintCommand(command, cwd) {
+    const lintBin = getLintBin();
+    const isWindows = process.platform === 'win32';
+    
+    // On Windows, try sh (Git Bash), otherwise use node to read and execute the script
+    // On Unix, use bash directly
+    if (isWindows) {
+        // Try sh first (available in Git Bash on Windows)
+        try {
+            return await execInDir(`sh ${lintBin} ${command}`, cwd);
+        } catch (error) {
+            // If sh fails, the script might not be executable or sh not available
+            // In CI, we should have sh available, so this is a fallback
+            throw new Error(`Failed to run lint command: ${error.message}`);
+        }
+    } else {
+        // On Unix-like systems (Linux, macOS), use bash
+        return await execInDir(`bash ${lintBin} ${command}`, cwd);
+    }
+}
+
 test('should initialize lint in clean directory', async () => {
     let tempDir = await createTempDir();
     try {
@@ -26,8 +48,7 @@ test('should initialize lint in clean directory', async () => {
         });
 
         // Execute
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Verify package.json scripts
         const pkg = readJson(tempDir, 'package.json');
@@ -70,8 +91,7 @@ test('should not overwrite existing unrelated files', async () => {
         writeFile(tempDir, '.gitignore', '# Custom ignore\ncustom-file.txt\n');
 
         // Execute
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Verify existing files preserved
         const pkg = readJson(tempDir, 'package.json');
@@ -97,8 +117,7 @@ test('should initialize Husky on init', async () => {
         });
 
         // Execute
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Verify Husky was initialized
         assert(fileExists(tempDir, '.husky'), '.husky directory should exist');
@@ -122,8 +141,7 @@ test('should create all required ignore files with patterns', async () => {
         });
 
         // Execute
-        const lintBin = getLintBin();
-        await execInDir(`bash ${lintBin} init`, tempDir);
+        await runLintCommand('init', tempDir);
 
         // Verify ignore files contain required patterns
         const gitignore = readFile(tempDir, '.gitignore');
