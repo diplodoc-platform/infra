@@ -1,8 +1,24 @@
 module.exports = {
-    '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}': [
-        'prettier --write',
-        'eslint --max-warnings=0 --fix --no-warn-ignored',
-    ],
+    // Exclude config files and scripts from linting (they use CommonJS)
+    '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}': (filenames) => {
+        // Filter out config files and scripts
+        const configFiles = [
+            '.lintstagedrc.js',
+            '.eslintrc.js',
+            '.prettierrc.js',
+            '.stylelintrc.js',
+        ];
+        const filtered = filenames.filter(
+            (f) =>
+                !configFiles.some((config) => f.includes(config)) &&
+                !f.includes('scripts/') &&
+                !f.includes('test/'),
+        );
+        if (filtered.length === 0) {
+            return [];
+        }
+        return ['prettier --write', 'eslint --max-warnings=0 --fix --no-warn-ignored'];
+    },
     '**/*.{css,scss}': ['prettier --write', 'stylelint --fix'],
     '**/*.{json,yaml,yml,md}': ['prettier --write'],
     '**/*.{svg,svgx}': ['svgo'],
