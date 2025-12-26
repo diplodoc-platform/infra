@@ -358,6 +358,13 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
 
 - Extends `@diplodoc/lint/stylelint-config`
 
+**`.editorconfig`**:
+
+- EditorConfig settings for consistent code formatting
+- UTF-8 charset, LF line endings
+- 4-space indentation by default, 2-space for JS/TS/JSON/YAML
+- Trims trailing whitespace (except in Markdown files)
+
 **`.lintstagedrc.js`**:
 
 - Configures lint-staged to run on staged files:
