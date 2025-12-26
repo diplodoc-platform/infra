@@ -8,6 +8,7 @@ module.exports = {
             '.eslintrc.js',
             '.prettierrc.js',
             '.stylelintrc.js',
+            'prettier-common-config.js',
         ];
         const filtered = filenames.filter(
             (f) =>
@@ -18,12 +19,18 @@ module.exports = {
         if (filtered.length === 0) {
             return [];
         }
-        return ['prettier --write', 'eslint --max-warnings=0 --fix'];
+        return [
+            ...filtered.map((f) => `prettier --write ${f}`),
+            ...filtered.map((f) => `eslint --max-warnings=0 --fix ${f}`),
+        ];
     },
     // Handle .lintstagedrc.js separately (only prettier, no eslint)
-    '.lintstagedrc.js': ['prettier --write'],
-    '**/*.{css,scss}': ['prettier --write', 'stylelint --fix'],
-    '**/*.{json,yaml,yml,md}': ['prettier --write'],
+    '.lintstagedrc.js': (filenames) => filenames.map((f) => `prettier --write ${f}`),
+    '**/*.{css,scss}': (filenames) => [
+        ...filenames.map((f) => `prettier --write ${f}`),
+        ...filenames.map((f) => `stylelint --fix ${f}`),
+    ],
+    '**/*.{json,yaml,yml,md}': (filenames) => filenames.map((f) => `prettier --write ${f}`),
     '**/*.{svg,svgx}': ['svgo'],
     // Run unit tests when test files or source files change
     '**/*.{ts,tsx}': (filenames) => {
