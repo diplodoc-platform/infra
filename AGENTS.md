@@ -216,14 +216,16 @@ cd test && npm start
 
 The `bin/` directory contains executable scripts that are made available via npm bin:
 
-**Main Script: `lint`**
+**Main Script: `lint` (Node.js)**
 
+- **File**: `bin/lint.js` — Node.js script (cross-platform, no bash required)
 - **Purpose**: Main entry point for all linting operations
 - **Commands**:
   - `lint` (default) — runs all linters in check mode
   - `lint fix` — runs all linters in fix mode (auto-fixes issues)
   - `lint init` — initializes linting infrastructure in a package
   - `lint update` — updates linting infrastructure (runs automatically on each `lint` call)
+- **Platform Support**: Works on all platforms (Windows, macOS, Linux). npm automatically creates `.cmd` wrapper on Windows.
 
 **Proxy Scripts** (redirect to original binaries from node_modules):
 
@@ -428,7 +430,7 @@ The package has a comprehensive test suite in the `test/` directory:
 - `test/unit/` — unit tests for JavaScript modules
   - `modify-package.test.js` — tests for package.json modification (8 tests)
   - `modify-ignore.test.js` — tests for ignore file updates (9 tests)
-- `test/integration/` — integration tests for bash scripts
+- `test/integration/` — integration tests for lint commands
   - `init.test.js` — tests for `lint init` flow (4 tests)
   - `update.test.js` — tests for `lint update` flow (6 tests)
   - `lint.test.js` — tests for `lint` and `lint fix` flows (7 tests)
