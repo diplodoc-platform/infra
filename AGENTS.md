@@ -246,12 +246,18 @@ The `bin/` directory contains executable scripts that are made available via npm
 **Default mode** (`lint`):
 
 - Runs ESLint on all JS/TS files (check only)
+  - Uses glob pattern `**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}`
+  - ESLint automatically respects `.eslintignore` file
+  - No manual file filtering needed
 - Runs Prettier in check mode on all JS/TS files
 - Runs Stylelint on CSS/SCSS files (if found and not ignored)
 
 **Fix mode** (`lint fix`):
 
 - Runs ESLint with `--fix` flag (auto-fixes issues)
+  - Uses glob pattern `**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}`
+  - ESLint automatically respects `.eslintignore` file
+  - No manual file filtering needed
 - Runs Prettier with `--write` flag (formats files)
 - Runs Stylelint with `--fix` flag (auto-fixes CSS issues)
 
