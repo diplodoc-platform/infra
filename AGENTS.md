@@ -2,6 +2,22 @@
 
 This file contains instructions for AI agents working with the `@diplodoc/lint` project.
 
+## Common Rules and Standards
+
+**Important**: This package follows common rules and standards defined in the Diplodoc metapackage. When working in metapackage mode, refer to:
+
+- **`.agents/style-and-testing.md`** in the metapackage root for:
+  - Code style guidelines
+  - Commit message format (Conventional Commits)
+  - Pre-commit hooks rules (**CRITICAL**: Never commit with `--no-verify`)
+  - Testing standards
+  - Documentation requirements
+- **`.agents/core.md`** for core concepts
+- **`.agents/monorepo.md`** for workspace and dependency management
+- **`.agents/dev-infrastructure.md`** for build and CI/CD
+
+**Note**: In standalone mode (when this package is used independently), these rules still apply. If you need to reference the full documentation, check the [Diplodoc metapackage repository](https://github.com/diplodoc-platform/diplodoc).
+
 ## Project Description
 
 `@diplodoc/lint` is a DevOps infrastructure package that provides linting utilities for all Diplodoc platform packages. It consolidates ESLint, Prettier, Stylelint, Husky, and lint-staged configurations into a single package, replacing the deprecated `@diplodoc/eslint-config` and `@diplodoc/prettier-config` packages.
