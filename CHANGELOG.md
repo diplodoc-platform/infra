@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0](https://github.com/diplodoc-platform/lint/compare/v1.3.3...v1.4.0) (2025-12-26)
+
+
+### Features
+
+* add .editorconfig to scaffolding ([876ac1d](https://github.com/diplodoc-platform/lint/commit/876ac1de0e48f99b607608c87a63a2dd25ff0f5e))
+* add unit tests to pre-commit hook and fix ESLint config ([3b063db](https://github.com/diplodoc-platform/lint/commit/3b063dbfd6feb382fcab2990cd6cea04b9f0d113))
+
+
+### Bug Fixes
+
+* add --no-warn-ignored flag to ESLint to suppress ignored file warnings ([06685b6](https://github.com/diplodoc-platform/lint/commit/06685b6d037d03607138836c110d7995b82a34f2))
+* add eslint-env node comment to lint-staged config files ([c7516d9](https://github.com/diplodoc-platform/lint/commit/c7516d99f90b39b02ae7c788a4224da21a844fe6))
+* add ignorePatterns to scaffolding/.eslintrc.js ([3a12425](https://github.com/diplodoc-platform/lint/commit/3a124252b3e41fcd4e1da337fe65305b2d252d19))
+* add override for .mjs/.cjs files in ESLint config ([f494b66](https://github.com/diplodoc-platform/lint/commit/f494b661e377c0e21be86aab1f26c0d9e550fb6e))
+* handle .lintstagedrc.js separately in lint-staged config ([fee8678](https://github.com/diplodoc-platform/lint/commit/fee8678ae67784c2372f21f470d4aeeaa195f7f4))
+* improve cross-platform compatibility for integration tests ([d00f796](https://github.com/diplodoc-platform/lint/commit/d00f7964d4f284f727aa9ca78c0acbb9138d2a63))
+* install @diplodoc/lint in test directory for npm script test ([d0bd5f1](https://github.com/diplodoc-platform/lint/commit/d0bd5f1e3c68a918b4d828309d2c14a0401592ef))
+* make integration tests cross-platform compatible ([cc59464](https://github.com/diplodoc-platform/lint/commit/cc59464eb65e3cfc0589fff68a972df45cbd2305))
+* update scaffolding/.lintstagedrc.js with test execution and ESLint fixes ([b065de0](https://github.com/diplodoc-platform/lint/commit/b065de0b39daa27fc1aa7bd8e2396571e887310e))
+* update workflow and package-lock for standalone mode ([7fe3390](https://github.com/diplodoc-platform/lint/commit/7fe33909a55bc77ff0ba4abbae77bb936a4a2ca4))
+* use find + grep to filter files before ESLint to respect .eslintignore ([edc7d90](https://github.com/diplodoc-platform/lint/commit/edc7d9047f2f902b05e708af7d1fa474b6418c0d))
+
 ## [1.3.3](https://github.com/diplodoc-platform/lint/compare/v1.3.2...v1.3.3) (2025-08-21)
 
 
