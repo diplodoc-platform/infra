@@ -266,6 +266,8 @@ The `bin/` directory contains executable scripts that are made available via npm
 1. **Modify package.json**: Adds/updates lint scripts via `scripts/modify-package.js`
 2. **Initialize Husky**: Runs `husky init` (only on `init`)
 3. **Copy scaffolding**: Copies all files from `scaffolding/` directory to package root
+   - Configuration files (`.eslintrc.js`, `.prettierrc.js`, etc.)
+   - **GitHub Actions workflows** (`.github/workflows/*.yml`)
 4. **Update ignore files**: Extends `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore` via `scripts/modify-ignore.js`
 
 ### Infrastructure Auto-Update
@@ -305,8 +307,10 @@ When a package uses `@diplodoc/lint`:
      - Creates `.husky/` directory
      - Sets up git hooks
    - **Step 3**: Copies scaffolding files from `scaffolding/` to package root
-     - `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
-     - `.lintstagedrc.js`, `.husky/pre-commit`
+     - Configuration files: `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
+     - Git hooks: `.lintstagedrc.js`, `.husky/pre-commit`
+     - Editor config: `.editorconfig`
+     - **GitHub Actions workflows**: `.github/workflows/tests.yml`, `.github/workflows/release.yml`, `.github/workflows/security.yml`
    - **Step 4**: Updates ignore files via `scripts/modify-ignore.js`
      - Extends `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
      - Adds standard patterns (system files, build artifacts, node_modules)
