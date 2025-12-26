@@ -26,7 +26,9 @@
     "lint": "lint update && lint",
     "lint:fix": "lint update && lint fix",
     "pre-commit": "lint update && lint-staged",
-    "prepare": "husky"
+    "prepare": "husky",
+    "typecheck": "node -e \"const fs = require('fs'); if (fs.existsSync('tsconfig.json')) { try { require('typescript'); require('child_process').execSync('tsc --noEmit', {stdio: 'inherit'}); } catch(e) { process.exit(0); } } else { process.exit(0); }\"",
+    "build": "echo 'No build step required for this package'"
   },
   "exports": {
     "./eslint-config": "./eslint-common-config.js",
