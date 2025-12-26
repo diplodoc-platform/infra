@@ -22,7 +22,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          os: ${{ matrix.os }}
           cache: 'npm'
       - name: Install latest npm (>= 11.5.1)
         run: |
@@ -31,6 +30,4 @@ jobs:
       - name: Install packages for project
         run: npm ci
       - name: Run tests
-        run: |
-          cd test
-          npm start
+        run: npm test
