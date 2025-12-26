@@ -29,8 +29,20 @@ if [[ -n "$INIT$UPDATE" ]]; then
   fi
 
   echo "[@diplodoc/lint] Add initial lint configs"
-  # Copy all scaffolding files
+  # Copy all scaffolding files except .github/workflows (handled separately)
+  if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
+    # Temporarily move workflows out of the way
+    mkdir -p /tmp/lint-scaffolding-workflows
+    mv "$SRCDIR/scaffolding/.github/workflows" /tmp/lint-scaffolding-workflows/
+  fi
+  
   cp -a "$SRCDIR/scaffolding/." .
+  
+  # Restore workflows in scaffolding
+  if [[ -d /tmp/lint-scaffolding-workflows/workflows ]]; then
+    mv /tmp/lint-scaffolding-workflows/workflows "$SRCDIR/scaffolding/.github/workflows"
+    rmdir /tmp/lint-scaffolding-workflows 2>/dev/null || true
+  fi
   
   echo "[@diplodoc/lint] Add GitHub Actions workflows"
   if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
