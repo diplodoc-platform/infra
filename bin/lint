@@ -30,7 +30,7 @@ if [[ -n "$INIT$UPDATE" ]]; then
 
   echo "[@diplodoc/lint] Add initial lint configs"
   # Copy all scaffolding files except .github/workflows (handled separately)
-  find "$SRCDIR/scaffolding" -type f ! -path "*/\.github/workflows/*" -exec cp --parents {} . \;
+  (cd "$SRCDIR/scaffolding" && find . -type f ! -path "./.github/workflows/*" -exec sh -c 'mkdir -p "$(dirname "$2")" && cp "$1" "$2"' _ {} "../$PWD/{}" \;)
   
   echo "[@diplodoc/lint] Add GitHub Actions workflows"
   if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
