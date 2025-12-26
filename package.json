@@ -3,7 +3,7 @@
   "version": "1.5.1",
   "description": "Diplodoc platform internal utility set for linting",
   "bin": {
-    "lint": "./bin/lint",
+    "lint": "./bin/lint.js",
     "husky": "./bin/husky",
     "eslint": "./bin/eslint",
     "prettier": "./bin/prettier",
@@ -25,7 +25,7 @@
     "test:old": "cd test && npm start",
     "lint": "exit 0",
     "lint:fix": "lint update && lint fix",
-    "pre-commit": "lint update && lint-staged",
+    "pre-commit": "node bin/lint.js update && lint-staged",
     "prepare": "husky",
     "typecheck": "exit 0",
     "build": "exit 0"
