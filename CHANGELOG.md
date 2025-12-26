@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1](https://github.com/diplodoc-platform/lint/compare/v1.5.0...v1.5.1) (2025-12-26)
+
+
+### Bug Fixes
+
+* always update workflows from scaffolding to ensure consistency ([ad82373](https://github.com/diplodoc-platform/lint/commit/ad823739d81624a8eb5c705650219e19960556e7))
+* rename release.yml to publish.yml and update workflow ([9c29a35](https://github.com/diplodoc-platform/lint/commit/9c29a35f85dfb2b2bd2cf68d10cf460921d54bd7))
+
 ## [1.5.0](https://github.com/diplodoc-platform/lint/compare/v1.4.1...v1.5.0) (2025-12-26)
 
 
