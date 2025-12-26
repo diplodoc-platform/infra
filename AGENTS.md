@@ -471,100 +471,6 @@ npm run test:old
 3. Run `npm test` to verify
 4. Update version in `package.json`
 
-## Potential Improvements
-
-### 1. Better Error Messages and Validation
-
-**Current Issues**:
-
-- `modify-package.js` throws plain strings instead of Error objects
-- No validation of package.json structure before modification
-- No helpful error messages for common issues
-- Scripts fail silently in some edge cases
-
-**Improvement Plan**:
-
-**A. Error Handling in `modify-package.js`**:
-
-- Replace string throws with proper Error objects
-- Add error context (which script, what operation failed)
-- Validate package.json exists and is valid JSON before parsing
-- Check if package.json has `scripts` field, create if missing
-- Provide helpful messages for common issues:
-  - "package.json not found" → suggest running from package root
-  - "Invalid JSON" → show line number if possible
-  - "Script already exists with different implementation" → show both versions
-
-**B. Error Handling in `modify-ignore.js`**:
-
-- Validate file permissions before writing
-- Handle read-only files gracefully
-- Provide suggestions if files can't be modified
-- Log which patterns were added vs. already existed
-
-**C. Error Handling in `bin/lint`**:
-
-- Better error messages when tools are not found
-- Validate scaffolding directory exists before copying
-- Check if Husky initialization succeeded
-- Provide rollback instructions if init partially fails
-
-**D. Validation**:
-
-- Validate that required dependencies are installed
-- Check Node.js version compatibility
-- Verify scaffolding files are complete
-- Validate exported configs are syntactically correct
-
-**Implementation Steps**:
-
-1. Create error utility module for consistent error formatting
-2. Add validation functions for common checks
-3. Refactor `modify-package.js` to use proper errors
-4. Refactor `modify-ignore.js` to use proper errors
-5. Add validation checks to `bin/lint`
-6. Test error scenarios and improve messages iteratively
-
-### 2. Better Testing
-
-**Status**: ✅ **Implemented** (December 2025)
-
-The test suite has been fully implemented with 34 tests covering unit and integration scenarios:
-
-**Implemented Tests**:
-
-**Unit Tests** (17 tests):
-
-- ✅ `modify-package.test.js` (8 tests) — package.json modification, script management, error handling
-- ✅ `modify-ignore.test.js` (9 tests) — ignore file updates, pattern management, duplicate detection
-
-**Integration Tests** (17 tests):
-
-- ✅ `init.test.js` (4 tests) — full initialization flow, Husky setup, scaffolding files, ignore files
-- ✅ `update.test.js` (6 tests) — update flow, file synchronization, Husky preservation
-- ✅ `lint.test.js` (7 tests) — linting flows, fix mode, npm script integration, error handling
-
-**Test Infrastructure**:
-
-- ✅ Custom test runner using Node.js built-in `assert` module (no external dependencies)
-- ✅ Test fixtures for various scenarios
-- ✅ Temporary directory management for integration tests
-- ✅ Cross-platform command execution helpers (Windows/Unix compatibility)
-- ✅ CI/CD integration in GitHub Actions
-
-**Test Coverage**:
-
-- Happy paths: ✅ Covered
-- Edge cases: ✅ Covered (empty package.json, missing scripts field, etc.)
-- Error scenarios: ✅ Covered (invalid JSON, missing files, etc.)
-- Cross-platform: ✅ Tested on Linux, macOS, Windows
-
-**Remaining Opportunities**:
-
-- Proxy scripts (bin/eslint, bin/prettier, etc.) could have dedicated unit tests
-- Additional edge cases for CSS/SCSS detection
-- Performance testing for large codebases
-
 ## Important Notes
 
 1. **Auto-update mechanism**: The `lint update` command runs automatically on each `lint` execution. This ensures infrastructure stays in sync across packages.
@@ -581,7 +487,7 @@ The test suite has been fully implemented with 34 tests covering unit and integr
 
 7. **Used by all packages**: This is a critical infrastructure package used by all Diplodoc packages. Changes should be carefully tested.
 
-8. **Performance consideration**: Running `lint update` on every `lint` call can be slow. Consider implementing smart update detection (see Potential Improvements).
+8. **Performance consideration**: Running `lint update` on every `lint` call can be slow. Consider implementing smart update detection in the future.
 
 9. **Dual usage mode**: This package works both as part of the metapackage (workspace mode) and as a standalone npm package. All scripts and commands must work correctly in both contexts. When making changes, test both modes to ensure compatibility.
 
