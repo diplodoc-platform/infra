@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/diplodoc-platform/lint/compare/lint-v1.7.0...lint-v1.7.1) (2025-12-26)
+
+
+### Bug Fixes
+
+* configure prettier and gitattributes for cross-platform line endings ([e1dd209](https://github.com/diplodoc-platform/lint/commit/e1dd209d91f62aa8f7cabf7da02a13404bb67276))
+
 ## [1.7.0](https://github.com/diplodoc-platform/lint/compare/lint-v1.6.0...lint-v1.7.0) (2025-12-26)
 
 
