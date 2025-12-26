@@ -1,3 +1,4 @@
+/* eslint-env node */
 module.exports = {
     // Exclude config files and scripts from linting (they use CommonJS)
     '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}': (filenames) => {
