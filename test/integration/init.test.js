@@ -20,21 +20,15 @@ async function runLintCommand(command, cwd) {
     const lintBin = getLintBin();
     const isWindows = process.platform === 'win32';
     
-    // On Windows, try sh (Git Bash), otherwise use node to read and execute the script
-    // On Unix, use bash directly
-    if (isWindows) {
-        // Try sh first (available in Git Bash on Windows)
-        try {
-            return await execInDir(`sh ${lintBin} ${command}`, cwd);
-        } catch (error) {
-            // If sh fails, the script might not be executable or sh not available
-            // In CI, we should have sh available, so this is a fallback
-            throw new Error(`Failed to run lint command: ${error.message}`);
-        }
-    } else {
-        // On Unix-like systems (Linux, macOS), use bash
-        return await execInDir(`bash ${lintBin} ${command}`, cwd);
-    }
+    // Use absolute path and appropriate shell for the platform
+    // On Windows, use sh (Git Bash is available in CI)
+    // On Unix, use bash
+    // Normalize path separators for Windows
+    const normalizedBin = isWindows ? lintBin.replace(/\\/g, '/') : lintBin;
+    const shell = isWindows ? 'sh' : 'bash';
+    const fullCommand = `${shell} "${normalizedBin}" ${command}`.trim();
+    
+    return await execInDir(fullCommand, cwd);
 }
 
 test('should initialize lint in clean directory', async () => {

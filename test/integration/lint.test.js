@@ -20,15 +20,11 @@ async function runLintCommand(command, cwd) {
     const lintBin = getLintBin();
     const isWindows = process.platform === 'win32';
     
-    if (isWindows) {
-        try {
-            return await execInDir(`sh ${lintBin} ${command}`, cwd);
-        } catch (error) {
-            throw new Error(`Failed to run lint command: ${error.message}`);
-        }
-    } else {
-        return await execInDir(`bash ${lintBin} ${command}`, cwd);
-    }
+    const normalizedBin = isWindows ? lintBin.replace(/\\/g, '/') : lintBin;
+    const shell = isWindows ? 'sh' : 'bash';
+    const fullCommand = `${shell} "${normalizedBin}" ${command}`.trim();
+    
+    return await execInDir(fullCommand, cwd);
 }
 
 test('should run lint check on valid JavaScript file', async () => {
