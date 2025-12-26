@@ -310,7 +310,7 @@ When a package uses `@diplodoc/lint`:
      - Configuration files: `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
      - Git hooks: `.lintstagedrc.js`, `.husky/pre-commit`
      - Editor config: `.editorconfig`
-     - **GitHub Actions workflows**: `.github/workflows/tests.yml`, `.github/workflows/publish.yml`, `.github/workflows/security.yml`
+     - **GitHub Actions workflows**: `.github/workflows/tests.yml`, `.github/workflows/publish.yml`, `.github/workflows/release-please.yml`, `.github/workflows/security.yml`
    - **Step 4**: Updates ignore files via `scripts/modify-ignore.js`
      - Extends `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
      - Adds standard patterns (system files, build artifacts, node_modules)
