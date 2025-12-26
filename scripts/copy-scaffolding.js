@@ -1,9 +1,35 @@
 const {join, relative, dirname} = require('node:path');
-const {readdirSync, copyFileSync, mkdirSync, existsSync} = require('node:fs');
+const {readdirSync, copyFileSync, mkdirSync, existsSync, realpathSync} = require('node:fs');
 
-// Use __dirname to find scaffolding relative to this script
-// Script is in scripts/, scaffolding is in package root
-const srcDir = join(__dirname, '../scaffolding');
+// Determine package root directory
+// Try multiple strategies to find the package root
+let srcDir = join(__dirname, '../scaffolding');
+
+// If scaffolding doesn't exist at expected location, try to find package via require.resolve
+if (!existsSync(srcDir)) {
+    try {
+        // Try to find the package root via require.resolve
+        const packageJsonPath = require.resolve('@diplodoc/lint/package.json');
+        const packageRoot = dirname(packageJsonPath);
+        srcDir = join(packageRoot, 'scaffolding');
+    } catch (e) {
+        // If require.resolve fails, try walking up from __dirname
+        let currentDir = __dirname;
+        for (let i = 0; i < 5; i++) {
+            const testScaffolding = join(currentDir, 'scaffolding');
+            if (existsSync(testScaffolding)) {
+                srcDir = testScaffolding;
+                break;
+            }
+            const parentDir = dirname(currentDir);
+            if (parentDir === currentDir) {
+                break;
+            }
+            currentDir = parentDir;
+        }
+    }
+}
+
 const targetDir = process.cwd();
 
 // Verify scaffolding directory exists
