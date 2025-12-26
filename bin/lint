@@ -42,7 +42,7 @@ if [[ -n $FIX ]]; then
 
   # Filter files using .eslintignore before passing to ESLint
   if [[ -f .eslintignore ]]; then
-    find . -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.jsx' -o -name '*.ts' -o -name '*.mts' -o -name '*.cts' -o -name '*.tsx' \) ! -path '*/node_modules/*' | grep -vwFf .eslintignore | xargs $BINDIR/eslint --fix --no-warn-ignored || exit 1
+    find . -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.jsx' -o -name '*.ts' -o -name '*.mts' -o -name '*.cts' -o -name '*.tsx' \) ! -path '*/node_modules/*' | grep -vwFf .eslintignore | xargs $BINDIR/eslint --fix || exit 1
   else
     $BINDIR/eslint '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}' --fix
   fi
@@ -59,7 +59,7 @@ echo "Run linters"
 # Filter files using .eslintignore before passing to ESLint
 # This ensures ignorePatterns and .eslintignore are respected
 if [[ -f .eslintignore ]]; then
-  find . -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.jsx' -o -name '*.ts' -o -name '*.mts' -o -name '*.cts' -o -name '*.tsx' \) ! -path '*/node_modules/*' | grep -vwFf .eslintignore | xargs $BINDIR/eslint --no-warn-ignored || exit 1
+  find . -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.jsx' -o -name '*.ts' -o -name '*.mts' -o -name '*.cts' -o -name '*.tsx' \) ! -path '*/node_modules/*' | grep -vwFf .eslintignore | xargs $BINDIR/eslint || exit 1
 else
   $BINDIR/eslint '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'
 fi
