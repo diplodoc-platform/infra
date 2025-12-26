@@ -1,0 +1,14 @@
+.idea
+.vscode
+.history
+.env
+.DS_Store
+node_modules
+/lib
+/dist
+/build
+/cache
+/coverage
+/external
+# Test fixtures with invalid JSON
+test/fixtures/package-invalid.json

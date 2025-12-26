@@ -1,0 +1,4 @@
+# Existing ignore file
+*.log
+temp/
+
