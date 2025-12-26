@@ -12,21 +12,13 @@ function test(name, fn) {
 
 // Helper to get path to lint binary
 function getLintBin() {
-    return join(__dirname, '../../bin/lint');
+    return join(__dirname, '../../bin/lint.js');
 }
 
 // Helper to run lint command in a cross-platform way
 async function runLintCommand(command, cwd) {
     const lintBin = getLintBin();
-    const isWindows = process.platform === 'win32';
-    
-    // Use absolute path and appropriate shell for the platform
-    // On Windows, use sh (Git Bash is available in CI)
-    // On Unix, use bash
-    // Normalize path separators for Windows
-    const normalizedBin = isWindows ? lintBin.replace(/\\/g, '/') : lintBin;
-    const shell = isWindows ? 'sh' : 'bash';
-    const fullCommand = `${shell} "${normalizedBin}" ${command}`.trim();
+    const fullCommand = `node "${lintBin}" ${command}`.trim();
     
     return await execInDir(fullCommand, cwd);
 }
