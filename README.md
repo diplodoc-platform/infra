@@ -2,116 +2,116 @@
 
 # @diplodoc/lint
 
-Централизованный набор инструментов для линтинга и форматирования кода в проектах Diplodoc. Объединяет конфигурации ESLint, Prettier, Stylelint и автоматизирует их настройку.
+Centralized linting and code formatting toolkit for Diplodoc projects. Combines ESLint, Prettier, and Stylelint configurations and automates their setup.
 
-## Возможности
+## Features
 
-- 🔧 **Автоматическая настройка** — одна команда для инициализации всех инструментов
-- 🔄 **Автоматическое обновление** — синхронизация конфигураций между пакетами
-- 📦 **Поддержка метапакета и standalone** — работает как часть метапакета и как отдельный npm-пакет
-- 🎯 **Единые стандарты** — общие правила линтинга для всех пакетов Diplodoc
-- 🚀 **Git hooks** — автоматическая настройка pre-commit хуков через Husky
-- 📝 **TypeScript/JavaScript** — полная поддержка обоих языков
-- 🎨 **CSS/SCSS** — поддержка стилей через Stylelint
+- 🔧 **Automatic setup** — one command to initialize all tools
+- 🔄 **Automatic updates** — synchronizes configurations across packages
+- 📦 **Metapackage and standalone support** — works as part of the metapackage and as a standalone npm package
+- 🎯 **Unified standards** — shared linting rules for all Diplodoc packages
+- 🚀 **Git hooks** — automatic pre-commit hook setup via Husky
+- 📝 **TypeScript/JavaScript** — full support for both languages
+- 🎨 **CSS/SCSS** — style support via Stylelint
 
-## Установка
+## Installation
 
 ```bash
 npm install --save-dev @diplodoc/lint
 ```
 
-## Быстрый старт
+## Quick Start
 
-### 1. Инициализация
+### 1. Initialization
 
-Запустите команду инициализации в корне вашего пакета:
+Run the initialization command in your package root:
 
 ```bash
 npx @diplodoc/lint init
 ```
 
-Эта команда:
+This command will:
 
-- Добавит необходимые скрипты в `package.json`
-- Создаст конфигурационные файлы (`.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`)
-- Настроит Git hooks через Husky
-- Обновит `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
+- Add necessary scripts to `package.json`
+- Create configuration files (`.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`)
+- Set up Git hooks via Husky
+- Update `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
 
-После инициализации закоммитьте изменения:
+After initialization, commit the changes:
 
 ```bash
 git add --all && git commit -m 'chore: init lint'
 ```
 
-### 2. Использование
+### 2. Usage
 
-**Проверка кода:**
+**Code checking:**
 
 ```bash
 npm run lint
 ```
 
-**Автоматическое исправление:**
+**Automatic fixing:**
 
 ```bash
 npm run lint:fix
 ```
 
-**Обновление конфигураций:**
+**Update configurations:**
 
 ```bash
 npx @diplodoc/lint update
 ```
 
-> **Примечание**: Команда `update` автоматически выполняется перед каждой проверкой (`npm run lint`), поэтому конфигурации всегда актуальны.
+> **Note**: The `update` command runs automatically before each check (`npm run lint`), so configurations are always up-to-date.
 
-## Команды
+## Commands
 
 ### `lint init`
 
-Инициализирует линтинг в пакете:
+Initializes linting in a package:
 
-- Добавляет скрипты в `package.json`:
-  - `lint` — проверка кода
-  - `lint:fix` — автоматическое исправление
-  - `pre-commit` — проверка перед коммитом
-  - `prepare` — настройка Husky
-- Копирует конфигурационные файлы из `scaffolding/`
-- Настраивает Husky для Git hooks
-- Обновляет ignore-файлы
+- Adds scripts to `package.json`:
+  - `lint` — code checking
+  - `lint:fix` — automatic fixing
+  - `pre-commit` — pre-commit checking
+  - `prepare` — Husky setup
+- Copies configuration files from `scaffolding/`
+- Sets up Husky for Git hooks
+- Updates ignore files
 
 ### `lint update`
 
-Обновляет конфигурационные файлы до актуальных версий:
+Updates configuration files to the latest versions:
 
-- Обновляет `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
-- Обновляет ignore-файлы с новыми паттернами
-- **Не** переинициализирует Husky
-- **Не** изменяет существующие скрипты в `package.json`
+- Updates `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
+- Updates ignore files with new patterns
+- **Does not** re-initialize Husky
+- **Does not** modify existing scripts in `package.json`
 
-> **Важно**: Эта команда автоматически выполняется перед `lint` и `lint fix`, поэтому конфигурации всегда синхронизированы.
+> **Important**: This command runs automatically before `lint` and `lint fix`, so configurations are always synchronized.
 
 ### `lint`
 
-Проверяет код на соответствие правилам:
+Checks code for rule compliance:
 
-1. Автоматически выполняет `lint update`
-2. Запускает ESLint для JavaScript/TypeScript файлов
-3. Запускает Prettier для проверки форматирования
-4. Запускает Stylelint для CSS/SCSS файлов (если они есть)
+1. Automatically runs `lint update`
+2. Runs ESLint for JavaScript/TypeScript files
+3. Runs Prettier for formatting checks
+4. Runs Stylelint for CSS/SCSS files (if present)
 
 ### `lint fix`
 
-Автоматически исправляет найденные проблемы:
+Automatically fixes found issues:
 
-1. Автоматически выполняет `lint update`
-2. Запускает ESLint с флагом `--fix`
-3. Запускает Prettier с флагом `--write`
-4. Запускает Stylelint с флагом `--fix` (если есть CSS/SCSS файлы)
+1. Automatically runs `lint update`
+2. Runs ESLint with `--fix` flag
+3. Runs Prettier with `--write` flag
+4. Runs Stylelint with `--fix` flag (if CSS/SCSS files exist)
 
-## Конфигурация
+## Configuration
 
-После инициализации в корне пакета создаются следующие файлы:
+After initialization, the following files are created in the package root:
 
 ### `.eslintrc.js`
 
@@ -126,7 +126,7 @@ module.exports = {
 };
 ```
 
-Пакеты могут расширять конфигурацию на уровне `src/`, но не должны переопределять базовые настройки.
+Packages can extend the configuration at the `src/` level, but should not override base settings.
 
 ### `.prettierrc.js`
 
@@ -142,62 +142,62 @@ module.exports = {
 };
 ```
 
-Создается только если в проекте есть CSS/SCSS файлы.
+Created only if CSS/SCSS files exist in the project.
 
-## Поддерживаемые инструменты
+## Supported Tools
 
 ### ESLint
 
-- Конфигурации для TypeScript и JavaScript
-- Поддержка React (через `eslint-config/client`)
-- Поддержка Node.js (через `eslint-config/node`)
-- Project-aware TypeScript парсинг
+- Configurations for TypeScript and JavaScript
+- React support (via `eslint-config/client`)
+- Node.js support (via `eslint-config/node`)
+- Project-aware TypeScript parsing
 
 ### Prettier
 
-- Единый стиль форматирования для всех пакетов
-- Автоматическое форматирование при сохранении (через редактор)
+- Unified formatting style for all packages
+- Automatic formatting on save (via editor)
 
 ### Stylelint
 
-- Поддержка CSS и SCSS
-- Использует `@gravity-ui/stylelint-config` как базу
+- CSS and SCSS support
+- Uses `@gravity-ui/stylelint-config` as base
 
 ### Husky
 
-- Управление Git hooks
-- Pre-commit hook запускает `lint-staged`
+- Git hooks management
+- Pre-commit hook runs `lint-staged`
 
 ### lint-staged
 
-- Проверка только измененных файлов
-- Быстрая проверка перед коммитом
+- Checks only changed files
+- Fast pre-commit checking
 
-## Использование в метапакете vs Standalone
+## Metapackage vs Standalone Usage
 
-Пакет работает в двух режимах:
+The package works in two modes:
 
-### В метапакете (workspace mode)
+### In Metapackage (workspace mode)
 
-Когда пакет установлен как часть метапакета через npm workspaces:
+When the package is installed as part of the metapackage via npm workspaces:
 
-- Зависимости разрешаются через общий `node_modules`
-- Команды работают через workspace-линки
-- `package-lock.json` управляется на уровне метапакета
+- Dependencies are resolved through shared `node_modules`
+- Commands work through workspace links
+- `package-lock.json` is managed at the metapackage level
 
-### Standalone режим
+### Standalone Mode
 
-Когда пакет используется как отдельный npm-пакет:
+When the package is used as a standalone npm package:
 
-- Все зависимости устанавливаются локально
-- Команды работают через `node_modules/.bin`
-- Для управления `package-lock.json` используйте `npm i --no-workspaces --package-lock-only`
+- All dependencies are installed locally
+- Commands work through `node_modules/.bin`
+- For `package-lock.json` management, use `npm i --no-workspaces --package-lock-only`
 
-Оба режима поддерживаются автоматически — пакет определяет контекст и работает соответствующим образом.
+Both modes are supported automatically — the package detects the context and works accordingly.
 
-## Скрипты в package.json
+## package.json Scripts
 
-После `lint init` в `package.json` добавляются следующие скрипты:
+After `lint init`, the following scripts are added to `package.json`:
 
 ```json
 {
@@ -210,78 +210,78 @@ module.exports = {
 }
 ```
 
-- `lint` — проверка кода (с автообновлением)
-- `lint:fix` — автоматическое исправление (с автообновлением)
-- `pre-commit` — проверка перед коммитом (запускается через Husky)
-- `prepare` — настройка Husky при установке зависимостей
+- `lint` — code checking (with auto-update)
+- `lint:fix` — automatic fixing (with auto-update)
+- `pre-commit` — pre-commit checking (runs via Husky)
+- `prepare` — Husky setup when installing dependencies
 
-## Игнорирование файлов
+## Ignore Files
 
-Пакет автоматически обновляет следующие ignore-файлы:
+The package automatically updates the following ignore files:
 
-- `.gitignore` — системные файлы, зависимости, артефакты
-- `.eslintignore` — системные файлы, зависимости, артефакты, `test/`, `scripts/`
-- `.prettierignore` — системные файлы, зависимости, артефакты
-- `.stylelintignore` — системные файлы, зависимости, артефакты
+- `.gitignore` — system files, dependencies, artifacts
+- `.eslintignore` — system files, dependencies, artifacts, `test/`, `scripts/`
+- `.prettierignore` — system files, dependencies, artifacts
+- `.stylelintignore` — system files, dependencies, artifacts
 
-Паттерны добавляются автоматически при `init` и `update`, дубликаты не создаются.
+Patterns are added automatically on `init` and `update`, duplicates are not created.
 
-## Тестирование
+## Testing
 
-Пакет включает комплексный набор тестов (34 теста):
+The package includes a comprehensive test suite (34 tests):
 
 ```bash
-# Запуск всех тестов
+# Run all tests
 npm test
 
-# Только unit-тесты
+# Unit tests only
 npm run test:unit
 
-# Только integration-тесты
+# Integration tests only
 npm run test:integration
 ```
 
-Тесты используют встроенный модуль Node.js `assert` и не требуют внешних зависимостей.
+Tests use Node.js built-in `assert` module and require no external dependencies.
 
-## Разработка
+## Development
 
-### Структура пакета
+### Package Structure
 
 ```
 @diplodoc/lint/
-├── bin/              # Исполняемые скрипты
-│   ├── lint         # Основной скрипт
-│   ├── eslint       # Прокси для ESLint
-│   ├── prettier     # Прокси для Prettier
+├── bin/              # Executable scripts
+│   ├── lint         # Main script
+│   ├── eslint       # ESLint proxy
+│   ├── prettier     # Prettier proxy
 │   └── ...
-├── scripts/         # Вспомогательные скрипты
+├── scripts/         # Helper scripts
 │   ├── modify-package.js
 │   └── modify-ignore.js
-├── scaffolding/     # Шаблоны конфигураций
+├── scaffolding/     # Configuration templates
 │   ├── .eslintrc.js
 │   ├── .prettierrc.js
 │   └── ...
-└── test/            # Тесты
+└── test/            # Tests
     ├── unit/
     ├── integration/
     └── helpers/
 ```
 
-### Внесение изменений
+### Making Changes
 
-1. Внесите изменения в код
-2. Запустите тесты: `npm test`
-3. Проверьте линтинг: `npm run lint`
-4. Протестируйте в тестовом пакете: `npx @diplodoc/lint init`
+1. Make code changes
+2. Run tests: `npm test`
+3. Check linting: `npm run lint`
+4. Test in a test package: `npx @diplodoc/lint init`
 
-## Важные замечания
+## Important Notes
 
-- **Автообновление**: Команда `lint update` выполняется автоматически при каждом запуске `lint`, что обеспечивает синхронизацию конфигураций
-- **Обратная совместимость**: При обновлении конфигураций учитывается обратная совместимость. Breaking changes требуют major версии
-- **Независимость**: Пакет не зависит от других пакетов Diplodoc (кроме devops-инфраструктуры)
-- **Замена устаревших пакетов**: Этот пакет заменяет `@diplodoc/eslint-config` и `@diplodoc/prettier-config`. Не используйте устаревшие пакеты
-- **Критический пакет**: Это критическая инфраструктурная зависимость, используемая всеми пакетами Diplodoc. Изменения должны тщательно тестироваться
+- **Auto-update**: The `lint update` command runs automatically on each `lint` execution, ensuring configuration synchronization
+- **Backward compatibility**: When updating configs, backward compatibility is considered. Breaking changes require major version bumps
+- **Package independence**: This package does not depend on other Diplodoc packages (except devops infrastructure)
+- **Replaces deprecated packages**: This package replaces `@diplodoc/eslint-config` and `@diplodoc/prettier-config`. Do not use deprecated packages
+- **Critical package**: This is a critical infrastructure dependency used by all Diplodoc packages. Changes should be thoroughly tested
 
-## Лицензия
+## License
 
 MIT
