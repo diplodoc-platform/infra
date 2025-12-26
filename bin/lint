@@ -29,12 +29,21 @@ if [[ -n "$INIT$UPDATE" ]]; then
   fi
 
   echo "[@diplodoc/lint] Add initial lint configs"
-  cp -a "$SRCDIR/scaffolding/." .
+  # Copy all scaffolding files except .github/workflows (handled separately)
+  find "$SRCDIR/scaffolding" -type f ! -path "*/\.github/workflows/*" -exec cp --parents {} . \;
   
   echo "[@diplodoc/lint] Add GitHub Actions workflows"
   if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
     mkdir -p .github/workflows
-    cp -a "$SRCDIR/scaffolding/.github/workflows/." .github/workflows/
+    # Only copy workflows that don't exist yet (don't overwrite existing)
+    for workflow in "$SRCDIR/scaffolding/.github/workflows"/*.yml; do
+      if [[ -f "$workflow" ]]; then
+        workflow_name=$(basename "$workflow")
+        if [[ ! -f ".github/workflows/$workflow_name" ]]; then
+          cp "$workflow" ".github/workflows/$workflow_name"
+        fi
+      fi
+    done
   fi
 
   echo "[@diplodoc/lint] Extend .ignore configuration"
