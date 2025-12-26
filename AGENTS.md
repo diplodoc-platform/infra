@@ -7,6 +7,7 @@ This file contains instructions for AI agents working with the `@diplodoc/lint` 
 `@diplodoc/lint` is a DevOps infrastructure package that provides linting utilities for all Diplodoc platform packages. It consolidates ESLint, Prettier, Stylelint, Husky, and lint-staged configurations into a single package, replacing the deprecated `@diplodoc/eslint-config` and `@diplodoc/prettier-config` packages.
 
 **Key Features**:
+
 - Unified linting infrastructure for all platform packages
 - Automatic infrastructure updates on each run
 - Pre-commit hooks via Husky
@@ -53,6 +54,7 @@ This package can be used in two different contexts:
 ### 1. As Part of Metapackage (Workspace Mode)
 
 When `@diplodoc/lint` is part of the Diplodoc metapackage:
+
 - Located at `devops/lint/` in the metapackage
 - Linked via npm workspaces
 - Dependencies are shared from metapackage root `node_modules`
@@ -60,6 +62,7 @@ When `@diplodoc/lint` is part of the Diplodoc metapackage:
 - Changes are immediately available to other packages via workspace linking
 
 **Development in Metapackage**:
+
 ```bash
 # From metapackage root
 cd devops/lint
@@ -70,6 +73,7 @@ npx nx build @diplodoc/lint  # If configured in nx
 ```
 
 **Using from Other Packages in Metapackage**:
+
 - Other packages can use `@diplodoc/lint` directly
 - Workspace linking ensures local version is used
 - No need to publish to npm for local development
@@ -77,12 +81,14 @@ npx nx build @diplodoc/lint  # If configured in nx
 ### 2. As Standalone Package (Independent Mode)
 
 When `@diplodoc/lint` is used as a standalone npm package:
+
 - Installed via `npm install --save-dev @diplodoc/lint`
 - Has its own `node_modules` with all dependencies
 - Can be cloned and developed independently
 - Must be published to npm for others to use
 
 **Development Standalone**:
+
 ```bash
 # Clone the repository
 git clone git@github.com:diplodoc-platform/lint.git
@@ -94,6 +100,7 @@ npm test
 ```
 
 **Using in External Projects**:
+
 ```bash
 # Install from npm
 npm install --save-dev @diplodoc/lint
@@ -108,16 +115,25 @@ npm run lint
 ### Important Considerations
 
 **Path Resolution**:
+
 - In metapackage: Scripts resolve paths relative to metapackage structure
 - Standalone: Scripts resolve paths relative to package root
 - Proxy scripts (`bin/eslint`, etc.) use `require.resolve()` which works in both modes
 
 **Dependencies**:
+
 - In metapackage: May use dependencies from root `node_modules`
 - Standalone: Must have all dependencies in local `node_modules`
 - Both modes should work identically from user perspective
 
+**Package Lock Management**:
+
+- When adding/updating dependencies, use `npm i --no-workspaces --package-lock-only` to regenerate `package-lock.json` for standalone mode
+- This ensures `package-lock.json` is valid when package is used outside workspace
+- Always regenerate after dependency changes to maintain standalone compatibility
+
 **Testing**:
+
 - Test setup works in both modes
 - When testing, ensure dependencies are properly resolved
 - Consider testing both modes if making significant changes
@@ -125,6 +141,7 @@ npm run lint
 ## Setup Commands
 
 **In Metapackage**:
+
 ```bash
 # From devops/lint directory
 npm install  # Uses workspace dependencies
@@ -134,6 +151,7 @@ npm install  # Installs all workspace dependencies
 ```
 
 **Standalone**:
+
 ```bash
 # Install dependencies
 npm install
@@ -142,9 +160,21 @@ npm install
 npm test
 ```
 
+**Important: Package Lock Management**
+
+When working in metapackage mode but need to update `package-lock.json` for standalone mode:
+
+```bash
+# Regenerate package-lock.json for standalone mode
+npm i --no-workspaces --package-lock-only
+```
+
+This ensures `package-lock.json` is valid when the package is used as a standalone npm package (not in workspace). Always use this when adding/updating dependencies in standalone mode.
+
 ## Development Commands
 
 **In Metapackage**:
+
 ```bash
 # From devops/lint directory
 cd test && npm start
@@ -154,6 +184,7 @@ npx nx test @diplodoc/lint  # If configured
 ```
 
 **Standalone**:
+
 ```bash
 # Test the package
 cd test && npm start
@@ -166,6 +197,7 @@ cd test && npm start
 The `bin/` directory contains executable scripts that are made available via npm bin:
 
 **Main Script: `lint`**
+
 - **Purpose**: Main entry point for all linting operations
 - **Commands**:
   - `lint` (default) — runs all linters in check mode
@@ -174,6 +206,7 @@ The `bin/` directory contains executable scripts that are made available via npm
   - `lint update` — updates linting infrastructure (runs automatically on each `lint` call)
 
 **Proxy Scripts** (redirect to original binaries from node_modules):
+
 - `eslint` — proxies to `eslint/bin/eslint.js`
 - `prettier` — proxies to `prettier/bin/prettier.cjs`
 - `stylelint` — proxies to `stylelint/bin/stylelint.mjs`
@@ -182,6 +215,7 @@ The `bin/` directory contains executable scripts that are made available via npm
 - `svgo` — proxies to `svgo/bin/svgo`
 
 **How Proxy Scripts Work**:
+
 1. Find the source directory of `@diplodoc/lint` package
 2. Use `require.resolve()` to locate the original package in node_modules
 3. Redirect execution to the original binary
@@ -190,16 +224,19 @@ The `bin/` directory contains executable scripts that are made available via npm
 **Lint Script Behavior**:
 
 **Default mode** (`lint`):
+
 - Runs ESLint on all JS/TS files (check only)
 - Runs Prettier in check mode on all JS/TS files
 - Runs Stylelint on CSS/SCSS files (if found and not ignored)
 
 **Fix mode** (`lint fix`):
+
 - Runs ESLint with `--fix` flag (auto-fixes issues)
 - Runs Prettier with `--write` flag (formats files)
 - Runs Stylelint with `--fix` flag (auto-fixes CSS issues)
 
 **Init/Update mode** (`lint init` or `lint update`):
+
 1. **Modify package.json**: Adds/updates lint scripts via `scripts/modify-package.js`
 2. **Initialize Husky**: Runs `husky init` (only on `init`)
 3. **Copy scaffolding**: Copies all files from `scaffolding/` directory to package root
@@ -210,6 +247,7 @@ The `bin/` directory contains executable scripts that are made available via npm
 **Key Design Principle**: The package automatically checks and updates infrastructure in consuming packages on each run.
 
 **How it works**:
+
 1. `@diplodoc/lint` is installed as a dev dependency in packages
 2. It's configured in `prepare` scripts: `"prepare": "husky || true"`
 3. On each `lint` command execution, it runs `lint update` first
@@ -218,11 +256,13 @@ The `bin/` directory contains executable scripts that are made available via npm
 6. This prevents infrastructure drift across packages
 
 **Current Implementation**:
+
 - `lint update` always copies scaffolding files (overwrites existing)
 - `lint update` always updates ignore files (adds missing patterns)
 - No diff checking - always performs updates
 
 **Potential Improvements**:
+
 - Add hash-based change detection to skip unnecessary file operations
 - Cache scaffolding file hashes to avoid redundant copies
 - Only update ignore files if patterns are actually missing
@@ -249,6 +289,7 @@ When a package uses `@diplodoc/lint`:
    - **Then**: Runs actual linting (check or fix mode)
 
 **Update Process** (`lint update`):
+
 - Runs automatically on every `lint` command
 - Copies scaffolding files (overwrites if changed)
 - Updates ignore files (adds missing patterns)
@@ -272,6 +313,7 @@ Packages can extend these configs at the `src` level if needed.
 ### Linting Tools
 
 **ESLint**:
+
 - Uses `@gravity-ui/eslint-config` as base
 - TypeScript support via `@typescript-eslint/eslint-plugin`
 - Import resolution via `eslint-import-resolver-typescript`
@@ -279,18 +321,22 @@ Packages can extend these configs at the `src` level if needed.
 - Prettier integration via `eslint-config-prettier`
 
 **Prettier**:
+
 - Uses `@gravity-ui/prettier-config` as base
 - Consistent formatting across all packages
 
 **Stylelint**:
+
 - Uses `@gravity-ui/stylelint-config` as base
 - CSS and SCSS support
 
 **Husky**:
+
 - Git hooks management
 - Pre-commit hook runs `lint-staged`
 
 **lint-staged**:
+
 - Runs linting only on staged files
 - Faster pre-commit checks
 
@@ -299,17 +345,21 @@ Packages can extend these configs at the `src` level if needed.
 Files in `scaffolding/` are copied to packages during `init`/`update`:
 
 **`.eslintrc.js`**:
+
 - Extends `@diplodoc/lint/eslint-config`
 - Configures TypeScript parser with project-aware settings
 - Sets `root: true` to prevent config inheritance from parent directories
 
 **`.prettierrc.js`**:
+
 - Exports `@diplodoc/lint/prettier-config` directly
 
 **`.stylelintrc.js`**:
+
 - Extends `@diplodoc/lint/stylelint-config`
 
 **`.lintstagedrc.js`**:
+
 - Configures lint-staged to run on staged files:
   - JS/TS files: Prettier + ESLint (with auto-fix)
   - CSS/SCSS files: Prettier + Stylelint (with auto-fix)
@@ -317,10 +367,12 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
   - SVG files: SVGO optimization
 
 **`.husky/pre-commit`**:
+
 - Runs `npm run pre-commit` before each commit
 - Pre-commit script runs `lint update && lint-staged`
 
 **Ignore Files** (updated via `modify-ignore.js`):
+
 - `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
 - Adds standard patterns:
   - System files: `.idea`, `.vscode`, `.history`, `.env`, `.DS_Store`
@@ -329,19 +381,52 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
 
 ## Testing
 
-The package has a test setup in the `test/` directory:
-- Test script: `test/test.sh`
-- Test package.json configuration
-- Validates that linting works correctly
+The package has a comprehensive test suite in the `test/` directory:
+
+### Test Structure
+
+- `test/unit/` — unit tests for JavaScript modules
+  - `modify-package.test.js` — tests for package.json modification (8 tests)
+  - `modify-ignore.test.js` — tests for ignore file updates (9 tests)
+- `test/integration/` — integration tests for bash scripts
+  - `init.test.js` — tests for `lint init` flow (4 tests)
+  - `update.test.js` — tests for `lint update` flow (6 tests)
+  - `lint.test.js` — tests for `lint` and `lint fix` flows (7 tests)
+- `test/helpers/` — test utilities
+  - `temp-dir.js` — temporary directory management
+  - `file-utils.js` — file operations helpers
+  - `exec.js` — command execution helpers
+- `test/fixtures/` — test data files
+- `test/runner.js` — simple test runner (no external dependencies)
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run only unit tests
+npm run test:unit
+
+# Run only integration tests
+npm run test:integration
+
+# Run old test script (legacy)
+npm run test:old
+```
+
+**Test Results**: All 34 tests should pass. The test runner uses Node.js built-in `assert` module and `child_process` for integration tests.
 
 ## Code Conventions
 
 1. **File naming**:
+
    - Config files: `*-config.js` (e.g., `eslint-common-config.js`)
    - Scripts: `modify-*.js` in `scripts/` directory
    - Binaries: executable scripts in `bin/` directory
 
 2. **Comments and documentation**:
+
    - **All code comments must be in English**
    - **All documentation files (ADR, AGENTS.md, README, etc.) must be in English**
 
@@ -391,6 +476,7 @@ The package has a test setup in the `test/` directory:
 ### 1. Better Error Messages and Validation
 
 **Current Issues**:
+
 - `modify-package.js` throws plain strings instead of Error objects
 - No validation of package.json structure before modification
 - No helpful error messages for common issues
@@ -399,6 +485,7 @@ The package has a test setup in the `test/` directory:
 **Improvement Plan**:
 
 **A. Error Handling in `modify-package.js`**:
+
 - Replace string throws with proper Error objects
 - Add error context (which script, what operation failed)
 - Validate package.json exists and is valid JSON before parsing
@@ -409,24 +496,28 @@ The package has a test setup in the `test/` directory:
   - "Script already exists with different implementation" → show both versions
 
 **B. Error Handling in `modify-ignore.js`**:
+
 - Validate file permissions before writing
 - Handle read-only files gracefully
 - Provide suggestions if files can't be modified
 - Log which patterns were added vs. already existed
 
 **C. Error Handling in `bin/lint`**:
+
 - Better error messages when tools are not found
 - Validate scaffolding directory exists before copying
 - Check if Husky initialization succeeded
 - Provide rollback instructions if init partially fails
 
 **D. Validation**:
+
 - Validate that required dependencies are installed
 - Check Node.js version compatibility
 - Verify scaffolding files are complete
 - Validate exported configs are syntactically correct
 
 **Implementation Steps**:
+
 1. Create error utility module for consistent error formatting
 2. Add validation functions for common checks
 3. Refactor `modify-package.js` to use proper errors
@@ -437,6 +528,7 @@ The package has a test setup in the `test/` directory:
 ### 2. Better Testing
 
 **Current State**:
+
 - Basic test in `test/` directory that runs init and lint:fix
 - No unit tests for individual scripts
 - No integration tests for update flow
@@ -447,6 +539,7 @@ The package has a test setup in the `test/` directory:
 **A. Unit Tests**:
 
 **Test `modify-package.js`**:
+
 - Test adding scripts to empty package.json
 - Test updating existing scripts (same vs. different)
 - Test force mode for `prepare` script
@@ -454,6 +547,7 @@ The package has a test setup in the `test/` directory:
 - Test script preservation (doesn't overwrite unrelated scripts)
 
 **Test `modify-ignore.js`**:
+
 - Test adding patterns to empty ignore files
 - Test adding patterns to existing ignore files
 - Test duplicate pattern detection
@@ -461,6 +555,7 @@ The package has a test setup in the `test/` directory:
 - Test error handling (read-only files, missing files)
 
 **Test Proxy Scripts** (bin/eslint, bin/prettier, etc.):
+
 - Test require.resolve() finds correct packages
 - Test error handling when packages not found
 - Test binary execution redirection
@@ -468,6 +563,7 @@ The package has a test setup in the `test/` directory:
 **B. Integration Tests**:
 
 **Test `lint init` flow**:
+
 - Test full initialization in clean directory
 - Test initialization when some files already exist
 - Test Husky initialization
@@ -477,6 +573,7 @@ The package has a test setup in the `test/` directory:
 - Verify all expected files are created
 
 **Test `lint update` flow**:
+
 - Test update when files are up-to-date
 - Test update when files are outdated
 - Test update when files were manually modified
@@ -484,6 +581,7 @@ The package has a test setup in the `test/` directory:
 - Test that package.json scripts are not re-added
 
 **Test `lint` and `lint fix` flows**:
+
 - Test linting with no errors
 - Test linting with errors
 - Test fix mode actually fixes issues
@@ -493,12 +591,14 @@ The package has a test setup in the `test/` directory:
 **C. Test Infrastructure**:
 
 **Setup**:
+
 - Use Vitest (recommended testing framework)
 - Create test fixtures (sample package.json, ignore files)
 - Create temporary directories for integration tests
 - Mock file system operations where appropriate
 
 **Test Structure**:
+
 ```
 test/
 ├── unit/
@@ -523,12 +623,14 @@ test/
 **D. Test Scenarios to Cover**:
 
 **Happy Paths**:
+
 - Clean init in empty directory
 - Update in already initialized package
 - Linting with no errors
 - Fixing linting errors
 
 **Edge Cases**:
+
 - Init when package.json has no scripts field
 - Update when scaffolding files were manually modified
 - Linting when no JS/TS files exist
@@ -536,6 +638,7 @@ test/
 - Ignore files with unusual formats
 
 **Error Cases**:
+
 - Invalid package.json
 - Missing dependencies
 - Permission errors
@@ -543,6 +646,7 @@ test/
 - Network issues (for dependency resolution)
 
 **Implementation Steps**:
+
 1. Set up Vitest configuration
 2. Create test fixtures and helpers
 3. Write unit tests for `modify-package.js`
