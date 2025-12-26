@@ -18,8 +18,10 @@ module.exports = {
         if (filtered.length === 0) {
             return [];
         }
-        return ['prettier --write', 'eslint --max-warnings=0 --fix --no-warn-ignored'];
+        return ['prettier --write', 'eslint --max-warnings=0 --fix'];
     },
+    // Handle .lintstagedrc.js separately (only prettier, no eslint)
+    '.lintstagedrc.js': ['prettier --write'],
     '**/*.{css,scss}': ['prettier --write', 'stylelint --fix'],
     '**/*.{json,yaml,yml,md}': ['prettier --write'],
     '**/*.{svg,svgx}': ['svgo'],

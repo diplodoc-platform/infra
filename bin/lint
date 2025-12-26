@@ -30,6 +30,12 @@ if [[ -n "$INIT$UPDATE" ]]; then
 
   echo "[@diplodoc/lint] Add initial lint configs"
   cp -a "$SRCDIR/scaffolding/." .
+  
+  echo "[@diplodoc/lint] Add GitHub Actions workflows"
+  if [[ -d "$SRCDIR/scaffolding/.github/workflows" ]]; then
+    mkdir -p .github/workflows
+    cp -a "$SRCDIR/scaffolding/.github/workflows/." .github/workflows/
+  fi
 
   echo "[@diplodoc/lint] Extend .ignore configuration"
   node "$SRCDIR/scripts/modify-ignore.js"
