@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.1](https://github.com/diplodoc-platform/lint/compare/v1.4.0...v1.4.1) (2025-12-26)
+
+
+### Bug Fixes
+
+* remove invalid --no-warn-ignored flag from ESLint command ([1fc9a67](https://github.com/diplodoc-platform/lint/commit/1fc9a670056054dbedce90613f8c52111a1350ea))
+* remove invalid --no-warn-ignored flag from ESLint commands ([644e271](https://github.com/diplodoc-platform/lint/commit/644e27123985ea2c078ffd4f632b9e4252f1a24c))
+
 ## [1.4.0](https://github.com/diplodoc-platform/lint/compare/v1.3.3...v1.4.0) (2025-12-26)
 
 
