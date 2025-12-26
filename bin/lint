@@ -23,6 +23,11 @@ while (( $# )); do
 done
 
 if [[ -n "$INIT$UPDATE" ]]; then
+  echo "[@diplodoc/lint] DEBUG: INIT=$INIT UPDATE=$UPDATE"
+  echo "[@diplodoc/lint] DEBUG: BINDIR=$BINDIR"
+  echo "[@diplodoc/lint] DEBUG: SRCDIR=$SRCDIR"
+  echo "[@diplodoc/lint] DEBUG: PWD=$(pwd)"
+  
   if [[ -n $INIT ]]; then
     echo "[@diplodoc/lint] Extend package.json configuration"
     node "$SRCDIR/scripts/modify-package.js"
@@ -33,7 +38,9 @@ if [[ -n "$INIT$UPDATE" ]]; then
   echo "[@diplodoc/lint] Add initial lint configs"
   # Copy all scaffolding files using Node.js for cross-platform compatibility
   # This handles Windows paths correctly and ensures files are overwritten
+  echo "[@diplodoc/lint] DEBUG: About to run copy-scaffolding.js from $SRCDIR/scripts/copy-scaffolding.js"
   node "$SRCDIR/scripts/copy-scaffolding.js"
+  echo "[@diplodoc/lint] DEBUG: Finished running copy-scaffolding.js"
 
   echo "[@diplodoc/lint] Extend .ignore configuration"
   node "$SRCDIR/scripts/modify-ignore.js"
