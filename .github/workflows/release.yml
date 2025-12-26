@@ -1,4 +1,4 @@
-name: Publish Package to npm
+name: Release Package to npm
 
 # This workflow is configured in package.json publishConfig
 # It publishes the package to npm when a release is created
