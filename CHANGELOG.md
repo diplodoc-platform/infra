@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/diplodoc-platform/lint/compare/lint-v1.7.1...lint-v1.7.2) (2025-12-27)
+
+
+### Bug Fixes
+
+* remove package-name from release-please config ([69d9cef](https://github.com/diplodoc-platform/lint/commit/69d9cefc9309164bb1fed16e2d07bb42da6a5795))
+
 ## [1.7.1](https://github.com/diplodoc-platform/lint/compare/lint-v1.7.0...lint-v1.7.1) (2025-12-26)
 
 
