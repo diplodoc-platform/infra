@@ -3,7 +3,6 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "{{PACKAGE_NAME}}",
       "changelog-path": "CHANGELOG.md",
       "version-file": "package.json",
       "changelog-types": [

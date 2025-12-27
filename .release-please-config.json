@@ -3,7 +3,6 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "@diplodoc/lint",
       "changelog-path": "CHANGELOG.md",
       "version-file": "package.json",
       "changelog-types": [
