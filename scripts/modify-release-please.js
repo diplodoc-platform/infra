@@ -31,7 +31,8 @@ const configContent = configTemplate
     .replace(/\{\{PACKAGE_NAME\}\}/g, packageName);
 
 const manifestContent = manifestTemplate
-    .replace(/\{\{PACKAGE_VERSION\}\}/g, packageVersion);
+    .replace(/\{\{PACKAGE_VERSION\}\}/g, packageVersion)
+    .trimEnd(); // Remove trailing whitespace/newlines
 
 // Write files
 const configOutputPath = join(process.cwd(), '.release-please-config.json');
