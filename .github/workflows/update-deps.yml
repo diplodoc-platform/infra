@@ -74,5 +74,6 @@ jobs:
           git add package.json package-lock.json
           git commit -m "deps: Update ${{ inputs.package }} to $VERSION"
           git push -u origin $BRANCH_NAME
+
           # Create PR
           gh pr create --title "deps: Update ${{ inputs.package }} to $VERSION" --body "Automated dependency update" --base master
