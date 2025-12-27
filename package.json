@@ -61,5 +61,19 @@
   },
   "devDependencies": {
     "fs-extra": "^11.3.3"
+  },
+  "overrides": {
+    "js-yaml": "^4.1.1",
+    "brace-expansion": "^2.0.2",
+    "minimatch": "^10.0.1",
+    "eslint-plugin-import": {
+      "minimatch": "^10.0.1"
+    },
+    "eslint-plugin-jsx-a11y": {
+      "minimatch": "^10.0.1"
+    },
+    "eslint-plugin-react": {
+      "minimatch": "^10.0.1"
+    }
   }
 }
