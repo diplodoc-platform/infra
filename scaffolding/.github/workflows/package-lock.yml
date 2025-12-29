@@ -32,7 +32,7 @@ jobs:
         shell: bash
 
       - name: Regenerate package-lock.json
-        run: npm install --no-workspaces --package-lock-only
+        run: npm install --no-workspaces --package-lock-only --ignore-scripts
 
       - name: Commit and push changes
         env:
