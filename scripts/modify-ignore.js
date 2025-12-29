@@ -53,8 +53,8 @@ const ignores = {
         '.stylelintrc.js',
         // Build scripts that use newer syntax not yet supported by ESLint parser
         'esbuild/**/*.mjs',
-        // For @diplodoc/lint package itself: bin/ contains internal scripts
-        ...(isLintPkg ? ['bin/'] : []),
+        // For @diplodoc/lint package itself: bin/ and scripts/ contain internal scripts
+        ...(isLintPkg ? ['bin/', 'scripts/'] : []),
     ],
     '.prettierignore': [
         ...SYSTEM,

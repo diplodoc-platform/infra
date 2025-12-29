@@ -33,8 +33,8 @@ module.exports = {
         const filtered = filenames.filter(
             (f) =>
                 !configFiles.some((config) => f.includes(config)) &&
-                // For @diplodoc/lint package itself: exclude bin/ (internal scripts)
-                !(isLintPkg && f.includes('bin/')),
+                // For @diplodoc/lint package itself: exclude bin/ and scripts/ (internal scripts)
+                !(isLintPkg && (f.includes('bin/') || f.includes('scripts/'))),
         );
         if (filtered.length === 0) {
             return [];

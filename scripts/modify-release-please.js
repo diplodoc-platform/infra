@@ -32,27 +32,18 @@ const configContent = configTemplate
 
 const manifestContent = manifestTemplate
     .replace(/\{\{PACKAGE_VERSION\}\}/g, packageVersion)
-    .trimEnd(); // Remove trailing whitespace/newlines
+    .trimEnd() + '\n'; // Remove trailing whitespace/newlines
 
 // Write files
 const configOutputPath = join(process.cwd(), '.release-please-config.json');
 const manifestOutputPath = join(process.cwd(), '.release-please-manifest.json');
 
-// Only create if they don't exist (preserve existing configs)
 if (!existsSync(configOutputPath)) {
-    writeFileSync(configOutputPath, configContent, 'utf8');
     console.log('[@diplodoc/lint]', '=> Create .release-please-config.json');
-} else {
-    console.log('[@diplodoc/lint]', '=> .release-please-config.json already exists, skipping');
+    writeFileSync(configOutputPath, configContent, 'utf8');
 }
 
-if (!existsSync(manifestOutputPath)) {
-    writeFileSync(manifestOutputPath, manifestContent, 'utf8');
-    console.log('[@diplodoc/lint]', '=> Create .release-please-manifest.json');
-} else {
-    // Always update manifest with current version
-    writeFileSync(manifestOutputPath, manifestContent, 'utf8');
-    console.log('[@diplodoc/lint]', '=> Update .release-please-manifest.json');
-}
+console.log('[@diplodoc/lint]', '=> Update .release-please-manifest.json');
+writeFileSync(manifestOutputPath, manifestContent, 'utf8');
 
 
