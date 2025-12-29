@@ -20,22 +20,6 @@ const INSTALL = [
     'node_modules',
 ];
 
-// Check if this is the @diplodoc/lint package itself
-function isLintPackage() {
-    try {
-        const packageJsonPath = join(process.cwd(), 'package.json');
-        if (!existsSync(packageJsonPath)) {
-            return false;
-        }
-        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-        return packageJson.name === '@diplodoc/lint';
-    } catch {
-        return false;
-    }
-}
-
-const isLintPkg = isLintPackage();
-
 const ignores = {
     '.gitignore': [
         ...SYSTEM,
@@ -53,8 +37,6 @@ const ignores = {
         '.stylelintrc.js',
         // Build scripts that use newer syntax not yet supported by ESLint parser
         'esbuild/**/*.mjs',
-        // For @diplodoc/lint package itself: bin/ and scripts/ contain internal scripts
-        ...(isLintPkg ? ['bin/', 'scripts/'] : []),
     ],
     '.prettierignore': [
         ...SYSTEM,

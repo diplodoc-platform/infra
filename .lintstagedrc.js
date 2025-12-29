@@ -8,16 +8,14 @@ const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
 
 // Check if this is the @diplodoc/lint package itself
-function isLintPackage() {
+const isLintPkg = (() => {
     try {
-        const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
-        return packageJson.name === '@diplodoc/lint';
+        const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+        return pkg.name === '@diplodoc/lint';
     } catch {
         return false;
     }
-}
-
-const isLintPkg = isLintPackage();
+})();
 
 module.exports = {
     // Exclude config files from linting (they use CommonJS)
@@ -33,7 +31,7 @@ module.exports = {
         const filtered = filenames.filter(
             (f) =>
                 !configFiles.some((config) => f.includes(config)) &&
-                // For @diplodoc/lint package itself: exclude bin/ and scripts/ (internal scripts)
+                // For @diplodoc/lint package itself: exclude bin/ and scripts/ (in .eslintignore)
                 !(isLintPkg && (f.includes('bin/') || f.includes('scripts/'))),
         );
         if (filtered.length === 0) {
