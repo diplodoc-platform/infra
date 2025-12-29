@@ -39,7 +39,9 @@ module.exports = {
         }
         return [
             ...filtered.map((f) => `prettier --write ${f}`),
-            ...filtered.map((f) => `eslint --max-warnings=0 --fix ${f}`),
+            ...filtered.map(
+                (f) => `env ESLINT_USE_FLAT_CONFIG=false npx eslint --max-warnings=0 --fix ${f}`,
+            ),
         ];
     },
     // Handle .lintstagedrc.js separately (only prettier, no eslint)
