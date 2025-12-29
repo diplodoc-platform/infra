@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0](https://github.com/diplodoc-platform/lint/compare/v1.8.0...v1.9.0) (2025-12-29)
+
+
+### Features
+
+* add dependabot.yml and improve security.yml in scaffolding ([baecc39](https://github.com/diplodoc-platform/lint/commit/baecc390e6d1f7d7916da74580c1c61b50f6017c))
+* add update-deps and package-lock workflows to scaffolding ([20b1064](https://github.com/diplodoc-platform/lint/commit/20b106400f83b035d225377d101b082168140d80))
+
+
+### Bug Fixes
+
+* remove trailing newlines from release-please-manifest template ([cea4d8c](https://github.com/diplodoc-platform/lint/commit/cea4d8c79b9d2a476a4bc75e68135cf6aa83e9b9))
+* Skip scripts for package-lock update ([7cda090](https://github.com/diplodoc-platform/lint/commit/7cda0902140bcf0ec4f78c9f3ec95e11cb247e40))
+
 ## [1.8.0](https://github.com/diplodoc-platform/lint/compare/v1.7.2...v1.8.0) (2025-12-27)
 
 
