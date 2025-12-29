@@ -58,6 +58,7 @@ function hasStyleFiles() {
     }
 }
 
+
 if (init || update) {
     if (init) {
         console.log('[@diplodoc/lint] Extend package.json configuration');
@@ -81,7 +82,17 @@ if (init || update) {
 if (fix) {
     console.log('Run linters in fix mode');
 
-    execCommand(`"${join(binDir, 'eslint')}" '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}' --fix`);
+    // Включаем legacy-режим ESLint (ESLint 8-style), чтобы:
+    // - читался .eslintrc.js
+    // - учитывался .eslintignore
+    // Флаг ESLINT_USE_FLAT_CONFIG=false документирован в ESLint 9
+    // как способ вернуться к старому поведению CLI.
+    execCommand(
+        `ESLINT_USE_FLAT_CONFIG=false "${join(
+            binDir,
+            'eslint',
+        )}" . --ext .js,.mjs,.cjs,.jsx,.ts,.mts,.cts,.tsx --fix`,
+    );
     execCommand(`"${join(binDir, 'prettier')}" --write '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
 
     if (hasStyleFiles()) {
@@ -89,13 +100,21 @@ if (fix) {
     }
 
     process.exit(0);
-}
+} else {
+    console.log('Run linters');
 
-console.log('Run linters');
+    // То же самое для check-режима: используем legacy-режим ESLint,
+    // передаём точку и расширения — ESLint сам находит файлы и
+    // применяет .eslintignore.
+    execCommand(
+        `ESLINT_USE_FLAT_CONFIG=false "${join(
+            binDir,
+            'eslint',
+        )}" . --ext .js,.mjs,.cjs,.jsx,.ts,.mts,.cts,.tsx`,
+    );
+    execCommand(`"${join(binDir, 'prettier')}" --check '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
 
-execCommand(`"${join(binDir, 'eslint')}" '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
-execCommand(`"${join(binDir, 'prettier')}" --check '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
-
-if (hasStyleFiles()) {
-    execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}'`);
+    if (hasStyleFiles()) {
+        execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}'`);
+    }
 }

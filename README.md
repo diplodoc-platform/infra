@@ -111,6 +111,29 @@ Automatically fixes found issues:
 
 ## Configuration
 
+### ⚠️ Important: Auto-Generated Files
+
+The following configuration files are **automatically generated and updated** by `@diplodoc/lint`:
+
+- `.eslintrc.js`
+- `.prettierrc.js`
+- `.stylelintrc.js`
+- `.lintstagedrc.js`
+- `.eslintignore`
+- `.prettierignore`
+- `.stylelintignore`
+- `.gitignore` (patterns are added automatically)
+
+**⚠️ DO NOT EDIT THESE FILES MANUALLY** — any changes will be overwritten on the next `lint update` (which runs automatically before each `lint` command).
+
+If you need to customize configuration:
+
+1. Check if the customization can be done via package-level overrides (see below)
+2. If not, consider opening an issue or PR to `@diplodoc/lint` to add the feature
+3. For ignore patterns, they are managed automatically — if you need additional patterns, they should be added to `@diplodoc/lint`'s `modify-ignore.js` script
+
+### Configuration Files
+
 After initialization, the following files are created in the package root:
 
 ### `.eslintrc.js`
@@ -220,11 +243,13 @@ After `lint init`, the following scripts are added to `package.json`:
 The package automatically updates the following ignore files:
 
 - `.gitignore` — system files, dependencies, artifacts
-- `.eslintignore` — system files, dependencies, artifacts, `test/`, `scripts/`
+- `.eslintignore` — system files, dependencies, artifacts, `test/`, `scripts/`, `build/`, `esbuild/`
 - `.prettierignore` — system files, dependencies, artifacts
 - `.stylelintignore` — system files, dependencies, artifacts
 
-Patterns are added automatically on `init` and `update`, duplicates are not created.
+**⚠️ These files are auto-generated** — patterns are added automatically on `init` and `update`, duplicates are not created. Manual edits will be overwritten.
+
+If you need additional ignore patterns, they should be added to `@diplodoc/lint`'s `modify-ignore.js` script.
 
 ## Testing
 

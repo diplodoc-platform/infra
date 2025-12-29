@@ -14,8 +14,14 @@ node_modules
 test/
 # Scripts use Node.js globals
 scripts/
+# Bin scripts use Node.js globals
+bin/
 
 .lintstagedrc.js
 .eslintrc.js
 .prettierrc.js
 .stylelintrc.js
+build/
+build/**
+esbuild/
+esbuild/**/*.mjs

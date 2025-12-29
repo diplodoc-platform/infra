@@ -248,18 +248,20 @@ The `bin/` directory contains executable scripts that are made available via npm
 **Default mode** (`lint`):
 
 - Runs ESLint on all JS/TS files (check only)
-  - Uses glob pattern `**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}`
-  - ESLint automatically respects `.eslintignore` file
-  - No manual file filtering needed
+  - Uses `ESLINT_USE_FLAT_CONFIG=false` to force legacy (ESLint 8-style) config resolution
+  - Calls ESLint with `.` и `--ext .js,.mjs,.cjs,.jsx,.ts,.mts,.cts,.tsx`, позволяя самому ESLint искать файлы
+  - ESLint автоматически читает `.eslintrc.js` и `.eslintignore` из корня пакета
+  - **Никакой** дополнительной фильтрации файлов в `bin/lint.js` не выполняется
 - Runs Prettier in check mode on all JS/TS files
 - Runs Stylelint on CSS/SCSS files (if found and not ignored)
 
 **Fix mode** (`lint fix`):
 
 - Runs ESLint with `--fix` flag (auto-fixes issues)
-  - Uses glob pattern `**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}`
-  - ESLint automatically respects `.eslintignore` file
-  - No manual file filtering needed
+  - Использует те же настройки, что и в check-режиме:
+    - `ESLINT_USE_FLAT_CONFIG=false`
+    - таргет `.` и расширения через `--ext`
+  - Игнорирование файлов полностью делегировано ESLint и `.eslintignore`
 - Runs Prettier with `--write` flag (formats files)
 - Runs Stylelint with `--fix` flag (auto-fixes CSS issues)
 
@@ -420,6 +422,29 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
   - System files: `.idea`, `.vscode`, `.history`, `.env`, `.DS_Store`
   - Build artifacts: `/lib`, `/dist`, `/build`, `/cache`, `/coverage`, `/external`
   - Dependencies: `node_modules`
+  - Additional ESLint-specific ignores: `esbuild/**/*.mjs` и конфигурационные файлы (`.lintstagedrc.js`, `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`)
+- **Важно**:
+  - `test/` и `scripts/` **не** добавляются в `.eslintignore` автоматически, чтобы тесты и скрипты линтились
+  - Пакеты могут добавлять свои пути в `.eslintignore` при необходимости — это считается частью инфраструктуры конкретного пакета, а не `@diplodoc/lint`
+
+### Auto-generated configuration files
+
+Часть конфигурации, которую поставляет `@diplodoc/lint`, считается **авто‑генерируемой** и не должна правиться руками в потребителях:
+
+- `.eslintrc.js`
+- `.prettierrc.js`
+- `.stylelintrc.js`
+- `.lintstagedrc.js`
+
+Общие правила:
+
+- Эти файлы копируются из `scaffolding/` при `lint init` / `lint update`
+- Любые ручные правки в пакетах будут перезатираться при следующем `lint update`
+- Изменять поведение нужно через:
+  - обновление шаблонов в `devops/lint/scaffolding/`
+  - явные локальные конфиги в пакетах (например, `src/.eslintrc.js`), если это допускается
+
+Для деталей см. раздел **“⚠️ Important: Auto-Generated Files”** в `README.md` этого пакета.
 
 ## Testing
 

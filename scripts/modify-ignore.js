@@ -1,5 +1,5 @@
 const {join} = require('node:path');
-const {readFileSync, writeFileSync} = require('node:fs');
+const {readFileSync, writeFileSync, existsSync} = require('node:fs');
 
 const SYSTEM = [
     '.idea',
@@ -20,6 +20,22 @@ const INSTALL = [
     'node_modules',
 ];
 
+// Check if this is the @diplodoc/lint package itself
+function isLintPackage() {
+    try {
+        const packageJsonPath = join(process.cwd(), 'package.json');
+        if (!existsSync(packageJsonPath)) {
+            return false;
+        }
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+        return packageJson.name === '@diplodoc/lint';
+    } catch {
+        return false;
+    }
+}
+
+const isLintPkg = isLintPackage();
+
 const ignores = {
     '.gitignore': [
         ...SYSTEM,
@@ -30,14 +46,15 @@ const ignores = {
         ...SYSTEM,
         ...INSTALL,
         ...ARTIFACTS,
-        // Test files and scripts use Node.js globals
-        'test/',
-        'scripts/',
         // Config files use CommonJS
         '.lintstagedrc.js',
         '.eslintrc.js',
         '.prettierrc.js',
         '.stylelintrc.js',
+        // Build scripts that use newer syntax not yet supported by ESLint parser
+        'esbuild/**/*.mjs',
+        // For @diplodoc/lint package itself: bin/ contains internal scripts
+        ...(isLintPkg ? ['bin/'] : []),
     ],
     '.prettierignore': [
         ...SYSTEM,
