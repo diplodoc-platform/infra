@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/diplodoc-platform/lint/compare/v1.9.0...v1.9.1) (2025-12-29)
+
+
+### Bug Fixes
+
+* remove test/ and scripts/ exclusion from lint-staged ([b52804b](https://github.com/diplodoc-platform/lint/commit/b52804be7efd9833f4b17a4779c22c2df24bc9cb))
+
 ## [1.9.0](https://github.com/diplodoc-platform/lint/compare/v1.8.0...v1.9.0) (2025-12-29)
 
 
