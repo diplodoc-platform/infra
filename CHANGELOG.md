@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.2](https://github.com/diplodoc-platform/lint/compare/v1.9.1...v1.9.2) (2025-12-29)
+
+
+### Bug Fixes
+
+* use ESLINT_USE_FLAT_CONFIG=false in lint-staged ([88a17b6](https://github.com/diplodoc-platform/lint/commit/88a17b62a791cc491f195ed66b69f63964f89f9b))
+
 ## [1.9.1](https://github.com/diplodoc-platform/lint/compare/v1.9.0...v1.9.1) (2025-12-29)
 
 
