@@ -20,9 +20,9 @@ function isLintPackage() {
 const isLintPkg = isLintPackage();
 
 module.exports = {
-    // Exclude config files and scripts from linting (they use CommonJS)
+    // Exclude config files from linting (they use CommonJS)
     '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}': (filenames) => {
-        // Filter out config files and scripts
+        // Filter out config files
         const configFiles = [
             '.lintstagedrc.js',
             '.eslintrc.js',
@@ -33,8 +33,6 @@ module.exports = {
         const filtered = filenames.filter(
             (f) =>
                 !configFiles.some((config) => f.includes(config)) &&
-                !f.includes('scripts/') &&
-                !f.includes('test/') &&
                 // For @diplodoc/lint package itself: exclude bin/ (internal scripts)
                 !(isLintPkg && f.includes('bin/')),
         );
