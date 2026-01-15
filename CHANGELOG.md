@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.0](https://github.com/diplodoc-platform/lint/compare/v1.9.2...v1.10.0) (2026-01-15)
+
+
+### Features
+
+* **lint:** add commit-msg hook for validation ([06aa520](https://github.com/diplodoc-platform/lint/commit/06aa520e80c189116d891d7dc3b48535cf479d3d))
+
+
+### Bug Fixes
+
+* **lint:** remove deprecated husky lines from commit-msg hook ([6aca178](https://github.com/diplodoc-platform/lint/commit/6aca178046d0d55eceee0f3341c6b46eb1c570e4))
+
 ## [1.9.2](https://github.com/diplodoc-platform/lint/compare/v1.9.1...v1.9.2) (2025-12-29)
 
 
