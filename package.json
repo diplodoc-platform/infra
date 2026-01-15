@@ -1,6 +1,6 @@
 {
   "name": "@diplodoc/lint",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "description": "Diplodoc platform internal utility set for linting",
   "bin": {
     "lint": "./bin/lint.js",
