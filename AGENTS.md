@@ -42,6 +42,7 @@ This file contains instructions for AI agents working with the `@diplodoc/lint` 
   - `.stylelintrc.js` — Stylelint configuration template
   - `.lintstagedrc.js` — lint-staged configuration template
   - `.husky/pre-commit` — Husky pre-commit hook template
+  - `.husky/commit-msg` — Husky commit-msg hook template (validates commit messages are in English)
 - `scripts/` — helper scripts for package.json and .ignore file modification
   - `modify-package.js` — adds lint scripts to package.json
   - `modify-ignore.js` — updates .ignore files with standard patterns
@@ -413,6 +414,13 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
 
 - Runs `npm run pre-commit` before each commit
 - Pre-commit script runs `lint update && lint-staged`
+
+**`.husky/commit-msg`**:
+
+- Validates that commit messages follow Conventional Commits format (per `.agents/style-and-testing.md`)
+- Validates that commit messages are in English (rejects Cyrillic characters)
+- Allows `fixup!` and `squash!` prefixes for git commit --fixup/--squash
+- Provides helpful error messages with examples and reference to style guide
 - lint-staged automatically runs unit tests when relevant files are changed
 
 **Ignore Files** (updated via `modify-ignore.js`):
@@ -487,13 +495,11 @@ npm run test:old
 ## Code Conventions
 
 1. **File naming**:
-
    - Config files: `*-config.js` (e.g., `eslint-common-config.js`)
    - Scripts: `modify-*.js` in `scripts/` directory
    - Binaries: executable scripts in `bin/` directory
 
 2. **Comments and documentation**:
-
    - **All code comments must be in English**
    - **All documentation files (ADR, AGENTS.md, README, etc.) must be in English**
 
