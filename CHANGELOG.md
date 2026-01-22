@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.10.1](https://github.com/diplodoc-platform/lint/compare/v1.10.0...v1.10.1) (2026-01-22)
+
+
+### Bug Fixes
+
+* **ci:** resolve duplicate workflow runs and audit artifact upload issues ([0152390](https://github.com/diplodoc-platform/lint/commit/0152390a577a53c623924078f015dacab56db4c2))
+* **ci:** resolve duplicate workflow runs and audit artifact upload issues ([c29a1c2](https://github.com/diplodoc-platform/lint/commit/c29a1c2c536c6522ebcc06d60ee7e7309ac575c2))
+* **eslint:** add [@typescript-eslint](https://github.com/typescript-eslint) packages as peerDependencies ([2272609](https://github.com/diplodoc-platform/lint/commit/2272609b2b57888b3bf22d4cad80821179b96c12))
+
 ## [1.10.0](https://github.com/diplodoc-platform/lint/compare/v1.9.2...v1.10.0) (2026-01-15)
 
 
