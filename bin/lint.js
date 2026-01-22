@@ -48,9 +48,10 @@ function execCommand(cmd, options = {}) {
 
 function hasStyleFiles() {
     try {
+        // Exclude common directories that should be ignored
         const result = execSync(
-            `find . -type f \\( -name '*.css' -o -name '*.scss' \\) | grep -vwFf .stylelintignore 2>/dev/null || true`,
-            {shell: shell, cwd: process.cwd(), encoding: 'utf8', stdio: 'pipe'},
+            `find . -type f \\( -name '*.css' -o -name '*.scss' \\) ! -path '*/node_modules/*' ! -path '*/build/*' ! -path '*/lib/*' ! -path '*/dist/*' ! -path '*/cache/*' ! -path '*/coverage/*' ! -path '*/.git/*' 2>/dev/null | head -1`,
+            {shell: shell, cwd: process.cwd(), encoding: 'utf8', stdio: 'pipe', timeout: 5000},
         );
         return result && result.trim().length > 0;
     } catch {
@@ -96,7 +97,7 @@ if (fix) {
     execCommand(`"${join(binDir, 'prettier')}" --write '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
 
     if (hasStyleFiles()) {
-        execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}' --fix`);
+        execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}' --fix --ignore-path .stylelintignore --allow-empty-input`);
     }
 
     process.exit(0);
@@ -115,6 +116,6 @@ if (fix) {
     execCommand(`"${join(binDir, 'prettier')}" --check '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
 
     if (hasStyleFiles()) {
-        execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}'`);
+        execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}' --ignore-path .stylelintignore --allow-empty-input`);
     }
 }
