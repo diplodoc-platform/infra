@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/diplodoc-platform/lint/compare/v1.10.1...v1.10.2) (2026-01-22)
+
+
+### Bug Fixes
+
+* **lint:** prevent stylelint hang in large projects ([8799514](https://github.com/diplodoc-platform/lint/commit/8799514e6149b21436ba5350e19d05e9f09cf591))
+
 ## [1.10.1](https://github.com/diplodoc-platform/lint/compare/v1.10.0...v1.10.1) (2026-01-22)
 
 
