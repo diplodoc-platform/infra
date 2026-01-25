@@ -48,7 +48,8 @@ function execCommand(cmd, options = {}) {
 
 function hasStyleFiles() {
     try {
-        // Exclude common directories that should be ignored
+        // Quick check if there are any style files (excluding common ignored directories)
+        // This prevents hanging when scanning large projects
         const result = execSync(
             `find . -type f \\( -name '*.css' -o -name '*.scss' \\) ! -path '*/node_modules/*' ! -path '*/build/*' ! -path '*/lib/*' ! -path '*/dist/*' ! -path '*/cache/*' ! -path '*/coverage/*' ! -path '*/.git/*' 2>/dev/null | head -1`,
             {shell: shell, cwd: process.cwd(), encoding: 'utf8', stdio: 'pipe', timeout: 5000},
