@@ -23,7 +23,7 @@ if echo "$SUBJECT" | LC_ALL=C grep -qE '^(fixup!|squash!)'; then
 fi
 
 # Check Conventional Commits format: <type>(<scope>): <subject>
-# Types: feat, fix, perf, refactor, docs, chore, revert
+# Types: feat, fix, perf, refactor, docs, chore, revert, deps
 # Scope is optional
 if ! echo "$SUBJECT" | LC_ALL=C grep -qE '^(feat|fix|perf|refactor|docs|chore|revert|deps)(\([^)]+\))?: .+'; then
     echo "❌ Error: Commit message does not follow Conventional Commits format."
