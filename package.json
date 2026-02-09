@@ -32,7 +32,7 @@
   },
   "files": [
     "bin",
-    "lib",
+    "src",
     "scaffolding",
     "scripts",
     "eslint-common-config.js",
@@ -44,9 +44,9 @@
   ],
   "exports": {
     "./esbuild": {
-      "types": "./lib/esbuild.d.ts",
-      "import": "./lib/esbuild.mjs",
-      "default": "./lib/esbuild.cjs"
+      "types": "./src/esbuild.d.ts",
+      "import": "./src/esbuild.mjs",
+      "default": "./src/esbuild.cjs"
     },
     "./eslint-config": "./eslint-common-config.js",
     "./eslint-config/client": "./eslint-client-config.js",

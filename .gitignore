@@ -4,9 +4,9 @@ node_modules
 .history
 .env
 .DS_Store
-/lib
 /dist
 /build
 /cache
 /coverage
 /external
+/lib
