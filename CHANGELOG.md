@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/diplodoc-platform/lint/compare/v1.12.0...v1.13.0) (2026-02-09)
+
+
+### Features
+
+* **scaffolding:** PACKAGE_NAME substitution, sonar config, optional coverage workflow ([1da6862](https://github.com/diplodoc-platform/lint/commit/1da68629f2078382754fff26ede38ccd2a2c0b8a))
+
 ## [1.12.0](https://github.com/diplodoc-platform/lint/compare/v1.11.1...v1.12.0) (2026-02-09)
 
 
