@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.0](https://github.com/diplodoc-platform/lint/compare/v1.10.3...v1.11.0) (2026-02-09)
+
+
+### Features
+
+* add esbuild subpath export and dependency ([add2e55](https://github.com/diplodoc-platform/lint/commit/add2e5556c34e6f48ba1be8923d8dd0d820f42e9))
+
+
+### Bug Fixes
+
+* **infra:** add prerelease in workflow ([6615364](https://github.com/diplodoc-platform/lint/commit/66153649c68d297ce2ace30b71ba89db87c95dbe))
+
 ## [1.10.3](https://github.com/diplodoc-platform/lint/compare/v1.10.2...v1.10.3) (2026-01-28)
 
 
