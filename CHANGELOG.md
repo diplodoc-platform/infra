@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/diplodoc-platform/lint/compare/v1.13.0...v1.13.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* Update sonar configs ([29e2fb1](https://github.com/diplodoc-platform/lint/commit/29e2fb11ea4eac9879f657e2e57d4dc8999023c8))
+
 ## [1.13.0](https://github.com/diplodoc-platform/lint/compare/v1.12.0...v1.13.0) (2026-02-09)
 
 
