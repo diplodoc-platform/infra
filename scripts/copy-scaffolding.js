@@ -1,5 +1,5 @@
 const {join, relative, dirname} = require('node:path');
-const {readdirSync, copyFileSync, mkdirSync, existsSync, realpathSync} = require('node:fs');
+const {readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync, realpathSync} = require('node:fs');
 
 // Determine package root directory
 // Try multiple strategies to find the package root
@@ -31,6 +31,41 @@ if (!existsSync(srcDir)) {
 }
 
 const targetDir = process.cwd();
+
+/** @type {{ PACKAGE_NAME: string }} Variables for scaffolding template substitution */
+let scaffoldVars = {PACKAGE_NAME: 'package'};
+const packageJsonPath = join(targetDir, 'package.json');
+if (existsSync(packageJsonPath)) {
+    try {
+        const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+        const name = pkg.name && typeof pkg.name === 'string' ? pkg.name : '';
+        scaffoldVars.PACKAGE_NAME = name.replace(/^@[^/]+\//, '') || 'package';
+    } catch {
+        // leave default
+    }
+}
+
+function applyTemplate(content) {
+    if (typeof content !== 'string' || !content.includes('{{')) {
+        return content;
+    }
+    return content.replace(/\{\{PACKAGE_NAME\}\}/g, scaffoldVars.PACKAGE_NAME);
+}
+
+function copyFileWithSubstitution(srcPath, targetPath) {
+    let content;
+    try {
+        content = readFileSync(srcPath, 'utf8');
+    } catch {
+        copyFileSync(srcPath, targetPath);
+        return;
+    }
+    if (content.includes('{{PACKAGE_NAME}}')) {
+        writeFileSync(targetPath, applyTemplate(content), 'utf8');
+    } else {
+        writeFileSync(targetPath, content, 'utf8');
+    }
+}
 
 // Verify scaffolding directory exists
 if (!existsSync(srcDir)) {
@@ -74,9 +109,9 @@ function copyScaffoldingFiles(excludePatterns = []) {
                 if (!existsSync(targetParent)) {
                     mkdirSync(targetParent, {recursive: true});
                 }
-                // Force overwrite existing files
+                // Force overwrite existing files (with optional {{PACKAGE_NAME}} substitution)
                 try {
-                    copyFileSync(srcPath, targetPath);
+                    copyFileWithSubstitution(srcPath, targetPath);
                 } catch (error) {
                     console.error(`[@diplodoc/lint] Error copying ${srcPath} to ${targetPath}:`, error.message);
                     throw error;
@@ -105,7 +140,7 @@ function copyWorkflows() {
         if (entry.isFile()) {
             const srcPath = join(workflowsSrc, entry.name);
             const targetPath = join(workflowsTarget, entry.name);
-            copyFileSync(srcPath, targetPath);
+            copyFileWithSubstitution(srcPath, targetPath);
         }
     }
 }
