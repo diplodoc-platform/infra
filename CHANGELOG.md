@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.12.0](https://github.com/diplodoc-platform/lint/compare/v1.11.1...v1.12.0) (2026-02-09)
+
+
+### Features
+
+* document and test @diplodoc/lint/esbuild subpath ([c9a9b6f](https://github.com/diplodoc-platform/lint/commit/c9a9b6f4060d5abfcfce7927ead8c3c15e72dd6c))
+
+
+### Bug Fixes
+
+* Add lib files ([4561788](https://github.com/diplodoc-platform/lint/commit/456178849d647d408201db7bab3f48753d220587))
+
 ## [1.11.1](https://github.com/diplodoc-platform/lint/compare/v1.11.0...v1.11.1) (2026-02-09)
 
 
