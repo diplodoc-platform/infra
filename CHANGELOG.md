@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/diplodoc-platform/lint/compare/v1.11.0...v1.11.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* add files field for npm publish ([6986667](https://github.com/diplodoc-platform/lint/commit/698666777557fa272f22c4ea55d8ede2982f595a))
+
 ## [1.11.0](https://github.com/diplodoc-platform/lint/compare/v1.10.3...v1.11.0) (2026-02-09)
 
 
