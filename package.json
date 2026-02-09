@@ -19,9 +19,9 @@
     "url": "git@github.com:diplodoc-platform/lint.git"
   },
   "scripts": {
-    "test": "node test/runner.js",
-    "test:unit": "node test/runner.js unit",
-    "test:integration": "node test/runner.js integration",
+    "test": "cd test && npm install && node runner.js",
+    "test:unit": "cd test && npm install && node runner.js unit",
+    "test:integration": "cd test && npm install && node runner.js integration",
     "test:old": "cd test && npm start",
     "lint": "exit 0",
     "lint:fix": "lint update && lint fix",

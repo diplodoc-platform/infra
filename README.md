@@ -196,6 +196,34 @@ Created only if CSS/SCSS files exist in the project.
 - Checks only changed files
 - Fast pre-commit checking
 
+### Pre-bundled esbuild
+
+The package exposes a pinned `esbuild` version via the `@diplodoc/lint/esbuild` subpath so that build scripts use a single, consistent esbuild across Diplodoc packages without each package declaring its own esbuild dependency.
+
+**Usage** (e.g. in `esbuild/build.mjs`):
+
+```javascript
+import {build} from '@diplodoc/lint/esbuild';
+
+build({
+  entryPoints: ['src/plugin/index.ts'],
+  outfile: 'build/plugin/index.js',
+  bundle: true,
+  platform: 'node',
+  packages: 'external',
+});
+build({
+  entryPoints: ['src/runtime/index.ts'],
+  outfile: 'build/runtime/index.js',
+  minify: true,
+  platform: 'browser',
+  plugins: [sassPlugin()],
+});
+```
+
+- **Import**: Use `@diplodoc/lint/esbuild` — it re-exports the full esbuild API (ESM and CJS).
+- **Why**: Aligns esbuild version and avoids duplicate native bindings; add `@diplodoc/lint` as a devDependency and use this export instead of installing `esbuild` directly in the package.
+
 ## Metapackage vs Standalone Usage
 
 The package works in two modes:
@@ -253,7 +281,7 @@ If you need additional ignore patterns, they should be added to `@diplodoc/lint`
 
 ## Testing
 
-The package includes a comprehensive test suite (34 tests):
+The package includes a comprehensive test suite (37 tests):
 
 ```bash
 # Run all tests

@@ -36,6 +36,7 @@ This file contains instructions for AI agents working with the `@diplodoc/lint` 
 ### Main Directories
 
 - `bin/` — executable scripts (see detailed description below)
+- `src/` — source artifacts: `esbuild.mjs`, `esbuild.cjs`, `esbuild.d.ts` (re-export of `esbuild` for the `@diplodoc/lint/esbuild` subpath)
 - `scaffolding/` — template files copied during `init`/`update`
   - `.eslintrc.js` — ESLint configuration template
   - `.prettierrc.js` — Prettier configuration template
@@ -333,15 +334,16 @@ When a package uses `@diplodoc/lint`:
 
 ### Exports
 
-The package exports configurations that can be imported by packages:
+The package exports configurations and utilities that can be imported by packages:
 
 - `@diplodoc/lint/eslint-config` — Common ESLint config
 - `@diplodoc/lint/eslint-config/client` — Client-side ESLint config
 - `@diplodoc/lint/eslint-config/node` — Node.js ESLint config
 - `@diplodoc/lint/prettier-config` — Prettier config
 - `@diplodoc/lint/stylelint-config` — Stylelint config
+- `@diplodoc/lint/esbuild` — Re-export of the `esbuild` API (ESM and CJS) for build scripts; use this instead of adding a direct `esbuild` dependency so all packages share the same version and native bindings. Example: `import { build } from '@diplodoc/lint/esbuild';` in `esbuild/build.mjs` (see e.g. `extensions/cut/esbuild/build.mjs`).
 
-Packages can extend these configs at the `src` level if needed.
+Packages can extend ESLint configs at the `src` level if needed.
 
 ## Configuration
 
@@ -463,6 +465,7 @@ The package has a comprehensive test suite in the `test/` directory:
 - `test/unit/` — unit tests for JavaScript modules
   - `modify-package.test.js` — tests for package.json modification (8 tests)
   - `modify-ignore.test.js` — tests for ignore file updates (9 tests)
+  - `esbuild.test.js` — tests for `@diplodoc/lint/esbuild` subpath export (3 tests: export shape, minimal build, build to file)
 - `test/integration/` — integration tests for lint commands
   - `init.test.js` — tests for `lint init` flow (4 tests)
   - `update.test.js` — tests for `lint update` flow (6 tests)
