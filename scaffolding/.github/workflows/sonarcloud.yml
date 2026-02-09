@@ -27,9 +27,18 @@ jobs:
         run: npm ci
 
       - name: Run tests with coverage
-        run: npm run test:coverage
+        id: coverage-run
+        run: |
+          if node -e "const s=require('./package.json').scripts; process.exit(s && s['test:coverage'] ? 0 : 1)"; then
+            npm run test:coverage
+            echo "ran=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "test:coverage script not found, skipping."
+            echo "ran=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: SonarCloud Scan
+        if: success() && steps.coverage-run.outputs.ran == 'true'
         uses: SonarSource/sonarqube-scan-action@v7.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
