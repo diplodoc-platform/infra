@@ -85,6 +85,7 @@ Initializes linting in a package:
 Updates configuration files to the latest versions:
 
 - Updates `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
+- Updates/copies GitHub Actions workflows (including `sonarcloud.yml`, `coverage.yml`) and `sonar-project.properties` (with `{{PACKAGE_NAME}}` substitution)
 - Updates ignore files with new patterns
 - **Does not** re-initialize Husky
 - **Does not** modify existing scripts in `package.json`
@@ -223,6 +224,20 @@ build({
 
 - **Import**: Use `@diplodoc/lint/esbuild` — it re-exports the full esbuild API (ESM and CJS).
 - **Why**: Aligns esbuild version and avoids duplicate native bindings; add `@diplodoc/lint` as a devDependency and use this export instead of installing `esbuild` directly in the package.
+
+### SonarCloud
+
+Scaffolding provides optional SonarCloud integration for code quality and coverage:
+
+- **`sonar-project.properties`** — copied to the package root; the placeholder `{{PACKAGE_NAME}}` is replaced with the package name **without scope** (e.g. `@diplodoc/foo` → `foo`) so each repo has a unique SonarCloud project key.
+- **`.github/workflows/sonarcloud.yml`** — runs SonarCloud analysis on push/PR to `master`/`main`. The scan runs only when the package has a `test:coverage` script and coverage was generated; otherwise the job skips the scan.
+- **`.github/workflows/coverage.yml`** — optional workflow that runs `test:coverage` when the script exists (see above); does not block merging.
+
+To enable SonarCloud for a repository:
+
+1. Add the repository in [SonarCloud](https://sonarcloud.io) (organization `diplodoc-platform`).
+2. Add the **SONAR_TOKEN** secret in the GitHub repo settings.
+3. Optionally add a `test:coverage` script (e.g. `vitest run --coverage`) so the SonarCloud workflow can upload coverage.
 
 ## Metapackage vs Standalone Usage
 

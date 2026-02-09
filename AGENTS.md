@@ -44,6 +44,8 @@ This file contains instructions for AI agents working with the `@diplodoc/lint` 
   - `.lintstagedrc.js` — lint-staged configuration template
   - `.husky/pre-commit` — Husky pre-commit hook template
   - `.husky/commit-msg` — Husky commit-msg hook template (validates commit messages are in English)
+  - `sonar-project.properties` — SonarCloud config (placeholder `{{PACKAGE_NAME}}` substituted from package.json)
+  - `.github/workflows/` — CI workflows (tests, security, release, release-please, coverage, sonarcloud)
 - `scripts/` — helper scripts for package.json and .ignore file modification
   - `modify-package.js` — adds lint scripts to package.json
   - `modify-ignore.js` — updates .ignore files with standard patterns
@@ -316,7 +318,8 @@ When a package uses `@diplodoc/lint`:
      - Configuration files: `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
      - Git hooks: `.lintstagedrc.js`, `.husky/pre-commit`
      - Editor config: `.editorconfig`
-     - **GitHub Actions workflows**: `.github/workflows/tests.yml`, `.github/workflows/release.yml`, `.github/workflows/release-please.yml`, `.github/workflows/security.yml`
+     - **GitHub Actions workflows**: `.github/workflows/tests.yml`, `.github/workflows/release.yml`, `.github/workflows/release-please.yml`, `.github/workflows/security.yml`, `.github/workflows/coverage.yml`, `.github/workflows/sonarcloud.yml`
+     - **SonarCloud**: `sonar-project.properties` (with `{{PACKAGE_NAME}}` substituted from package name without scope)
    - **Step 4**: Updates ignore files via `scripts/modify-ignore.js`
      - Extends `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
      - Adds standard patterns (system files, build artifacts, node_modules)
@@ -424,6 +427,21 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
 - Allows `fixup!` and `squash!` prefixes for git commit --fixup/--squash
 - Provides helpful error messages with examples and reference to style guide
 - lint-staged automatically runs unit tests when relevant files are changed
+
+**`sonar-project.properties`**:
+
+- SonarCloud project config; copied with template substitution.
+- `{{PACKAGE_NAME}}` is replaced by the package name **without scope** (e.g. `@diplodoc/foo` → `foo`) so each repo has a unique `sonar.projectKey` (e.g. `diplodoc-platform_foo`).
+- Substitution is done in `scripts/copy-scaffolding.js` when copying any file that contains `{{PACKAGE_NAME}}`.
+
+**`.github/workflows/sonarcloud.yml`**:
+
+- Runs SonarCloud analysis on push/PR to `master`/`main`.
+- Runs the scan only when the package has a `test:coverage` script and coverage was generated; otherwise the scan step is skipped.
+
+**`.github/workflows/coverage.yml`**:
+
+- Optional workflow: runs `test:coverage` when the script exists; exits successfully when the script is absent. Does not block merging (`continue-on-error: true`).
 
 **Ignore Files** (updated via `modify-ignore.js`):
 
