@@ -30,6 +30,18 @@
     "typecheck": "exit 0",
     "build": "exit 0"
   },
+  "files": [
+    "bin",
+    "lib",
+    "scaffolding",
+    "scripts",
+    "eslint-common-config.js",
+    "eslint-client-config.js",
+    "eslint-node-config.js",
+    "prettier-common-config.js",
+    "stylelint-common-config.js",
+    "lintstaged-config.js"
+  ],
   "exports": {
     "./esbuild": {
       "types": "./lib/esbuild.d.ts",
