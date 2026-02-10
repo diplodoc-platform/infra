@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.2](https://github.com/diplodoc-platform/lint/compare/v1.13.1...v1.13.2) (2026-02-10)
+
+
+### Bug Fixes
+
+* Merge sonar and coverage workflows ([830e36f](https://github.com/diplodoc-platform/lint/commit/830e36fd1a7391989597b404782d7be1565fb284))
+
 ## [1.13.1](https://github.com/diplodoc-platform/lint/compare/v1.13.0...v1.13.1) (2026-02-09)
 
 
