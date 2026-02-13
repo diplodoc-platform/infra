@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/diplodoc-platform/lint/compare/v1.14.0...v1.14.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* Fix esbuild exports ([e9691ae](https://github.com/diplodoc-platform/lint/commit/e9691ae2c2c9ab2b75175c136ad3eeb85443de5a))
+
 ## [1.14.0](https://github.com/diplodoc-platform/lint/compare/v1.13.2...v1.14.0) (2026-02-13)
 
 
