@@ -1,4 +1,6 @@
 export * from 'esbuild';
-export * from 'esbuild-sass-plugin';
+export {sassPlugin} from 'esbuild-sass-plugin';
 
-export default require('esbuild');
+import esbuild from 'esbuild';
+
+export default esbuild;
