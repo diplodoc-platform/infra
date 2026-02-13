@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.14.0](https://github.com/diplodoc-platform/lint/compare/v1.13.2...v1.14.0) (2026-02-13)
+
+
+### Features
+
+* Add esbuild-sass-plugin export ([a5897b9](https://github.com/diplodoc-platform/lint/commit/a5897b94939256a15250f0b03a36d4831c6f99b4))
+
+
+### Bug Fixes
+
+* Change esbuild exports ([a61105e](https://github.com/diplodoc-platform/lint/commit/a61105ebfff8b7706f8572ae704790ed6a7a2cba))
+
 ## [1.13.2](https://github.com/diplodoc-platform/lint/compare/v1.13.1...v1.13.2) (2026-02-10)
 
 
