@@ -188,7 +188,9 @@ jobs:
           git config --global user.name "yc-ui-bot"
 
           # Create branch name (use first package for simplicity)
+          # Remove dev: prefix and @ symbol for valid branch name
           FIRST_PACKAGE=$(echo "$PACKAGES_INPUT" | cut -d',' -f1 | xargs)
+          FIRST_PACKAGE=$(echo "$FIRST_PACKAGE" | sed 's/^dev://; s/@//g')
           BRANCH_NAME="ci/update-deps/$FIRST_PACKAGE-${{ inputs.version }}"
           git push -f origin :$BRANCH_NAME || true
           git checkout -b $BRANCH_NAME
