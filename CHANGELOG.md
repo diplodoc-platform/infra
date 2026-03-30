@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.14.2](https://github.com/diplodoc-platform/lint/compare/v1.14.1...v1.14.2) (2026-03-30)
+
+
+### Bug Fixes
+
+* **ci:** pin npm version to avoid broken install on macOS ([8caac6f](https://github.com/diplodoc-platform/lint/commit/8caac6f3c8bef6266a0aa848b6cc6213434d6f59))
+* Update multipackage workflow ([53357cd](https://github.com/diplodoc-platform/lint/commit/53357cd6d17a0733f3f461eaa35a3e3a471601f3))
+* Update-deps change input to choice, add deprecate package in release workflow ([de8155b](https://github.com/diplodoc-platform/lint/commit/de8155b63c7a144cab972b19a84bd992c5193b7a))
+
 ## [1.14.1](https://github.com/diplodoc-platform/lint/compare/v1.14.0...v1.14.1) (2026-02-13)
 
 
