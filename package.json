@@ -26,7 +26,7 @@
     "lint": "exit 0",
     "lint:fix": "lint update && lint fix",
     "pre-commit": "lint update && lint-staged",
-    "prepare": "husky",
+    "prepare": "husky | exit 0",
     "typecheck": "exit 0",
     "build": "exit 0"
   },
