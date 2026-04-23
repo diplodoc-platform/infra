@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.3](https://github.com/diplodoc-platform/lint/compare/v1.14.2...v1.14.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* set node version as variable ([69bf939](https://github.com/diplodoc-platform/lint/commit/69bf93918c901dacda14105bafeae88a017e270a))
+
 ## [1.14.2](https://github.com/diplodoc-platform/lint/compare/v1.14.1...v1.14.2) (2026-03-30)
 
 
