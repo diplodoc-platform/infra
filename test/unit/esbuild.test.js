@@ -1,5 +1,5 @@
 /**
- * Unit tests for @diplodoc/lint/esbuild subpath export.
+ * Unit tests for @diplodoc/infra/esbuild subpath export.
  * Verifies that consumers can import the pre-bundled esbuild API and run builds.
  */
 
@@ -8,8 +8,8 @@ const {join} = require('node:path');
 const {createTempDir, removeTempDir} = require('../helpers/temp-dir');
 const {writeFile, readFile} = require('../helpers/file-utils');
 
-// Resolves via test/node_modules/@diplodoc/lint (workspaces: ["../"] when tests run from test/)
-const esbuildModule = require('@diplodoc/lint/esbuild');
+// Resolves via test/node_modules/@diplodoc/infra (workspaces: ["../"] when tests run from test/)
+const esbuildModule = require('@diplodoc/infra/esbuild');
 
 const tests = [];
 
@@ -17,7 +17,7 @@ function test(name, fn) {
     tests.push({name, fn});
 }
 
-test('should export build function from @diplodoc/lint/esbuild', () => {
+test('should export build function from @diplodoc/infra/esbuild', () => {
     assert.strictEqual(typeof esbuildModule.build, 'function', 'build must be a function');
 });
 

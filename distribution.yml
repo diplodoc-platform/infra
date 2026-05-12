@@ -1,0 +1,80 @@
+# Infrastructure distribution configuration
+#
+# This file defines which repositories receive infrastructure updates
+# from @diplodoc/infra and per-repo exclusion rules.
+#
+# Synced automatically from metapackage .gitmodules via sync-packages-list.yml.
+# Manual edits to blacklist/auto_merge settings are preserved during sync.
+#
+# Exclusion formats:
+#   - .github/workflows/tests.yml          # exact path
+#   - .github/workflows/*.yml              # glob pattern
+#   - .github/workflows/                   # entire directory
+#   - path: .github/workflows/tests.yml    # extended format
+#     reason: "Custom workflow"             # why it's excluded
+#     until: "2026-07-01"                  # auto-expires after this date
+
+defaults:
+  auto_merge: false
+  exclude: []
+
+repos:
+  # === packages ===
+  cli:
+    exclude:
+      - path: .github/workflows/release.yml
+        reason: 'Custom release workflow'
+  client:
+    exclude: []
+  components:
+    exclude: []
+  directive:
+    exclude: []
+  liquid:
+    exclude: []
+  sentenizer:
+    exclude: []
+  transform:
+    exclude: []
+  translation:
+    exclude: []
+  utils:
+    exclude: []
+  yfmlint:
+    exclude: []
+
+  # === extensions ===
+  algolia-extension:
+    exclude: []
+  color-extension:
+    exclude: []
+  cut-extension:
+    exclude: []
+  file-extension:
+    exclude: []
+  folding-headings-extension:
+    exclude: []
+  html-extension:
+    exclude: []
+  latex-extension:
+    exclude: []
+  mermaid-extension:
+    exclude: []
+  openapi-extension:
+    exclude: []
+  page-constructor-extension:
+    exclude: []
+  quote-link-extension:
+    exclude: []
+  search-extension:
+    exclude: []
+  tabs-extension:
+    exclude: []
+
+  # === devops ===
+  babel-preset:
+    exclude: []
+  tsconfig:
+    exclude: []
+  testpack:
+    exclude: []

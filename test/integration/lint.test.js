@@ -19,7 +19,7 @@ function getLintBin() {
 async function runLintCommand(command, cwd) {
     const lintBin = getLintBin();
     const fullCommand = `node "${lintBin}" ${command}`.trim();
-    
+
     return await execInDir(fullCommand, cwd);
 }
 
@@ -169,7 +169,7 @@ test('should respect ignore files', async () => {
     }
 });
 
-test('should run update before lint when using npm script', async () => {
+test('should only lint without pulling updates (push model)', async () => {
     let tempDir = await createTempDir();
     try {
         // Setup - initialize lint
@@ -180,26 +180,23 @@ test('should run update before lint when using npm script', async () => {
 
         await runLintCommand('init', tempDir);
 
-        // Install @diplodoc/lint so npm run lint can find it
-        // Use the local package path
-        const lintPackagePath = join(__dirname, '../..');
-        await execInDir(`npm install ${lintPackagePath}`, tempDir);
-
         // Modify scaffolding file to simulate outdated version
         writeFile(tempDir, '.eslintrc.js', 'module.exports = { old: true };');
 
-        // Execute via npm script (which runs "lint update && lint")
+        // Execute lint directly (should NOT update scaffolding)
         try {
-            await execInDir('npm run lint', tempDir);
-
-            // Verify file was updated (update runs before lint via npm script)
-            const updatedContent = readFile(tempDir, '.eslintrc.js');
-            assert(updatedContent.includes('@diplodoc/lint/eslint-config'), 'Should update before linting');
+            await runLintCommand('', tempDir);
         } catch (error) {
-            // Even if lint fails, update should have run
-            const updatedContent = readFile(tempDir, '.eslintrc.js');
-            assert(updatedContent.includes('@diplodoc/lint/eslint-config'), 'Should update before linting');
+            // Lint errors are expected (broken config)
         }
+
+        // Verify file was NOT updated (lint no longer pulls changes)
+        const content = readFile(tempDir, '.eslintrc.js');
+        assert.strictEqual(
+            content,
+            'module.exports = { old: true };',
+            'Lint should not modify scaffolding files (push model)',
+        );
     } finally {
         await removeTempDir(tempDir);
     }
@@ -234,4 +231,3 @@ test('should handle lint errors gracefully', async () => {
 });
 
 module.exports = {tests};
-

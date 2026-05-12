@@ -1,5 +1,13 @@
 const {join, relative, dirname} = require('node:path');
-const {readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync, realpathSync} = require('node:fs');
+const {
+    readdirSync,
+    readFileSync,
+    writeFileSync,
+    copyFileSync,
+    mkdirSync,
+    existsSync,
+    realpathSync,
+} = require('node:fs');
 
 // Determine package root directory
 // Try multiple strategies to find the package root
@@ -9,7 +17,7 @@ let srcDir = join(__dirname, '../scaffolding');
 if (!existsSync(srcDir)) {
     try {
         // Try to find the package root via require.resolve
-        const packageJsonPath = require.resolve('@diplodoc/lint/package.json');
+        const packageJsonPath = require.resolve('@diplodoc/infra/package.json');
         const packageRoot = dirname(packageJsonPath);
         srcDir = join(packageRoot, 'scaffolding');
     } catch (e) {
@@ -30,7 +38,16 @@ if (!existsSync(srcDir)) {
     }
 }
 
-const targetDir = process.cwd();
+const targetDir = process.env.INFRA_TARGET_DIR || process.cwd();
+
+let infraBlacklist = [];
+if (process.env.INFRA_BLACKLIST) {
+    try {
+        infraBlacklist = JSON.parse(process.env.INFRA_BLACKLIST);
+    } catch {
+        // ignore invalid blacklist
+    }
+}
 
 /** @type {{ PACKAGE_NAME: string }} Variables for scaffolding template substitution */
 let scaffoldVars = {PACKAGE_NAME: 'package'};
@@ -69,14 +86,30 @@ function copyFileWithSubstitution(srcPath, targetPath) {
 
 // Verify scaffolding directory exists
 if (!existsSync(srcDir)) {
-    console.error(`[@diplodoc/lint] Error: scaffolding directory not found at ${srcDir}`);
+    console.error(`[@diplodoc/infra] Error: scaffolding directory not found at ${srcDir}`);
     process.exit(1);
+}
+
+function matchesGlob(filePath, pattern) {
+    if (pattern.includes('*')) {
+        const regexStr = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
+        return new RegExp(`^${regexStr}$`).test(filePath);
+    }
+    return false;
 }
 
 function copyScaffoldingFiles(excludePatterns = []) {
     function shouldExclude(filePath) {
         const relPath = relative(srcDir, filePath);
-        return excludePatterns.some(pattern => {
+
+        if (infraBlacklist.length > 0) {
+            for (const pattern of infraBlacklist) {
+                if (relPath === pattern || relPath.startsWith(pattern)) return true;
+                if (matchesGlob(relPath, pattern)) return true;
+            }
+        }
+
+        return excludePatterns.some((pattern) => {
             if (typeof pattern === 'string') {
                 return relPath.includes(pattern) || relPath.startsWith(pattern);
             }
@@ -89,15 +122,15 @@ function copyScaffoldingFiles(excludePatterns = []) {
 
     function copyRecursive(src, target) {
         const entries = readdirSync(src, {withFileTypes: true});
-        
+
         for (const entry of entries) {
             const srcPath = join(src, entry.name);
             const targetPath = join(target, entry.name);
-            
+
             if (shouldExclude(srcPath)) {
                 continue;
             }
-            
+
             if (entry.isDirectory()) {
                 if (!existsSync(targetPath)) {
                     mkdirSync(targetPath, {recursive: true});
@@ -113,31 +146,45 @@ function copyScaffoldingFiles(excludePatterns = []) {
                 try {
                     copyFileWithSubstitution(srcPath, targetPath);
                 } catch (error) {
-                    console.error(`[@diplodoc/lint] Error copying ${srcPath} to ${targetPath}:`, error.message);
+                    console.error(
+                        `[@diplodoc/infra] Error copying ${srcPath} to ${targetPath}:`,
+                        error.message,
+                    );
                     throw error;
                 }
             }
         }
     }
-    
+
     copyRecursive(srcDir, targetDir);
 }
 
 function copyWorkflows() {
     const workflowsSrc = join(srcDir, '.github/workflows');
     const workflowsTarget = join(targetDir, '.github/workflows');
-    
+
     if (!existsSync(workflowsSrc)) {
         return;
     }
-    
+
     if (!existsSync(workflowsTarget)) {
         mkdirSync(workflowsTarget, {recursive: true});
     }
-    
+
     const entries = readdirSync(workflowsSrc, {withFileTypes: true});
     for (const entry of entries) {
         if (entry.isFile()) {
+            const relPath = `.github/workflows/${entry.name}`;
+            const isBlacklisted = infraBlacklist.some(
+                (pattern) =>
+                    relPath === pattern ||
+                    relPath.startsWith(pattern) ||
+                    matchesGlob(relPath, pattern),
+            );
+            if (isBlacklisted) {
+                console.log(`[@diplodoc/infra] Skipping ${relPath} (blacklisted)`);
+                continue;
+            }
             const srcPath = join(workflowsSrc, entry.name);
             const targetPath = join(workflowsTarget, entry.name);
             copyFileWithSubstitution(srcPath, targetPath);
@@ -146,11 +193,7 @@ function copyWorkflows() {
 }
 
 // Copy scaffolding files (exclude templates and workflows)
-copyScaffoldingFiles([
-    '.template',
-    '.github/workflows',
-]);
+copyScaffoldingFiles(['.template', '.github/workflows']);
 
 // Copy workflows separately (always overwrite)
 copyWorkflows();
-

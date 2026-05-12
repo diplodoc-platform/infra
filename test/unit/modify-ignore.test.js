@@ -105,11 +105,11 @@ test('should not add duplicate patterns', async () => {
 
         // Verify
         const gitignore = readFile(tempDir, '.gitignore');
-        const lines = gitignore.split('\n').filter(line => line.trim() !== '');
+        const lines = gitignore.split('\n').filter((line) => line.trim() !== '');
 
         // Count occurrences
-        const nodeModulesCount = lines.filter(line => line === 'node_modules').length;
-        const ideaCount = lines.filter(line => line === '.idea').length;
+        const nodeModulesCount = lines.filter((line) => line === 'node_modules').length;
+        const ideaCount = lines.filter((line) => line === '.idea').length;
 
         assert.strictEqual(nodeModulesCount, 1, 'node_modules should appear only once');
         assert.strictEqual(ideaCount, 1, '.idea should appear only once');
@@ -142,10 +142,7 @@ test('should add all required patterns to .gitignore', async () => {
         ];
 
         for (const pattern of patterns) {
-            assert(
-                gitignore.includes(pattern),
-                `.gitignore should contain ${pattern}`
-            );
+            assert(gitignore.includes(pattern), `.gitignore should contain ${pattern}`);
         }
     } finally {
         await removeTempDir(tempDir);
@@ -160,19 +157,10 @@ test('should add all required patterns to .eslintignore', async () => {
 
         // Verify
         const eslintignore = readFile(tempDir, '.eslintignore');
-        const patterns = [
-            '.idea',
-            'node_modules',
-            '/lib',
-            '/dist',
-            '/build',
-        ];
+        const patterns = ['.idea', 'node_modules', '/lib', '/dist', '/build'];
 
         for (const pattern of patterns) {
-            assert(
-                eslintignore.includes(pattern),
-                `.eslintignore should contain ${pattern}`
-            );
+            assert(eslintignore.includes(pattern), `.eslintignore should contain ${pattern}`);
         }
     } finally {
         await removeTempDir(tempDir);
@@ -187,18 +175,10 @@ test('should add all required patterns to .prettierignore', async () => {
 
         // Verify
         const prettierignore = readFile(tempDir, '.prettierignore');
-        const patterns = [
-            '.idea',
-            'node_modules',
-            '/lib',
-            '/dist',
-        ];
+        const patterns = ['.idea', 'node_modules', '/lib', '/dist'];
 
         for (const pattern of patterns) {
-            assert(
-                prettierignore.includes(pattern),
-                `.prettierignore should contain ${pattern}`
-            );
+            assert(prettierignore.includes(pattern), `.prettierignore should contain ${pattern}`);
         }
     } finally {
         await removeTempDir(tempDir);
@@ -213,18 +193,10 @@ test('should add all required patterns to .stylelintignore', async () => {
 
         // Verify
         const stylelintignore = readFile(tempDir, '.stylelintignore');
-        const patterns = [
-            '.idea',
-            'node_modules',
-            '/lib',
-            '/dist',
-        ];
+        const patterns = ['.idea', 'node_modules', '/lib', '/dist'];
 
         for (const pattern of patterns) {
-            assert(
-                stylelintignore.includes(pattern),
-                `.stylelintignore should contain ${pattern}`
-            );
+            assert(stylelintignore.includes(pattern), `.stylelintignore should contain ${pattern}`);
         }
     } finally {
         await removeTempDir(tempDir);
@@ -250,4 +222,3 @@ test('should handle files with trailing newlines', async () => {
 });
 
 module.exports = {tests};
-

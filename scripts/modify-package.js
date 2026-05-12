@@ -20,13 +20,13 @@ function configure(command, impl, force = false) {
         }
     } else {
         pkg.scripts[command] = impl;
-        console.log('[@diplodoc/lint]', '=> Add', command, 'script');
+        console.log('[@diplodoc/infra]', '=> Add', command, 'script');
     }
 }
 
-configure('lint', 'lint update && lint');
-configure('lint:fix', 'lint update && lint fix');
-configure('pre-commit', 'lint update && lint-staged');
+configure('lint', 'lint');
+configure('lint:fix', 'lint fix');
+configure('pre-commit', 'lint-staged');
 configure('prepare', 'husky || true', true);
 
 writeFileSync(filename, JSON.stringify(pkg, null, 2), 'utf8');

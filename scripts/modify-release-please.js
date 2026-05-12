@@ -2,9 +2,18 @@ const {join} = require('node:path');
 const {readFileSync, writeFileSync, existsSync} = require('node:fs');
 const {dirname} = require('node:path');
 
-const packageJsonPath = join(process.cwd(), 'package.json');
-const configTemplatePath = join(dirname(dirname(__filename)), 'scaffolding', '.release-please-config.json.template');
-const manifestTemplatePath = join(dirname(dirname(__filename)), 'scaffolding', '.release-please-manifest.json.template');
+const targetDir = process.env.INFRA_TARGET_DIR || process.cwd();
+const packageJsonPath = join(targetDir, 'package.json');
+const configTemplatePath = join(
+    dirname(dirname(__filename)),
+    'scaffolding',
+    '.release-please-config.json.template',
+);
+const manifestTemplatePath = join(
+    dirname(dirname(__filename)),
+    'scaffolding',
+    '.release-please-manifest.json.template',
+);
 
 let pkg;
 try {
@@ -27,23 +36,19 @@ try {
 }
 
 // Replace placeholders
-const configContent = configTemplate
-    .replace(/\{\{PACKAGE_NAME\}\}/g, packageName);
+const configContent = configTemplate.replace(/\{\{PACKAGE_NAME\}\}/g, packageName);
 
-const manifestContent = manifestTemplate
-    .replace(/\{\{PACKAGE_VERSION\}\}/g, packageVersion)
-    .trimEnd() + '\n'; // Remove trailing whitespace/newlines
+const manifestContent =
+    manifestTemplate.replace(/\{\{PACKAGE_VERSION\}\}/g, packageVersion).trimEnd() + '\n'; // Remove trailing whitespace/newlines
 
 // Write files
-const configOutputPath = join(process.cwd(), '.release-please-config.json');
-const manifestOutputPath = join(process.cwd(), '.release-please-manifest.json');
+const configOutputPath = join(targetDir, '.release-please-config.json');
+const manifestOutputPath = join(targetDir, '.release-please-manifest.json');
 
 if (!existsSync(configOutputPath)) {
-    console.log('[@diplodoc/lint]', '=> Create .release-please-config.json');
+    console.log('[@diplodoc/infra]', '=> Create .release-please-config.json');
     writeFileSync(configOutputPath, configContent, 'utf8');
 }
 
-console.log('[@diplodoc/lint]', '=> Update .release-please-manifest.json');
+console.log('[@diplodoc/infra]', '=> Update .release-please-manifest.json');
 writeFileSync(manifestOutputPath, manifestContent, 'utf8');
-
-

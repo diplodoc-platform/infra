@@ -10,23 +10,23 @@ module.exports = {
     parserOptions: {
         requireConfigFile: false,
         babelOptions: {
-            plugins: [
-                '@babel/plugin-syntax-import-assertions'
-            ]
-        }
-    },
-    overrides: [{
-        files: [
-            '.eslintrc.js',
-            '.prettierrc.js',
-            '.stylelintrc.js',
-            '.lintstagedrc.js',
-            'jest.config.js',
-        ],
-        env: {
-            node: true,
+            plugins: ['@babel/plugin-syntax-import-assertions'],
         },
-    }],
+    },
+    overrides: [
+        {
+            files: [
+                '.eslintrc.js',
+                '.prettierrc.js',
+                '.stylelintrc.js',
+                '.lintstagedrc.js',
+                'jest.config.js',
+            ],
+            env: {
+                node: true,
+            },
+        },
+    ],
     rules: {
         'callback-return': 'off',
         'consistent-return': 'off',
@@ -40,7 +40,7 @@ module.exports = {
             {
                 alphabetize: {
                     order: 'ignore',
-                    orderImportKind: 'asc'
+                    orderImportKind: 'asc',
                 },
                 'newlines-between': 'always',
                 groups: ['type', ['builtin', 'external'], 'internal', 'parent', 'sibling', 'index'],
@@ -53,6 +53,6 @@ module.exports = {
                 ],
             },
         ],
-        "@typescript-eslint/consistent-type-imports": "error",
+        '@typescript-eslint/consistent-type-imports': 'error',
     },
 };
