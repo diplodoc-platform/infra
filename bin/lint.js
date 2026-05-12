@@ -60,22 +60,21 @@ function hasStyleFiles() {
     }
 }
 
-
 if (init || update) {
     if (init) {
-        console.log('[@diplodoc/lint] Extend package.json configuration');
+        console.log('[@diplodoc/infra] Extend package.json configuration');
         execCommand(`node "${join(srcDir, 'scripts/modify-package.js')}"`);
 
         execCommand(`"${join(binDir, 'husky')}" init`);
     }
 
-    console.log('[@diplodoc/lint] Add initial lint configs');
+    console.log('[@diplodoc/infra] Copy scaffolding files');
     execCommand(`node "${join(srcDir, 'scripts/copy-scaffolding.js')}"`);
 
-    console.log('[@diplodoc/lint] Extend .ignore configuration');
+    console.log('[@diplodoc/infra] Extend .ignore configuration');
     execCommand(`node "${join(srcDir, 'scripts/modify-ignore.js')}"`);
 
-    console.log('[@diplodoc/lint] Setup release-please configuration');
+    console.log('[@diplodoc/infra] Setup release-please configuration');
     execCommand(`node "${join(srcDir, 'scripts/modify-release-please.js')}"`);
 
     process.exit(0);
@@ -98,7 +97,9 @@ if (fix) {
     execCommand(`"${join(binDir, 'prettier')}" --write '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
 
     if (hasStyleFiles()) {
-        execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}' --fix --ignore-path .stylelintignore --allow-empty-input`);
+        execCommand(
+            `"${join(binDir, 'stylelint')}" '**/*.{css,scss}' --fix --ignore-path .stylelintignore --allow-empty-input`,
+        );
     }
 
     process.exit(0);
@@ -117,6 +118,8 @@ if (fix) {
     execCommand(`"${join(binDir, 'prettier')}" --check '**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'`);
 
     if (hasStyleFiles()) {
-        execCommand(`"${join(binDir, 'stylelint')}" '**/*.{css,scss}' --ignore-path .stylelintignore --allow-empty-input`);
+        execCommand(
+            `"${join(binDir, 'stylelint')}" '**/*.{css,scss}' --ignore-path .stylelintignore --allow-empty-input`,
+        );
     }
 }

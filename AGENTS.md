@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file contains instructions for AI agents working with the `@diplodoc/lint` project.
+This file contains instructions for AI agents working with the `@diplodoc/infra` project.
 
 ## Common Rules and Standards
 
@@ -20,574 +20,341 @@ This file contains instructions for AI agents working with the `@diplodoc/lint` 
 
 ## Project Description
 
-`@diplodoc/lint` is a DevOps infrastructure package that provides linting utilities for all Diplodoc platform packages. It consolidates ESLint, Prettier, Stylelint, Husky, and lint-staged configurations into a single package, replacing the deprecated `@diplodoc/eslint-config` and `@diplodoc/prettier-config` packages.
+`@diplodoc/infra` (formerly `@diplodoc/lint`) is the central infrastructure package for the Diplodoc platform. It manages:
 
-**Key Features**:
+- **Linting**: ESLint, Prettier, Stylelint configurations shared across all packages
+- **Scaffolding**: Configuration files, CI workflows, Git hooks distributed to all packages
+- **Distribution**: Automated PR-based delivery of infrastructure updates to 30+ repositories
+- **Blacklisting**: Per-repo exclusions for selective scaffolding (e.g., during Node.js migrations)
 
-- Unified linting infrastructure for all platform packages
-- Automatic infrastructure updates on each run
-- Pre-commit hooks via Husky
-- Multiple ESLint configurations (common, client, node)
-- Prettier and Stylelint configurations
-- SVGO integration for SVG optimization
+Replaces the deprecated `@diplodoc/eslint-config`, `@diplodoc/prettier-config`, and `@diplodoc/lint` packages.
+
+## Architecture Overview
+
+### Two Distribution Models
+
+The package supports two ways of distributing infrastructure to consumer packages:
+
+**Push model (primary, automated)**:
+When a new version of `@diplodoc/infra` is released, the `distribute-infra.yml` workflow automatically creates PRs in all target repositories with updated scaffolding files. PRs for non-critical packages are auto-merged when CI passes.
+
+**Manual model (for development/debugging)**:
+Developers can run `infra update` locally to apply scaffolding to their current package. This is useful for testing changes before release.
+
+```
+┌─────────────────────────────────────────────────┐
+│              @diplodoc/infra repo                │
+│                                                  │
+│  scaffolding/        distribution.yml            │
+│  *-config.js         (repo list + blacklist)     │
+│  bin/lint.js         bin/infra.js                │
+│                                                  │
+│  .github/workflows/                              │
+│    distribute-infra.yml  (push to all repos)     │
+│    integration-test.yml  (pre-release testing)   │
+└──────────────────────┬──────────────────────────┘
+                       │
+            on release / manual trigger
+                       │
+                       ▼
+    ┌──────────────────────────────────┐
+    │  For each repo in distribution.yml:        │
+    │  1. Clone target repo                      │
+    │  2. Read .infrarc.yml (if exists)          │
+    │  3. Merge blacklists                       │
+    │  4. Apply scaffolding (skip blacklisted)   │
+    │  5. Create PR                              │
+    │  6. Auto-merge if allowed                  │
+    └──────────────────────────────────┘
+```
+
+### Two CLI Binaries
+
+The package exposes two binaries:
+
+| Binary  | Purpose                   | Commands                                                      |
+| ------- | ------------------------- | ------------------------------------------------------------- |
+| `lint`  | Linting operations only   | `lint`, `lint fix`, `lint init`, `lint update`                |
+| `infra` | Infrastructure management | `infra init`, `infra update`, `infra sync`, `infra blacklist` |
+
+The `lint` binary is kept for backward compatibility. The `infra` binary is the new primary entry point for scaffolding and distribution.
 
 ## Project Structure
 
 ### Main Directories
 
-- `bin/` — executable scripts (see detailed description below)
-- `src/` — source artifacts: `esbuild.mjs`, `esbuild.cjs`, `esbuild.d.ts` (re-export of `esbuild` for the `@diplodoc/lint/esbuild` subpath)
-- `scaffolding/` — template files copied during `init`/`update`
-  - `.eslintrc.js` — ESLint configuration template
-  - `.prettierrc.js` — Prettier configuration template
-  - `.stylelintrc.js` — Stylelint configuration template
-  - `.lintstagedrc.js` — lint-staged configuration template
-  - `.husky/pre-commit` — Husky pre-commit hook template
-  - `.husky/commit-msg` — Husky commit-msg hook template (validates commit messages are in English)
-  - `sonar-project.properties` — SonarCloud config (placeholder `{{PACKAGE_NAME}}` substituted from package.json)
-  - `.github/workflows/` — CI workflows (tests, security, release, release-please, coverage, sonarcloud)
-- `scripts/` — helper scripts for package.json and .ignore file modification
-  - `modify-package.js` — adds lint scripts to package.json
+- `bin/` — executable scripts
+  - `lint.js` — linting CLI (check, fix, init, update)
+  - `infra.js` — infrastructure CLI (init, update, sync, blacklist)
+  - `eslint`, `prettier`, `stylelint`, `husky`, `lint-staged`, `svgo` — proxy scripts
+- `src/` — source artifacts: `esbuild.mjs`, `esbuild.cjs`, `esbuild.d.ts` (re-export of `esbuild` for the `@diplodoc/infra/esbuild` subpath)
+- `scaffolding/` — template files distributed to consumer packages
+  - `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`, `.lintstagedrc.js` — lint configs
+  - `.husky/pre-commit`, `.husky/commit-msg` — Git hooks
+  - `.editorconfig`, `.gitattributes` — editor settings
+  - `sonar-project.properties` — SonarCloud config (`{{PACKAGE_NAME}}` substituted)
+  - `.github/workflows/` — CI workflow templates (7 files)
+  - `.github/CODEOWNERS`, `.github/dependabot.yml` — GitHub config
+- `scripts/` — helper scripts used during init/update
+  - `copy-scaffolding.js` — copies scaffolding files with blacklist support
+  - `modify-package.js` — adds standard scripts to consumer's package.json
   - `modify-ignore.js` — updates .ignore files with standard patterns
-- `test/` — package tests
+  - `modify-release-please.js` — configures release-please in consumer packages
+- `distribution.yml` — centralized config: target repos, blacklist, auto-merge settings
+- `test/` — package tests (unit + integration)
 
-### Configuration Files
+### Configuration Files (at package root)
 
 - `eslint-common-config.js` — common ESLint configuration
 - `eslint-client-config.js` — client-side ESLint configuration
 - `eslint-node-config.js` — Node.js ESLint configuration
-- `eslint-prettier-config.js` — ESLint config with Prettier integration
 - `prettier-common-config.js` — Prettier configuration
 - `stylelint-common-config.js` — Stylelint configuration
 
-## Tech Stack
+### GitHub Workflows (in this repo)
 
-This package follows the standard Diplodoc platform tech stack. See `.agents/dev-infrastructure.md` and `.agents/style-and-testing.md` in the metapackage root for detailed information.
+- `distribute-infra.yml` — distributes scaffolding to all target repos on release or manual trigger
+- `integration-test.yml` — pre-release smoke tests: applies scaffolding to 3 reference packages, runs their full CI
+- `tests.yml`, `release.yml`, `release-please.yml`, etc. — standard CI for this package itself
 
-**Package-specific details**:
+## Environment Variables
 
-- **Language**: JavaScript (Node.js) - no TypeScript, pure JavaScript
-- **Runtime**: Node.js >=11.5.1 (npm requirement)
-- **Testing**: Custom test setup in `test/` directory (Node.js `assert` and `child_process`, no testing framework)
-- **Build**: No build step required (pure JavaScript package)
+The helper scripts in `scripts/` support two environment variables that enable the `infra sync` command to apply scaffolding to external directories with blacklist filtering:
 
-## Usage Modes
+### `INFRA_TARGET_DIR`
 
-This package can be used in two different contexts:
+**Purpose**: Overrides the target directory for scaffolding operations.
 
-### 1. As Part of Metapackage (Workspace Mode)
+**Default**: `process.cwd()` (when not set)
 
-When `@diplodoc/lint` is part of the Diplodoc metapackage:
+**Used by**: `copy-scaffolding.js`, `modify-ignore.js`, `modify-release-please.js`
 
-- Located at `devops/lint/` in the metapackage
-- Linked via npm workspaces
-- Dependencies are shared from metapackage root `node_modules`
-- Can be developed alongside other packages
-- Changes are immediately available to other packages via workspace linking
+**Why it exists**: When `infra sync` clones a target repo to a temporary directory (e.g., `.infra-sync-tmp/cli/`), it needs the scripts to write files there, not to the current working directory. The `infra sync` command sets this variable before calling the existing scripts.
 
-**Development in Metapackage**:
+**Example flow**:
 
-```bash
-# From metapackage root
-cd devops/lint
-npm install  # Uses workspace dependencies
-
-# Or from metapackage root
-npx nx build @diplodoc/lint  # If configured in nx
+```
+infra sync --target ./target --repo cli
+  └── sets INFRA_TARGET_DIR=./target
+      ├── copy-scaffolding.js writes to ./target/ (not cwd)
+      ├── modify-ignore.js updates ./target/.gitignore (not cwd/.gitignore)
+      └── modify-release-please.js reads ./target/package.json
 ```
 
-**Using from Other Packages in Metapackage**:
+### `INFRA_BLACKLIST`
 
-- Other packages can use `@diplodoc/lint` directly
-- Workspace linking ensures local version is used
-- No need to publish to npm for local development
+**Purpose**: JSON array of file paths/patterns to skip during scaffolding copy.
 
-### 2. As Standalone Package (Independent Mode)
+**Default**: `[]` (when not set — no files are blacklisted)
 
-When `@diplodoc/lint` is used as a standalone npm package:
+**Used by**: `copy-scaffolding.js` (both in `copyScaffoldingFiles()` and `copyWorkflows()`)
 
-- Installed via `npm install --save-dev @diplodoc/lint`
-- Has its own `node_modules` with all dependencies
-- Can be cloned and developed independently
-- Must be published to npm for others to use
+**Why it exists**: When `infra sync` processes a repository, it merges two blacklists:
 
-**Development Standalone**:
+1. Central exclusions from `distribution.yml` (e.g., `cli` has custom `tests.yml`)
+2. Local exclusions from the target repo's `.infrarc.yml`
 
-```bash
-# Clone the repository
-git clone git@github.com:diplodoc-platform/lint.git
-cd lint
-npm install  # Installs all dependencies locally
+The merged list is passed as a JSON string to the existing `copy-scaffolding.js` script, which then skips those files during copy. This avoids duplicating the blacklist logic in the copy script.
 
-# Run tests
-npm test
+**Example flow**:
+
+```
+infra sync --target ./target --repo cli
+  └── reads distribution.yml → cli.exclude = [".github/workflows/tests.yml"]
+  └── reads ./target/.infrarc.yml → exclude = [".editorconfig"]
+  └── merges → [".github/workflows/tests.yml", ".editorconfig"]
+  └── sets INFRA_BLACKLIST='[".github/workflows/tests.yml",".editorconfig"]'
+      └── copy-scaffolding.js skips these files
 ```
 
-**Using in External Projects**:
+**Supported patterns in the blacklist**:
 
-```bash
-# Install from npm
-npm install --save-dev @diplodoc/lint
+- Exact paths: `.github/workflows/tests.yml`
+- Glob patterns: `.github/workflows/*.yml`
+- Directory prefixes: `.github/workflows/`
 
-# Initialize
-npx @diplodoc/lint init
+### Why Environment Variables (Not CLI Arguments)?
 
-# Use
-npm run lint
+The helper scripts (`copy-scaffolding.js`, `modify-ignore.js`, `modify-release-please.js`) were originally designed as standalone scripts called via `execSync` from `bin/lint.js`. They use `process.cwd()` and have no argument parsing.
+
+Rather than refactoring all scripts to accept CLI arguments (which would be a breaking change to the existing `lint update` flow), environment variables provide backward-compatible extension:
+
+- When env vars are **not set**: scripts behave exactly as before (write to cwd, no blacklist)
+- When env vars are **set**: scripts target the specified directory and respect the blacklist
+
+This means `lint update` (local developer usage) and `infra sync` (automated distribution) share the same underlying scripts.
+
+## distribution.yml
+
+Centralized configuration file that lives in this repository. Defines:
+
+- **Target repositories**: Which repos receive infrastructure updates
+- **Blacklist**: Per-repo file exclusions
+- **Auto-merge**: Whether PRs are auto-merged after CI passes
+
+```yaml
+defaults:
+  auto_merge: true
+  exclude: []
+
+repos:
+  cli:
+    auto_merge: false # critical package — manual review
+    exclude:
+      - path: .github/workflows/tests.yml
+        reason: 'Custom E2E steps'
+        until: '2026-07-01' # auto-expires
+  transform:
+    auto_merge: false
+    exclude: []
+  cut-extension:
+    exclude: []
 ```
 
-### Important Considerations
+**Synced automatically**: The metapackage's `sync-packages-list.yml` workflow adds new repos from `.gitmodules` to this file (preserving existing blacklist config).
 
-**Path Resolution**:
+## .infrarc.yml (in target repos)
 
-- In metapackage: Scripts resolve paths relative to metapackage structure
-- Standalone: Scripts resolve paths relative to package root
-- Proxy scripts (`bin/eslint`, etc.) use `require.resolve()` which works in both modes
+Optional file in consumer repositories for local exclusions:
 
-**Dependencies**:
-
-- In metapackage: May use dependencies from root `node_modules`
-- Standalone: Must have all dependencies in local `node_modules`
-- Both modes should work identically from user perspective
-
-**Package Lock Management**:
-
-- When adding/updating dependencies, use `npm i --no-workspaces --package-lock-only` to regenerate `package-lock.json` for standalone mode
-- This ensures `package-lock.json` is valid when package is used outside workspace
-- Always regenerate after dependency changes to maintain standalone compatibility
-
-**Testing**:
-
-- Test setup works in both modes
-- When testing, ensure dependencies are properly resolved
-- Consider testing both modes if making significant changes
-
-## Setup Commands
-
-**In Metapackage**:
-
-```bash
-# From devops/lint directory
-npm install  # Uses workspace dependencies
-
-# Or from metapackage root
-npm install  # Installs all workspace dependencies
+```yaml
+exclude:
+  - path: .github/workflows/tests.yml
+    reason: 'Custom matrix build for multiple Node versions'
+  - .editorconfig
 ```
 
-**Standalone**:
+These exclusions are merged (union) with the central `distribution.yml` exclusions.
 
-```bash
-# Install dependencies
-npm install
+## CLI Reference
 
-# Run tests
-npm test
+### `lint` Binary
+
+| Command       | Description                                                     |
+| ------------- | --------------------------------------------------------------- |
+| `lint`        | Run all linters (ESLint, Prettier, Stylelint) in check mode     |
+| `lint fix`    | Run all linters in fix mode (auto-fix)                          |
+| `lint init`   | Initialize infrastructure in current package (first-time setup) |
+| `lint update` | Update scaffolding files in current package (manual)            |
+
+### `infra` Binary
+
+| Command                 | Description                                   |
+| ----------------------- | --------------------------------------------- |
+| `infra init`            | Same as `lint init`                           |
+| `infra update`          | Same as `lint update`                         |
+| `infra sync`            | Distribute scaffolding to target repositories |
+| `infra blacklist show`  | Show blacklist for a repository               |
+| `infra blacklist audit` | Check for expired exclusions                  |
+| `infra help`            | Show usage information                        |
+
+### `infra sync` Options
+
+| Flag              | Description                                                 |
+| ----------------- | ----------------------------------------------------------- |
+| `--target <path>` | Apply scaffolding to a local directory (instead of cloning) |
+| `--repo <name>`   | Target a specific repository                                |
+| `--all`           | Target all repositories from `distribution.yml`             |
+| `--dry-run`       | Show diff without creating PRs                              |
+| `--config <path>` | Path to `distribution.yml` (default: `./distribution.yml`)  |
+| `--output <path>` | Write diff report to file (with `--dry-run`)                |
+| `--version <tag>` | Version tag for branch/PR naming                            |
+
+## Consumer Package Scripts
+
+After `infra init`, consumer packages get these scripts:
+
+```json
+{
+  "scripts": {
+    "lint": "lint",
+    "lint:fix": "lint fix",
+    "pre-commit": "lint-staged",
+    "prepare": "husky || true"
+  }
+}
 ```
 
-**Important: Package Lock Management**
-
-When working in metapackage mode but need to update `package-lock.json` for standalone mode:
-
-```bash
-# Regenerate package-lock.json for standalone mode
-npm i --no-workspaces --package-lock-only
-```
-
-This ensures `package-lock.json` is valid when the package is used as a standalone npm package (not in workspace). Always use this when adding/updating dependencies in standalone mode.
-
-## Development Commands
-
-**In Metapackage**:
-
-```bash
-# From devops/lint directory
-cd test && npm start
-
-# Or using nx from metapackage root
-npx nx test @diplodoc/lint  # If configured
-```
-
-**Standalone**:
-
-```bash
-# Test the package
-cd test && npm start
-```
-
-## Architecture
-
-### Bin Directory Structure
-
-The `bin/` directory contains executable scripts that are made available via npm bin:
-
-**Main Script: `lint` (Node.js)**
-
-- **File**: `bin/lint.js` — Node.js script (cross-platform, no bash required)
-- **Purpose**: Main entry point for all linting operations
-- **Commands**:
-  - `lint` (default) — runs all linters in check mode
-  - `lint fix` — runs all linters in fix mode (auto-fixes issues)
-  - `lint init` — initializes linting infrastructure in a package
-  - `lint update` — updates linting infrastructure (runs automatically on each `lint` call)
-- **Platform Support**: Works on all platforms (Windows, macOS, Linux). npm automatically creates `.cmd` wrapper on Windows.
-
-**Proxy Scripts** (redirect to original binaries from node_modules):
-
-- `eslint` — proxies to `eslint/bin/eslint.js`
-- `prettier` — proxies to `prettier/bin/prettier.cjs`
-- `stylelint` — proxies to `stylelint/bin/stylelint.mjs`
-- `husky` — proxies to `husky/bin.js`
-- `lint-staged` — proxies to `lint-staged/bin/lint-staged.js`
-- `svgo` — proxies to `svgo/bin/svgo`
-
-**How Proxy Scripts Work**:
-
-1. Find the source directory of `@diplodoc/lint` package
-2. Use `require.resolve()` to locate the original package in node_modules
-3. Redirect execution to the original binary
-4. This allows using tools via `npx @diplodoc/lint eslint` instead of `npx eslint`
-
-**Lint Script Behavior**:
-
-**Default mode** (`lint`):
-
-- Runs ESLint on all JS/TS files (check only)
-  - Uses `ESLINT_USE_FLAT_CONFIG=false` to force legacy (ESLint 8-style) config resolution
-  - Calls ESLint with `.` и `--ext .js,.mjs,.cjs,.jsx,.ts,.mts,.cts,.tsx`, позволяя самому ESLint искать файлы
-  - ESLint автоматически читает `.eslintrc.js` и `.eslintignore` из корня пакета
-  - **Никакой** дополнительной фильтрации файлов в `bin/lint.js` не выполняется
-- Runs Prettier in check mode on all JS/TS files
-- Runs Stylelint on CSS/SCSS files (if found and not ignored)
-
-**Fix mode** (`lint fix`):
-
-- Runs ESLint with `--fix` flag (auto-fixes issues)
-  - Использует те же настройки, что и в check-режиме:
-    - `ESLINT_USE_FLAT_CONFIG=false`
-    - таргет `.` и расширения через `--ext`
-  - Игнорирование файлов полностью делегировано ESLint и `.eslintignore`
-- Runs Prettier with `--write` flag (formats files)
-- Runs Stylelint with `--fix` flag (auto-fixes CSS issues)
-
-**Init/Update mode** (`lint init` or `lint update`):
-
-1. **Modify package.json**: Adds/updates lint scripts via `scripts/modify-package.js`
-2. **Initialize Husky**: Runs `husky init` (only on `init`)
-3. **Copy scaffolding**: Copies all files from `scaffolding/` directory to package root
-   - Configuration files (`.eslintrc.js`, `.prettierrc.js`, etc.)
-   - **GitHub Actions workflows** (`.github/workflows/*.yml`)
-4. **Update ignore files**: Extends `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore` via `scripts/modify-ignore.js`
-
-### Infrastructure Auto-Update
-
-**Key Design Principle**: The package automatically checks and updates infrastructure in consuming packages on each run.
-
-**How it works**:
-
-1. `@diplodoc/lint` is installed as a dev dependency in packages
-2. It's configured in `prepare` scripts: `"prepare": "husky || true"`
-3. On each `lint` command execution, it runs `lint update` first
-4. The `update` command checks if scaffolding files are up-to-date
-5. If outdated, it automatically copies/updates configuration files
-6. This prevents infrastructure drift across packages
-
-**Current Implementation**:
-
-- `lint update` always copies scaffolding files (overwrites existing)
-- `lint update` always updates ignore files (adds missing patterns)
-- No diff checking - always performs updates
-
-**Potential Improvements**:
-
-- Add hash-based change detection to skip unnecessary file operations
-- Cache scaffolding file hashes to avoid redundant copies
-- Only update ignore files if patterns are actually missing
-
-### Package Integration
-
-When a package uses `@diplodoc/lint`:
-
-1. **Installation**: `npm install --save-dev @diplodoc/lint`
-2. **Initialization**: `npx @diplodoc/lint init`
-   - **Step 1**: Modifies `package.json` via `scripts/modify-package.js`
-     - Adds `lint`, `lint:fix`, `pre-commit`, `prepare` scripts
-   - **Step 2**: Initializes Husky (`husky init`)
-     - Creates `.husky/` directory
-     - Sets up git hooks
-   - **Step 3**: Copies scaffolding files from `scaffolding/` to package root
-     - Configuration files: `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`
-     - Git hooks: `.lintstagedrc.js`, `.husky/pre-commit`
-     - Editor config: `.editorconfig`
-     - **GitHub Actions workflows**: `.github/workflows/tests.yml`, `.github/workflows/release.yml`, `.github/workflows/release-please.yml`, `.github/workflows/security.yml`, `.github/workflows/coverage.yml`, `.github/workflows/sonarcloud.yml`
-     - **SonarCloud**: `sonar-project.properties` (with `{{PACKAGE_NAME}}` substituted from package name without scope)
-   - **Step 4**: Updates ignore files via `scripts/modify-ignore.js`
-     - Extends `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
-     - Adds standard patterns (system files, build artifacts, node_modules)
-3. **Usage**: `npm run lint` or `npm run lint:fix`
-   - **Automatic update**: Runs `lint update` first (ensures infrastructure is current)
-   - **Then**: Runs actual linting (check or fix mode)
-
-**Update Process** (`lint update`):
-
-- Runs automatically on every `lint` command
-- Copies scaffolding files (overwrites if changed)
-- Updates ignore files (adds missing patterns)
-- Does NOT re-initialize Husky (only `init` does that)
-- Does NOT modify package.json scripts (only `init` does that)
-
-### Exports
-
-The package exports configurations and utilities that can be imported by packages:
-
-- `@diplodoc/lint/eslint-config` — Common ESLint config
-- `@diplodoc/lint/eslint-config/client` — Client-side ESLint config
-- `@diplodoc/lint/eslint-config/node` — Node.js ESLint config
-- `@diplodoc/lint/prettier-config` — Prettier config
-- `@diplodoc/lint/stylelint-config` — Stylelint config
-- `@diplodoc/lint/esbuild` — Re-export of the `esbuild` API (ESM and CJS) for build scripts; use this instead of adding a direct `esbuild` dependency so all packages share the same version and native bindings. Example: `import { build } from '@diplodoc/lint/esbuild';` in `esbuild/build.mjs` (see e.g. `extensions/cut/esbuild/build.mjs`).
-
-Packages can extend ESLint configs at the `src` level if needed.
-
-## Configuration
-
-### Linting Tools
-
-**ESLint**:
-
-- Uses `@gravity-ui/eslint-config` as base
-- TypeScript support via `@typescript-eslint/eslint-plugin`
-- Import resolution via `eslint-import-resolver-typescript`
-- Security checks via `eslint-plugin-security`
-- Prettier integration via `eslint-config-prettier`
-
-**Prettier**:
-
-- Uses `@gravity-ui/prettier-config` as base
-- Consistent formatting across all packages
-
-**Stylelint**:
-
-- Uses `@gravity-ui/stylelint-config` as base
-- CSS and SCSS support
-
-**Husky**:
-
-- Git hooks management
-- Pre-commit hook runs `lint-staged`
-
-**lint-staged**:
-
-- Runs linting only on staged files
-- Faster pre-commit checks
-
-### Scaffolding Files
-
-Files in `scaffolding/` are copied to packages during `init`/`update`:
-
-**`.eslintrc.js`**:
-
-- Extends `@diplodoc/lint/eslint-config`
-- Configures TypeScript parser with project-aware settings
-- Sets `root: true` to prevent config inheritance from parent directories
-
-**`.prettierrc.js`**:
-
-- Exports `@diplodoc/lint/prettier-config` directly
-
-**`.stylelintrc.js`**:
-
-- Extends `@diplodoc/lint/stylelint-config`
-
-**`.editorconfig`**:
-
-- EditorConfig settings for consistent code formatting
-- UTF-8 charset, LF line endings
-- 4-space indentation by default, 2-space for JS/TS/JSON/YAML
-- Trims trailing whitespace (except in Markdown files)
-
-**`.lintstagedrc.js`**:
-
-- Configures lint-staged to run on staged files:
-  - JS/TS files: Prettier + ESLint (with auto-fix, excludes config files and scripts)
-  - CSS/SCSS files: Prettier + Stylelint (with auto-fix)
-  - JSON/YAML/MD files: Prettier
-  - SVG files: SVGO optimization
-  - **Unit tests**: Automatically runs `npm test` when test files (`.test.ts`, `.spec.ts`) or source files (`src/`) are changed
-  - Config files (`.lintstagedrc.js`, `.eslintrc.js`, etc.) are excluded from ESLint checks (they use CommonJS)
-
-**`.husky/pre-commit`**:
-
-- Runs `npm run pre-commit` before each commit
-- Pre-commit script runs `lint update && lint-staged`
-
-**`.husky/commit-msg`**:
-
-- Validates that commit messages follow Conventional Commits format (per `.agents/style-and-testing.md`)
-- Validates that commit messages are in English (rejects Cyrillic characters)
-- Allows `fixup!` and `squash!` prefixes for git commit --fixup/--squash
-- Provides helpful error messages with examples and reference to style guide
-- lint-staged automatically runs unit tests when relevant files are changed
-
-**`sonar-project.properties`**:
-
-- SonarCloud project config; copied with template substitution.
-- `{{PACKAGE_NAME}}` is replaced by the package name **without scope** (e.g. `@diplodoc/foo` → `foo`) so each repo has a unique `sonar.projectKey` (e.g. `diplodoc-platform_foo`).
-- Substitution is done in `scripts/copy-scaffolding.js` when copying any file that contains `{{PACKAGE_NAME}}`.
-
-**`.github/workflows/sonarcloud.yml`**:
-
-- Runs SonarCloud analysis on push/PR to `master`/`main`.
-- Runs the scan only when the package has a `test:coverage` script and coverage was generated; otherwise the scan step is skipped.
-
-**`.github/workflows/coverage.yml`**:
-
-- Optional workflow: runs `test:coverage` when the script exists; exits successfully when the script is absent. Does not block merging (`continue-on-error: true`).
-
-**Ignore Files** (updated via `modify-ignore.js`):
-
-- `.gitignore`, `.eslintignore`, `.prettierignore`, `.stylelintignore`
-- Adds standard patterns:
-  - System files: `.idea`, `.vscode`, `.history`, `.env`, `.DS_Store`
-  - Build artifacts: `/lib`, `/dist`, `/build`, `/cache`, `/coverage`, `/external`
-  - Dependencies: `node_modules`
-  - Additional ESLint-specific ignores: `esbuild/**/*.mjs` и конфигурационные файлы (`.lintstagedrc.js`, `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`)
-- **Важно**:
-  - `test/` и `scripts/` **не** добавляются в `.eslintignore` автоматически, чтобы тесты и скрипты линтились
-  - Пакеты могут добавлять свои пути в `.eslintignore` при необходимости — это считается частью инфраструктуры конкретного пакета, а не `@diplodoc/lint`
-
-### Auto-generated configuration files
-
-Часть конфигурации, которую поставляет `@diplodoc/lint`, считается **авто‑генерируемой** и не должна правиться руками в потребителях:
-
-- `.eslintrc.js`
-- `.prettierrc.js`
-- `.stylelintrc.js`
-- `.lintstagedrc.js`
-
-Общие правила:
-
-- Эти файлы копируются из `scaffolding/` при `lint init` / `lint update`
-- Любые ручные правки в пакетах будут перезатираться при следующем `lint update`
-- Изменять поведение нужно через:
-  - обновление шаблонов в `devops/lint/scaffolding/`
-  - явные локальные конфиги в пакетах (например, `src/.eslintrc.js`), если это допускается
-
-Для деталей см. раздел **“⚠️ Important: Auto-Generated Files”** в `README.md` этого пакета.
+**Note**: Unlike the old `@diplodoc/lint`, there is no `lint update &&` prefix. Infrastructure updates are delivered via automated PRs, not on every lint run.
+
+## Exports
+
+- `@diplodoc/infra/eslint-config` — Common ESLint config
+- `@diplodoc/infra/eslint-config/client` — Client-side ESLint config
+- `@diplodoc/infra/eslint-config/node` — Node.js ESLint config
+- `@diplodoc/infra/prettier-config` — Prettier config
+- `@diplodoc/infra/stylelint-config` — Stylelint config
+- `@diplodoc/infra/esbuild` — Re-export of the `esbuild` API (ESM and CJS); use instead of a direct `esbuild` dependency
 
 ## Testing
 
-The package has a comprehensive test suite in the `test/` directory:
-
 ### Test Structure
 
-- `test/unit/` — unit tests for JavaScript modules
-  - `modify-package.test.js` — tests for package.json modification (8 tests)
-  - `modify-ignore.test.js` — tests for ignore file updates (9 tests)
-  - `esbuild.test.js` — tests for `@diplodoc/lint/esbuild` subpath export (3 tests: export shape, minimal build, build to file)
-- `test/integration/` — integration tests for lint commands
-  - `init.test.js` — tests for `lint init` flow (4 tests)
-  - `update.test.js` — tests for `lint update` flow (6 tests)
-  - `lint.test.js` — tests for `lint` and `lint fix` flows (7 tests)
+- `test/unit/` — unit tests (modify-package, modify-ignore, esbuild export)
+- `test/integration/` — integration tests (init, update, lint flows)
 - `test/helpers/` — test utilities
-  - `temp-dir.js` — temporary directory management
-  - `file-utils.js` — file operations helpers
-  - `exec.js` — command execution helpers
-- `test/fixtures/` — test data files
-- `test/runner.js` — simple test runner (no external dependencies)
+- `test/fixtures/` — test data
+- `test/runner.js` — custom test runner (Node.js `assert`, no framework)
 
 ### Running Tests
 
 ```bash
-# Run all tests
-npm test
-
-# Run only unit tests
-npm run test:unit
-
-# Run only integration tests
-npm run test:integration
-
-# Run old test script (legacy)
-npm run test:old
+npm test              # All tests
+npm run test:unit     # Unit tests only
+npm run test:integration  # Integration tests only
 ```
 
-**Test Results**: All 34 tests should pass. The test runner uses Node.js built-in `assert` module and `child_process` for integration tests.
+### Pre-Release Testing (CI)
 
-## Code Conventions
+`integration-test.yml` runs on every PR that touches scaffolding:
 
-1. **File naming**:
-   - Config files: `*-config.js` (e.g., `eslint-common-config.js`)
-   - Scripts: `modify-*.js` in `scripts/` directory
-   - Binaries: executable scripts in `bin/` directory
+1. Clones 3 reference packages (cli, transform, cut-extension)
+2. Applies scaffolding from the PR branch
+3. Runs full CI (lint, typecheck, build, test) in each
+4. Posts a diff report as a PR comment
 
-2. **Comments and documentation**:
-   - **All code comments must be in English**
-   - **All documentation files (ADR, AGENTS.md, README, etc.) must be in English**
-
-3. **Code style**:
-   - Follow standard JavaScript/Node.js conventions
-   - Use consistent formatting (enforced by Prettier)
+This prevents merging changes that would break consumer packages.
 
 ## Common Tasks
 
 ### Adding a New Linting Rule
 
 1. Update the appropriate config file (e.g., `eslint-common-config.js`)
-2. Test the change in the `test/` directory
-3. Update version in `package.json`
-4. Packages will pick up the change on next `lint update`
+2. Run `npm test` to verify
+3. Integration test will verify rule doesn't break reference packages
 
 ### Modifying Scaffolding Files
 
 1. Update files in `scaffolding/` directory
-2. Test with `npx @diplodoc/lint init` in a test package
-3. Verify that files are copied correctly
-4. Update version in `package.json`
+2. Run `npm test` to verify
+3. The `integration-test.yml` workflow will test against real packages on PR
 
-### Adding a New Configuration Export
+### Adding a Repo to Distribution
 
-1. Create the config file (e.g., `new-config.js`)
-2. Add export to `package.json`:
-   ```json
-   {
-     "exports": {
-       "./new-config": "./new-config.js"
-     }
-   }
-   ```
-3. Document the export in README.md
-4. Update version in `package.json`
+Repos are automatically synced from the metapackage's `.gitmodules` via `sync-packages-list.yml`. To add manually, edit `distribution.yml`.
 
-### Updating Dependencies
+### Excluding a File from Distribution
 
-1. Update dependency versions in `package.json`
-2. Test that linting still works with new versions
-3. Run `npm test` to verify
-4. Update version in `package.json`
+**Centrally** (in this repo): Add to `distribution.yml` under the repo's `exclude` list.
+
+**Locally** (in target repo): Add to `.infrarc.yml` in the target repo root.
+
+### Auditing Expired Exclusions
+
+```bash
+npx @diplodoc/infra blacklist audit
+```
 
 ## Important Notes
 
-1. **Auto-update mechanism**: The `lint update` command runs automatically on each `lint` execution. This ensures infrastructure stays in sync across packages.
+1. **Push model**: Infrastructure updates are distributed via automated PRs, not on every `lint` run. The `lint update` prefix was removed from consumer scripts.
 
-2. **Backward compatibility**: When updating configs, consider backward compatibility. Breaking changes may require major version bumps.
+2. **Backward compatibility**: The `lint` binary still works for linting. The `infra` binary adds sync/blacklist capabilities.
 
-3. **Package independence**: This package should not depend on other Diplodoc packages (except devops infrastructure like `@diplodoc/tsconfig` if needed).
+3. **Blacklist merge**: Central (`distribution.yml`) and local (`.infrarc.yml`) exclusions are merged. Expired entries (past `until` date) are automatically ignored.
 
-4. **Scaffolding updates**: When scaffolding files change, packages will automatically get updates on next `lint update` run.
+4. **Auto-merge**: Controlled per-repo in `distribution.yml`. Critical packages (cli, transform, components) default to `auto_merge: false`.
 
-5. **Extensibility**: Packages can extend ESLint configs at the `src` level, but should not override base configs.
+5. **Pre-release safety**: The `integration-test.yml` workflow blocks merging if scaffolding changes break any of the 3 reference packages.
 
-6. **Replaces deprecated packages**: This package replaces `@diplodoc/eslint-config` and `@diplodoc/prettier-config`. Do not use those packages.
-
-7. **Used by all packages**: This is a critical infrastructure package used by all Diplodoc packages. Changes should be carefully tested.
-
-8. **Performance consideration**: Running `lint update` on every `lint` call can be slow. Consider implementing smart update detection in the future.
-
-9. **Dual usage mode**: This package works both as part of the metapackage (workspace mode) and as a standalone npm package. All scripts and commands must work correctly in both contexts. When making changes, test both modes to ensure compatibility.
-
-## Additional Resources
-
-- `README.md` — main documentation
-- `CONTRIBUTING.md` — contributor guide
-- `CHANGELOG.md` — change history
-- Metapackage `.agents/` — platform-wide agent documentation
+6. **Migration from @diplodoc/lint**: Consumer packages need to update their `devDependencies` from `@diplodoc/lint` to `@diplodoc/infra`. The first `distribute-infra` run can handle this.

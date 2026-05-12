@@ -19,7 +19,7 @@ function getLintBin() {
 async function runLintCommand(command, cwd) {
     const lintBin = getLintBin();
     const fullCommand = `node "${lintBin}" ${command}`.trim();
-    
+
     return await execInDir(fullCommand, cwd);
 }
 
@@ -44,7 +44,10 @@ test('should update scaffolding files when they are outdated', async () => {
         // Verify file was updated
         const newContent = readFile(tempDir, '.eslintrc.js');
         assert.notStrictEqual(newContent, oldContent, 'File should be updated');
-        assert(newContent.includes('@diplodoc/lint/eslint-config'), 'Should contain correct config');
+        assert(
+            newContent.includes('@diplodoc/infra/eslint-config'),
+            'Should contain correct config',
+        );
     } finally {
         await removeTempDir(tempDir);
     }
@@ -63,7 +66,10 @@ test('should update ignore files with missing patterns', async () => {
 
         // Remove some patterns from ignore file
         const gitignore = readFile(tempDir, '.gitignore');
-        const modifiedGitignore = gitignore.split('\n').filter(line => !line.includes('.idea')).join('\n');
+        const modifiedGitignore = gitignore
+            .split('\n')
+            .filter((line) => !line.includes('.idea'))
+            .join('\n');
         writeFile(tempDir, '.gitignore', modifiedGitignore);
 
         // Execute update
@@ -128,8 +134,12 @@ test('should not modify package.json scripts on update', async () => {
 
         // Verify custom script is preserved
         const updatedPkg = readJson(tempDir, 'package.json');
-        assert.strictEqual(updatedPkg.scripts.custom, 'echo custom', 'Custom script should be preserved');
-        assert.strictEqual(updatedPkg.scripts.lint, 'lint update && lint', 'Lint script should still exist');
+        assert.strictEqual(
+            updatedPkg.scripts.custom,
+            'echo custom',
+            'Custom script should be preserved',
+        );
+        assert.strictEqual(updatedPkg.scripts.lint, 'lint', 'Lint script should still exist');
     } finally {
         await removeTempDir(tempDir);
     }
@@ -193,7 +203,10 @@ test('should handle update when files are already up-to-date', async () => {
         const updatedGitignore = readFile(tempDir, '.gitignore');
 
         // Files should still contain the same essential content
-        assert(updatedEslintrc.includes('@diplodoc/lint/eslint-config'), 'Should still have correct config');
+        assert(
+            updatedEslintrc.includes('@diplodoc/infra/eslint-config'),
+            'Should still have correct config',
+        );
         assert(updatedGitignore.includes('node_modules'), 'Should still have node_modules');
     } finally {
         await removeTempDir(tempDir);
@@ -201,4 +214,3 @@ test('should handle update when files are already up-to-date', async () => {
 });
 
 module.exports = {tests};
-

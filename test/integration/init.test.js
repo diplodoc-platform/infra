@@ -19,7 +19,7 @@ function getLintBin() {
 async function runLintCommand(command, cwd) {
     const lintBin = getLintBin();
     const fullCommand = `node "${lintBin}" ${command}`.trim();
-    
+
     return await execInDir(fullCommand, cwd);
 }
 
@@ -38,9 +38,9 @@ test('should initialize lint in clean directory', async () => {
 
         // Verify package.json scripts
         const pkg = readJson(tempDir, 'package.json');
-        assert.strictEqual(pkg.scripts.lint, 'lint update && lint');
-        assert.strictEqual(pkg.scripts['lint:fix'], 'lint update && lint fix');
-        assert.strictEqual(pkg.scripts['pre-commit'], 'lint update && lint-staged');
+        assert.strictEqual(pkg.scripts.lint, 'lint');
+        assert.strictEqual(pkg.scripts['lint:fix'], 'lint fix');
+        assert.strictEqual(pkg.scripts['pre-commit'], 'lint-staged');
         // husky init may modify prepare script, so just check it exists
         assert(pkg.scripts.prepare !== undefined, 'prepare script should exist');
 
@@ -110,7 +110,10 @@ test('should initialize Husky on init', async () => {
         assert(fileExists(tempDir, '.husky/pre-commit'), '.husky/pre-commit should exist');
 
         const preCommit = readFile(tempDir, '.husky/pre-commit');
-        assert(preCommit.includes('npm run pre-commit'), 'pre-commit hook should run npm run pre-commit');
+        assert(
+            preCommit.includes('npm run pre-commit'),
+            'pre-commit hook should run npm run pre-commit',
+        );
     } finally {
         await removeTempDir(tempDir);
     }
@@ -142,4 +145,3 @@ test('should create all required ignore files with patterns', async () => {
 });
 
 module.exports = {tests};
-

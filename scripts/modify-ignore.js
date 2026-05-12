@@ -1,31 +1,12 @@
 const {join} = require('node:path');
 const {readFileSync, writeFileSync, existsSync} = require('node:fs');
 
-const SYSTEM = [
-    '.idea',
-    '.vscode',
-    '.history',
-    '.env',
-    '.DS_Store',
-];
-const ARTIFACTS = [
-    '/lib',
-    '/dist',
-    '/build',
-    '/cache',
-    '/coverage',
-    '/external',
-];
-const INSTALL = [
-    'node_modules',
-];
+const SYSTEM = ['.idea', '.vscode', '.history', '.env', '.DS_Store'];
+const ARTIFACTS = ['/lib', '/dist', '/build', '/cache', '/coverage', '/external'];
+const INSTALL = ['node_modules'];
 
 const ignores = {
-    '.gitignore': [
-        ...SYSTEM,
-        ...INSTALL,
-        ...ARTIFACTS,
-    ],
+    '.gitignore': [...SYSTEM, ...INSTALL, ...ARTIFACTS],
     '.eslintignore': [
         ...SYSTEM,
         ...INSTALL,
@@ -38,20 +19,14 @@ const ignores = {
         // Build scripts that use newer syntax not yet supported by ESLint parser
         'esbuild/**/*.mjs',
     ],
-    '.prettierignore': [
-        ...SYSTEM,
-        ...INSTALL,
-        ...ARTIFACTS,
-    ],
-    '.stylelintignore': [
-        ...SYSTEM,
-        ...INSTALL,
-        ...ARTIFACTS,
-    ]
+    '.prettierignore': [...SYSTEM, ...INSTALL, ...ARTIFACTS],
+    '.stylelintignore': [...SYSTEM, ...INSTALL, ...ARTIFACTS],
 };
 
+const targetDir = process.env.INFRA_TARGET_DIR || process.cwd();
+
 for (const [file, list] of Object.entries(ignores)) {
-    const filename = join(process.cwd(), file);
+    const filename = join(targetDir, file);
 
     let source;
     try {
@@ -60,7 +35,7 @@ for (const [file, list] of Object.entries(ignores)) {
         source = [];
     }
 
-    console.log('[@diplodoc/lint]', 'Update', file);
+    console.log('[@diplodoc/infra]', 'Update', file);
 
     for (const rule of list) {
         add(source, rule);
@@ -72,6 +47,6 @@ for (const [file, list] of Object.entries(ignores)) {
 function add(source, ignore) {
     if (!source.includes(ignore)) {
         source.push(ignore);
-        console.log('[@diplodoc/lint]', '=> Add', ignore);
+        console.log('[@diplodoc/infra]', '=> Add', ignore);
     }
 }

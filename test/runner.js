@@ -17,7 +17,7 @@ async function runTestFile(filePath) {
     // Clear require cache to allow re-running tests
     delete require.cache[require.resolve(filePath)];
     const testModule = require(filePath);
-    
+
     if (testModule.tests && Array.isArray(testModule.tests)) {
         // If test file exports tests array
         for (const test of testModule.tests) {
@@ -44,7 +44,7 @@ async function runTestFile(filePath) {
 
 async function runTestsInDir(dir, type) {
     const files = readdirSync(dir);
-    const testFiles = files.filter(f => f.endsWith('.test.js'));
+    const testFiles = files.filter((f) => f.endsWith('.test.js'));
 
     if (testFiles.length === 0) {
         return;
@@ -56,7 +56,7 @@ async function runTestsInDir(dir, type) {
     for (const file of testFiles) {
         const filePath = join(dir, file);
         console.log(`\nRunning ${file}...`);
-        
+
         try {
             await runTestFile(filePath);
         } catch (error) {
@@ -70,7 +70,7 @@ async function runTestsInDir(dir, type) {
 
 async function main() {
     const filter = process.argv[2]; // 'unit' or 'integration' or undefined for all
-    
+
     console.log('Running tests...\n');
 
     // Run unit tests
@@ -112,11 +112,10 @@ async function main() {
 }
 
 if (require.main === module) {
-    main().catch(error => {
+    main().catch((error) => {
         console.error('Test runner error:', error);
         process.exit(1);
     });
 }
 
 module.exports = {runTestFile};
-

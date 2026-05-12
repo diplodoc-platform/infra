@@ -32,9 +32,9 @@ test('should add scripts to empty package.json', async () => {
 
         // Verify
         const result = readJson(tempDir, 'package.json');
-        assert.strictEqual(result.scripts.lint, 'lint update && lint');
-        assert.strictEqual(result.scripts['lint:fix'], 'lint update && lint fix');
-        assert.strictEqual(result.scripts['pre-commit'], 'lint update && lint-staged');
+        assert.strictEqual(result.scripts.lint, 'lint');
+        assert.strictEqual(result.scripts['lint:fix'], 'lint fix');
+        assert.strictEqual(result.scripts['pre-commit'], 'lint-staged');
         // prepare script should be set (husky || true is forced)
         assert(result.scripts.prepare !== undefined, 'prepare script should exist');
         assert(result.scripts.prepare.includes('husky'), 'prepare script should contain husky');
@@ -51,7 +51,7 @@ test('should not overwrite existing scripts with same implementation', async () 
             name: 'test-package',
             version: '1.0.0',
             scripts: {
-                lint: 'lint update && lint',
+                lint: 'lint',
                 build: 'echo build',
             },
         };
@@ -62,9 +62,9 @@ test('should not overwrite existing scripts with same implementation', async () 
 
         // Verify
         const result = readJson(tempDir, 'package.json');
-        assert.strictEqual(result.scripts.lint, 'lint update && lint');
+        assert.strictEqual(result.scripts.lint, 'lint');
         assert.strictEqual(result.scripts.build, 'echo build'); // Preserved
-        assert.strictEqual(result.scripts['lint:fix'], 'lint update && lint fix'); // Added
+        assert.strictEqual(result.scripts['lint:fix'], 'lint fix'); // Added
     } finally {
         await removeTempDir(tempDir);
     }
@@ -90,7 +90,7 @@ test('should throw error when script exists with different implementation', asyn
             },
             (error) => {
                 return error.message.includes('already configured with different program');
-            }
+            },
         );
     } finally {
         await removeTempDir(tempDir);
@@ -146,7 +146,7 @@ test('should preserve unrelated scripts', async () => {
         assert.strictEqual(result.scripts.build, 'tsc');
         assert.strictEqual(result.scripts.test, 'vitest');
         assert.strictEqual(result.scripts.start, 'node index.js');
-        assert.strictEqual(result.scripts.lint, 'lint update && lint');
+        assert.strictEqual(result.scripts.lint, 'lint');
     } finally {
         await removeTempDir(tempDir);
     }
@@ -166,7 +166,7 @@ test('should throw error when package.json is invalid JSON', async () => {
             },
             (error) => {
                 return error.message.includes('Unable to modify');
-            }
+            },
         );
     } finally {
         await removeTempDir(tempDir);
@@ -183,7 +183,7 @@ test('should throw error when package.json does not exist', async () => {
             },
             (error) => {
                 return error.code === 'ENOENT' || error.message.includes('Unable to modify');
-            }
+            },
         );
     } finally {
         await removeTempDir(tempDir);
@@ -210,4 +210,3 @@ test('should create scripts field if it does not exist', async () => {
 });
 
 module.exports = {tests};
-

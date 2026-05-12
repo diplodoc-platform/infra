@@ -1,9 +1,10 @@
 {
-  "name": "@diplodoc/lint",
-  "version": "1.14.2",
-  "description": "Diplodoc platform internal utility set for linting",
+  "name": "@diplodoc/infra",
+  "version": "1.0.0",
+  "description": "Diplodoc platform infrastructure management — linting, CI workflows, and scaffolding",
   "bin": {
     "lint": "./bin/lint.js",
+    "infra": "./bin/infra.js",
     "husky": "./bin/husky",
     "eslint": "./bin/eslint",
     "prettier": "./bin/prettier",
@@ -16,7 +17,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:diplodoc-platform/lint.git"
+    "url": "git@github.com:diplodoc-platform/infra.git"
   },
   "scripts": {
     "test": "cd test && npm install && node runner.js",
@@ -24,8 +25,8 @@
     "test:integration": "cd test && npm install && node runner.js integration",
     "test:old": "cd test && npm start",
     "lint": "exit 0",
-    "lint:fix": "lint update && lint fix",
-    "pre-commit": "lint update && lint-staged",
+    "lint:fix": "lint fix",
+    "pre-commit": "lint-staged",
     "prepare": "husky | exit 0",
     "typecheck": "exit 0",
     "build": "exit 0"
@@ -35,6 +36,7 @@
     "src",
     "scaffolding",
     "scripts",
+    "distribution.yml",
     "eslint-common-config.js",
     "eslint-client-config.js",
     "eslint-node-config.js",
