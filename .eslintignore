@@ -21,6 +21,12 @@ bin/
 .eslintrc.js
 .prettierrc.js
 .stylelintrc.js
+# Root config exports — no tsconfig coverage needed
+eslint-*-config.js
+prettier-*-config.js
+stylelint-*-config.js
+# Type declarations without tsconfig
+src/esbuild.d.ts
 build/
 build/**
 esbuild/
