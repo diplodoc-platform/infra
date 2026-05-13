@@ -79,6 +79,81 @@ The package exposes two binaries:
 
 The `lint` binary is kept for backward compatibility. The `infra` binary is the new primary entry point for scaffolding and distribution.
 
+### Lint Script Behavior
+
+**Default mode** (`lint`):
+
+- Runs ESLint on all JS/TS files (check only)
+  - Uses `ESLINT_USE_FLAT_CONFIG=false` to force legacy (ESLint 8-style) config resolution
+  - Calls ESLint with `.` and `--ext .js,.mjs,.cjs,.jsx,.ts,.mts,.cts,.tsx`
+  - ESLint automatically reads `.eslintrc.js` and `.eslintignore` from package root
+  - No additional file filtering in `bin/lint.js`
+- Runs Prettier in check mode on all JS/TS files
+- Runs Stylelint on CSS/SCSS files (if found and not ignored)
+
+**Fix mode** (`lint fix`):
+
+- Runs ESLint with `--fix` flag (same config as check mode)
+- Runs Prettier with `--write` flag (formats files)
+- Runs Stylelint with `--fix` flag
+
+### Proxy Scripts
+
+The `bin/` directory contains proxy scripts that redirect to original binaries:
+
+- `eslint` → `eslint/bin/eslint.js`
+- `prettier` → `prettier/bin/prettier.cjs`
+- `stylelint` → `stylelint/bin/stylelint.mjs`
+- `husky` → `husky/bin.js`
+- `lint-staged` → `lint-staged/bin/lint-staged.js`
+- `svgo` → `svgo/bin/svgo`
+
+How they work: find the source directory of `@diplodoc/infra`, use `require.resolve()` to locate the original package in `node_modules`, then redirect execution.
+
+## Tech Stack
+
+- **Language**: JavaScript (Node.js) — no TypeScript, pure JavaScript
+- **Runtime**: Node.js (npm >=11.5.1)
+- **Testing**: Custom test setup in `test/` directory (Node.js `assert` and `child_process`, no testing framework)
+- **Build**: No build step required (pure JavaScript package)
+- **YAML parsing**: `js-yaml` (for `distribution.yml` and `.infrarc.yml`)
+
+## Usage Modes
+
+This package can be used in two different contexts:
+
+### 1. As Part of Metapackage (Workspace Mode)
+
+When `@diplodoc/infra` is part of the Diplodoc metapackage:
+
+- Located at `devops/infra/` in the metapackage
+- Linked via npm workspaces
+- Dependencies are shared from metapackage root `node_modules`
+- Can be developed alongside other packages
+- Changes are immediately available to other packages via workspace linking
+
+### 2. As Standalone Package (Independent Mode)
+
+When `@diplodoc/infra` is used as a standalone npm package:
+
+- Installed via `npm install --save-dev @diplodoc/infra`
+- Has its own `node_modules` with all dependencies
+- Can be cloned and developed independently
+
+### Important Considerations
+
+**Path Resolution**:
+
+- In metapackage: Scripts resolve paths relative to metapackage structure
+- Standalone: Scripts resolve paths relative to package root
+- Proxy scripts (`bin/eslint`, etc.) use `require.resolve()` which works in both modes
+
+**Package Lock Management**:
+
+- When adding/updating dependencies, use `npm i --no-workspaces --package-lock-only` to regenerate `package-lock.json` for standalone mode
+- This ensures `package-lock.json` is valid when package is used outside workspace
+- Always regenerate after dependency changes to maintain standalone compatibility
+
 ## Project Structure
 
 ### Main Directories
@@ -260,6 +335,59 @@ These exclusions are merged (union) with the central `distribution.yml` exclusio
 | `--output <path>` | Write diff report to file (with `--dry-run`)                |
 | `--version <tag>` | Version tag for branch/PR naming                            |
 
+## Scaffolding Files Detail
+
+Files in `scaffolding/` are copied to packages during `init`/`update`:
+
+**`.eslintrc.js`**: Extends `@diplodoc/infra/eslint-config`, configures TypeScript parser with `project: true`, sets `root: true`.
+
+**`.prettierrc.js`**: Exports `@diplodoc/infra/prettier-config` directly.
+
+**`.stylelintrc.js`**: Extends `@diplodoc/infra/stylelint-config`.
+
+**`.lintstagedrc.js`**: Configures lint-staged:
+
+- JS/TS files: Prettier + ESLint (with auto-fix, excludes config files and scripts)
+- CSS/SCSS files: Prettier + Stylelint (with auto-fix)
+- JSON/YAML/MD files: Prettier
+- SVG files: SVGO optimization
+- Automatically runs `npm test` when test files (`.test.ts`, `.spec.ts`) or source files (`src/`) change
+
+**`.editorconfig`**: UTF-8, LF line endings, 4-space indent default, 2-space for JS/TS/JSON/YAML.
+
+**`.husky/pre-commit`**: Runs `npm run pre-commit`.
+
+**`.husky/commit-msg`**: Validates Conventional Commits format, rejects Cyrillic, allows `fixup!`/`squash!` prefixes, supports `!` for breaking changes.
+
+**`sonar-project.properties`**: SonarCloud config. `{{PACKAGE_NAME}}` placeholder is substituted from `package.json` name (without scope, e.g. `@diplodoc/foo` → `foo`). Substitution is done in `scripts/copy-scaffolding.js`.
+
+**`.github/workflows/sonarcloud.yml`**: Runs SonarCloud analysis on push/PR. Only when `test:coverage` script exists and coverage was generated.
+
+**`.github/workflows/coverage.yml`**: Optional workflow — runs `test:coverage` when script exists, exits successfully when absent.
+
+### Auto-Generated Configuration Files
+
+These files are considered auto-generated and should NOT be edited manually in consumers:
+
+- `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`, `.lintstagedrc.js`
+
+Rules:
+
+- Copied from `scaffolding/` during `infra init` / `infra update` / `distribute-infra.yml`
+- Manual edits will be overwritten on next infrastructure update
+- To customize behavior: update templates in `scaffolding/`, or use local `src/.eslintrc.js` overrides
+
+### Ignore Files
+
+Updated via `modify-ignore.js`. Adds standard patterns:
+
+- System files: `.idea`, `.vscode`, `.history`, `.env`, `.DS_Store`
+- Build artifacts: `/lib`, `/dist`, `/build`, `/cache`, `/coverage`, `/external`
+- Dependencies: `node_modules`
+- ESLint-specific: `esbuild/**/*.mjs`, config files (`.lintstagedrc.js`, `.eslintrc.js`, etc.)
+
+**Important**: `test/` and `scripts/` are NOT added to `.eslintignore` — tests and scripts should be linted.
+
 ## Consumer Package Scripts
 
 After `infra init`, consumer packages get these scripts:
@@ -357,4 +485,14 @@ npx @diplodoc/infra blacklist audit
 
 5. **Pre-release safety**: The `integration-test.yml` workflow blocks merging if scaffolding changes break any of the 3 reference packages.
 
-6. **Migration from @diplodoc/lint**: Consumer packages need to update their `devDependencies` from `@diplodoc/lint` to `@diplodoc/infra`. The first `distribute-infra` run can handle this.
+6. **Migration from @diplodoc/lint**: Consumer packages need to update their `devDependencies` from `@diplodoc/lint` to `@diplodoc/infra`. The first `distribute-infra` run handles this automatically.
+
+7. **Dual usage mode**: This package works both in metapackage (workspace) and standalone npm mode. All scripts must work correctly in both contexts. When making changes, test both modes.
+
+8. **Package independence**: This package should not depend on other Diplodoc packages (except devops infra like `@diplodoc/tsconfig`).
+
+9. **Used by all packages**: Critical infrastructure used by all Diplodoc packages. Changes should be carefully tested.
+
+10. **Extensibility**: Packages can extend ESLint configs at the `src` level (e.g., `src/.eslintrc.js`), but should not override base configs.
+
+11. **Replaces deprecated packages**: Replaces `@diplodoc/eslint-config`, `@diplodoc/prettier-config`, and `@diplodoc/lint`. Do not use those packages.

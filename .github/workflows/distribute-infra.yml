@@ -86,6 +86,9 @@ jobs:
           [ "$(printf '%s\n' "11.5.1" "$(npm -v)" | sort -V | head -n1)" = "11.5.1" ] || npm install -g npm@11.5.1
         shell: bash
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Clone target repository
         run: |
           gh repo clone diplodoc-platform/${{ matrix.repo }} target -- --depth 1
@@ -193,19 +196,12 @@ jobs:
         working-directory: target
         run: |
           AUTO_MERGE=$(node -e "
+            const yaml = require('js-yaml');
             const fs = require('fs');
-            const content = fs.readFileSync('../distribution.yml', 'utf8');
-
-            // Parse defaults
-            const defaultMatch = content.match(/defaults:[\\s\\S]*?auto_merge:\\s*(true|false)/);
-            let autoMerge = defaultMatch ? defaultMatch[1] === 'true' : false;
-
-            // Parse repo-specific override
-            const repoMatch = content.match(new RegExp('  ${{ matrix.repo }}:[\\\\s\\\\S]*?(?=\\n  \\\\w|$)'));
-            if (repoMatch && /auto_merge:\\s*(true|false)/.test(repoMatch[0])) {
-              autoMerge = repoMatch[0].match(/auto_merge:\\s*(true|false)/)[1] === 'true';
-            }
-
+            const config = yaml.load(fs.readFileSync('../distribution.yml', 'utf8'));
+            const defaults = config.defaults || {};
+            const repo = (config.repos || {})['${{ matrix.repo }}'] || {};
+            const autoMerge = repo.auto_merge !== undefined ? repo.auto_merge : (defaults.auto_merge || false);
             console.log(autoMerge ? 'true' : 'false');
           ")
 
