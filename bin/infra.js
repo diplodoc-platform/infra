@@ -3,6 +3,7 @@
 const {execSync} = require('node:child_process');
 const {realpathSync, readFileSync, existsSync, writeFileSync, mkdirSync} = require('node:fs');
 const {dirname, join, resolve} = require('node:path');
+const yaml = require('js-yaml');
 
 const scriptPath = realpathSync(__filename);
 const srcDir = dirname(dirname(scriptPath));
@@ -41,103 +42,11 @@ function execCommand(cmd, options = {}) {
     }
 }
 
+
+
 function loadYaml(filePath) {
     const content = readFileSync(filePath, 'utf8');
-    // Minimal YAML parser for distribution.yml format
-    // Supports: top-level keys, nested objects, arrays with string/object items
-    return parseYamlSimple(content);
-}
-
-function parseYamlSimple(content) {
-    const lines = content.split('\n');
-    const result = {};
-    let currentTopKey = null;
-    let currentRepoKey = null;
-    let currentArrayKey = null;
-    let currentArrayItem = null;
-
-    for (const rawLine of lines) {
-        const line = rawLine.replace(/\r$/, '');
-        if (!line.trim() || line.trim().startsWith('#')) continue;
-
-        const indent = line.length - line.trimStart().length;
-        const trimmed = line.trim();
-
-        if (indent === 0 && trimmed.endsWith(':')) {
-            currentTopKey = trimmed.slice(0, -1);
-            result[currentTopKey] = {};
-            currentRepoKey = null;
-            currentArrayKey = null;
-            continue;
-        }
-
-        if (indent === 0 && trimmed.includes(':')) {
-            const [key, ...rest] = trimmed.split(':');
-            result[key.trim()] = rest.join(':').trim();
-            continue;
-        }
-
-        if (currentTopKey === 'repos' && indent === 2 && trimmed.endsWith(':')) {
-            currentRepoKey = trimmed.slice(0, -1);
-            result[currentTopKey][currentRepoKey] = {};
-            currentArrayKey = null;
-            continue;
-        }
-
-        if (currentRepoKey && indent === 4 && trimmed.includes(':') && !trimmed.startsWith('-')) {
-            const [key, ...rest] = trimmed.split(':');
-            const value = rest.join(':').trim();
-            if (value === '' || value === '[]') {
-                result[currentTopKey][currentRepoKey][key.trim()] = value === '[]' ? [] : {};
-                currentArrayKey = key.trim();
-            } else if (value === 'true') {
-                result[currentTopKey][currentRepoKey][key.trim()] = true;
-            } else if (value === 'false') {
-                result[currentTopKey][currentRepoKey][key.trim()] = false;
-            } else {
-                result[currentTopKey][currentRepoKey][key.trim()] = value;
-            }
-            continue;
-        }
-
-        if (currentRepoKey && currentArrayKey && indent >= 6 && trimmed.startsWith('- ')) {
-            const arr = result[currentTopKey][currentRepoKey][currentArrayKey];
-            if (!Array.isArray(arr)) {
-                result[currentTopKey][currentRepoKey][currentArrayKey] = [];
-            }
-            const itemValue = trimmed.slice(2).trim();
-            if (itemValue.startsWith('path:')) {
-                currentArrayItem = {path: itemValue.slice(5).trim()};
-                result[currentTopKey][currentRepoKey][currentArrayKey].push(currentArrayItem);
-            } else {
-                currentArrayItem = null;
-                result[currentTopKey][currentRepoKey][currentArrayKey].push(itemValue);
-            }
-            continue;
-        }
-
-        if (currentArrayItem && indent >= 8 && trimmed.includes(':')) {
-            const [key, ...rest] = trimmed.split(':');
-            const value = rest
-                .join(':')
-                .trim()
-                .replace(/^["']|["']$/g, '');
-            currentArrayItem[key.trim()] = value;
-            continue;
-        }
-
-        if (currentTopKey === 'defaults' && indent === 2 && trimmed.includes(':')) {
-            const [key, ...rest] = trimmed.split(':');
-            const value = rest.join(':').trim();
-            if (value === 'true') result[currentTopKey][key.trim()] = true;
-            else if (value === 'false') result[currentTopKey][key.trim()] = false;
-            else if (value === '[]') result[currentTopKey][key.trim()] = [];
-            else result[currentTopKey][key.trim()] = value;
-            continue;
-        }
-    }
-
-    return result;
+    return yaml.load(content) || {};
 }
 
 function loadInfrarc(targetDir) {
@@ -252,7 +161,7 @@ function runSync() {
             }
             // Revert changes in target directory
             try {
-                execSync('git checkout -- .', {cwd: absTarget, stdio: 'pipe', shell});
+                execSync('git checkout -- . && git clean -fd', {cwd: absTarget, stdio: 'pipe', shell});
             } catch {
                 // Not a git repo or no changes to revert
             }
@@ -411,14 +320,29 @@ function generateDiffReport(targetDir, repoName, blacklist) {
 }
 
 function formatDiffReports(reports) {
-    const withChanges = reports.filter((r) => r.hasChanges || r.body.includes('blacklist'));
     const noChanges = reports.filter((r) => !r.hasChanges && !r.body.includes('blacklist'));
+    const withChanges = reports.filter((r) => r.hasChanges || r.body.includes('blacklist'));
+
+    // Group repos with identical diffs
+    const groups = new Map();
+    for (const report of withChanges) {
+        const key = report.body;
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key).push(report.repoName);
+    }
 
     const lines = [];
 
-    for (const report of withChanges) {
-        lines.push(`## ${report.repoName}\n`);
-        lines.push(report.body);
+    for (const [body, repos] of groups) {
+        if (repos.length === 1) {
+            lines.push(`## ${repos[0]}\n`);
+            lines.push(body);
+        } else {
+            lines.push(`## ${repos.join(', ')} (${repos.length} repos)\n`);
+            lines.push(body);
+        }
         lines.push('\n---\n');
     }
 

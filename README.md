@@ -104,6 +104,51 @@ exclude:
 
 Both lists are merged during distribution. Entries with expired `until` dates are ignored.
 
+## Supported Tools
+
+### ESLint
+
+- Configurations for TypeScript and JavaScript
+- React support (via `eslint-config/client`)
+- Node.js support (via `eslint-config/node`)
+- Project-aware TypeScript parsing
+- Uses `ESLINT_USE_FLAT_CONFIG=false` (legacy ESLint 8-style config)
+
+### Prettier
+
+- Unified formatting style for all packages
+- Uses `@gravity-ui/prettier-config` as base
+
+### Stylelint
+
+- CSS and SCSS support
+- Uses `@gravity-ui/stylelint-config` as base
+
+### Husky
+
+- Git hooks management
+- Pre-commit hook runs `lint-staged`
+
+### lint-staged
+
+- Checks only changed files
+- Fast pre-commit checking
+- Runs unit tests when test/source files change
+
+### SonarCloud
+
+Scaffolding provides optional SonarCloud integration:
+
+- **`sonar-project.properties`** — copied with `{{PACKAGE_NAME}}` substitution (scope removed, e.g. `@diplodoc/foo` → `foo`)
+- **`.github/workflows/sonarcloud.yml`** — runs analysis on push/PR to `master`/`main` (only when `test:coverage` script exists)
+- **`.github/workflows/coverage.yml`** — optional, runs `test:coverage` when script exists
+
+To enable SonarCloud for a repository:
+
+1. Add the repository in [SonarCloud](https://sonarcloud.io) (organization `diplodoc-platform`)
+2. Add the **SONAR_TOKEN** secret in GitHub repo settings
+3. Optionally add a `test:coverage` script (e.g. `vitest run --coverage`)
+
 ## Commands
 
 ### `lint` (linting only)
@@ -127,6 +172,54 @@ Both lists are merged during distribution. Entries with expired `until` dates ar
 | `infra blacklist audit`           | List expired exclusions                |
 
 ## Configuration
+
+### ⚠️ Important: Auto-Generated Files
+
+The following configuration files are **automatically generated and updated** by `@diplodoc/infra`:
+
+- `.eslintrc.js`, `.prettierrc.js`, `.stylelintrc.js`, `.lintstagedrc.js`
+- `.eslintignore`, `.prettierignore`, `.stylelintignore`
+- `.gitignore` (patterns are added automatically)
+- `.github/workflows/*.yml`
+
+**⚠️ DO NOT EDIT THESE FILES MANUALLY** — any changes will be overwritten on the next infrastructure update.
+
+If you need to customize:
+
+1. Check if the customization can be done via package-level overrides (e.g. `src/.eslintrc.js`)
+2. If not, add the file to blacklist (`.infrarc.yml`) and manage it manually
+3. Or open a PR to `@diplodoc/infra` to add the feature to templates
+
+### Configuration File Examples
+
+**`.eslintrc.js`**:
+
+```javascript
+module.exports = {
+  root: true,
+  extends: require.resolve('@diplodoc/infra/eslint-config'),
+  parserOptions: {
+    tsconfigRootDir: __dirname,
+    project: true,
+  },
+};
+```
+
+Packages can extend the configuration at `src/` level, but should not override base settings.
+
+**`.prettierrc.js`**:
+
+```javascript
+module.exports = require('@diplodoc/infra/prettier-config');
+```
+
+**`.stylelintrc.js`**:
+
+```javascript
+module.exports = {
+  extends: require.resolve('@diplodoc/infra/stylelint-config'),
+};
+```
 
 ### Auto-Generated Files
 
@@ -210,6 +303,29 @@ repos:
         reason: 'Custom release process' # Why excluded
         until: '2026-07-01' # Auto-expires
 ```
+
+## Metapackage vs Standalone Usage
+
+The package works in two modes:
+
+### In Metapackage (workspace mode)
+
+When installed as part of the Diplodoc metapackage via npm workspaces:
+
+- Located at `devops/infra/` in the metapackage
+- Dependencies are resolved through shared `node_modules`
+- Commands work through workspace links
+- `package-lock.json` is managed at the metapackage level
+
+### Standalone Mode
+
+When used as an independent npm package:
+
+- All dependencies are installed locally
+- Commands work through `node_modules/.bin`
+- For `package-lock.json` management, use `npm i --no-workspaces --package-lock-only`
+
+Both modes are supported automatically — path resolution uses `require.resolve()` which works in both contexts.
 
 ## Development
 
