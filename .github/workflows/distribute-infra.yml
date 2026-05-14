@@ -215,9 +215,28 @@ jobs:
         working-directory: target
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: 'diplodoc-platform/${{ matrix.repo }}'
         run: |
           BRANCH="infra/update-${VERSION}"
 
+          # ----- Pre-flight: detect directory-file conflict in remote refs -----
+          # Git stores refs as a filesystem-like tree. If a leaf ref `refs/heads/<parent>`
+          # exists (e.g. `infra`), we cannot create `refs/heads/<parent>/<child>`
+          # (e.g. `infra/update-v1.0.0`) — the path is occupied by a "file".
+          # Fail early with a clear message instead of getting a cryptic
+          # "remote rejected ... (directory file conflict)" from git push.
+          PARENT_REF="${BRANCH%%/*}"
+          if [[ "$PARENT_REF" != "$BRANCH" ]]; then
+            if gh api "repos/${REPO}/git/refs/heads/${PARENT_REF}" >/dev/null 2>&1; then
+              echo "::error::Repository ${REPO} has a conflicting ref 'refs/heads/${PARENT_REF}'."
+              echo "::error::This blocks creation of '${BRANCH}' (git directory/file conflict)."
+              echo "::error::Resolve manually, then re-run this workflow for target=${{ matrix.repo }}:"
+              echo "::error::  gh api -X DELETE repos/${REPO}/git/refs/heads/${PARENT_REF}"
+              exit 1
+            fi
+          fi
+
+          # ----- Commit & push the branch -----
           # Create local branch on top of current HEAD (with scaffolding changes applied).
           # -B creates the branch or resets it if it exists locally.
           git checkout -B "${BRANCH}"
@@ -230,22 +249,26 @@ jobs:
           # Force push and set upstream so `gh pr create` knows the head branch.
           git push -u --force origin "${BRANCH}"
 
-          # Create PR if it doesn't exist
-          EXISTING_PR=$(gh pr list --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
-          if [[ -z "$EXISTING_PR" ]]; then
-            DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
+          # ----- Create PR if it doesn't exist -----
+          # Note: all gh commands below use explicit --repo to avoid ambiguity in forked
+          # repos (gh CLI defaults to upstream when the target repository is a fork).
+          EXISTING_PR=$(gh pr list --repo "${REPO}" --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [[ -n "$EXISTING_PR" ]]; then
+            echo "PR already exists: #${EXISTING_PR} — skipping creation."
+            echo "pr_url=https://github.com/${REPO}/pull/${EXISTING_PR}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-            # Ensure the "infra-auto" label exists (idempotent — silently succeeds if already present).
-            gh label create "infra-auto" --color "0E8A16" --description "Automated infrastructure update PR" 2>/dev/null || true
+          DEFAULT_BRANCH=$(gh repo view "${REPO}" --json defaultBranchRef --jq '.defaultBranchRef.name')
 
-            # Heredoc without quotes around the delimiter to allow ${VERSION} substitution.
-            # Backticks around `.infrarc.yml` are escaped to prevent command substitution.
-            gh pr create \
-              --head "${BRANCH}" \
-              --base "${DEFAULT_BRANCH}" \
-              --title "chore: update infrastructure to ${VERSION}" \
-              --label "infra-auto" \
-              --body "$(cat <<BODY
+          # Heredoc without quotes around the delimiter to allow ${VERSION} substitution.
+          # Backticks around `.infrarc.yml` are escaped to prevent command substitution.
+          PR_URL=$(gh pr create \
+            --repo "${REPO}" \
+            --head "${BRANCH}" \
+            --base "${DEFAULT_BRANCH}" \
+            --title "chore: update infrastructure to ${VERSION}" \
+            --body "$(cat <<BODY
           ## Automated Infrastructure Update
 
           This PR was automatically created by the infrastructure distribution workflow.
@@ -263,7 +286,23 @@ jobs:
           _If this PR breaks CI, please review the changes and adjust as needed._
           _To exclude specific files from future updates, add them to \`.infrarc.yml\` (see [docs](https://github.com/diplodoc-platform/infra#blacklist))._
           BODY
-          )"
+          )")
+
+          echo "Created PR: ${PR_URL}"
+
+          # ----- Attach label (best-effort, non-fatal) -----
+          # In some repos (notably forks with disabled Issues) labels API may be
+          # unavailable. We still want the PR to exist even if labelling fails.
+          if gh label create "infra-auto" \
+              --repo "${REPO}" \
+              --color "0E8A16" \
+              --description "Automated infrastructure update PR" 2>&1 | grep -v "already exists" || true; then
+            :
+          fi
+
+          if ! gh pr edit "${PR_URL}" --add-label "infra-auto"; then
+            echo "::warning::Could not add 'infra-auto' label to ${PR_URL}. PR was created without it."
+            echo "::warning::This usually means Issues are disabled in ${REPO} (common for forks)."
           fi
 
       - name: Enable auto-merge
@@ -271,6 +310,7 @@ jobs:
         working-directory: target
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: 'diplodoc-platform/${{ matrix.repo }}'
         run: |
           AUTO_MERGE=$(node -e "
             const yaml = require('js-yaml');
@@ -282,8 +322,17 @@ jobs:
             console.log(autoMerge ? 'true' : 'false');
           ")
 
-          if [[ "$AUTO_MERGE" == "true" ]]; then
-            gh pr merge --auto --squash 2>/dev/null || echo "Note: auto-merge not available for ${{ matrix.repo }}"
-          else
-            echo "Auto-merge disabled for ${{ matrix.repo }} (manual review required)"
+          if [[ "$AUTO_MERGE" != "true" ]]; then
+            echo "Auto-merge disabled for ${REPO} (manual review required)"
+            exit 0
           fi
+
+          BRANCH="infra/update-${VERSION}"
+          PR_NUMBER=$(gh pr list --repo "${REPO}" --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "::warning::No PR found for ${REPO}@${BRANCH}, skipping auto-merge"
+            exit 0
+          fi
+
+          gh pr merge "$PR_NUMBER" --repo "${REPO}" --auto --squash \
+            || echo "::warning::Auto-merge not available for ${REPO} (likely missing branch protection rules)"
