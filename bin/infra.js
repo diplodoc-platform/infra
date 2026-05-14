@@ -129,6 +129,9 @@ function runInit() {
 }
 
 function runUpdate() {
+    console.log('[@diplodoc/infra] Update package.json scripts');
+    execCommand(`node "${join(srcDir, 'scripts/modify-package.js')}"`);
+
     console.log('[@diplodoc/infra] Copy scaffolding files');
     execCommand(`node "${join(srcDir, 'scripts/copy-scaffolding.js')}"`);
 
@@ -277,6 +280,10 @@ function applySyncToTarget(targetDir, repoName, blacklist, dryRun) {
         INFRA_BLACKLIST: JSON.stringify(blacklistPaths),
     };
 
+    // Order matters: modify package.json first so subsequent steps see the
+    // up-to-date dependency list and scripts, then copy scaffolding (which may
+    // depend on canonical script names), then modify ignore/release-please.
+    execCommand(`node "${join(srcDir, 'scripts/modify-package.js')}"`, {cwd: targetDir, env});
     execCommand(`node "${join(srcDir, 'scripts/copy-scaffolding.js')}"`, {cwd: targetDir, env});
     execCommand(`node "${join(srcDir, 'scripts/modify-ignore.js')}"`, {cwd: targetDir, env});
     execCommand(`node "${join(srcDir, 'scripts/modify-release-please.js')}"`, {

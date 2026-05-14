@@ -225,9 +225,17 @@ jobs:
           # (e.g. `infra/update-v1.0.0`) — the path is occupied by a "file".
           # Fail early with a clear message instead of getting a cryptic
           # "remote rejected ... (directory file conflict)" from git push.
+          #
+          # NOTE: do NOT use `gh api .../git/refs/heads/<ref>` — that endpoint returns
+          # 200 for both exact match AND prefix match (e.g. it returns `refs/heads/infra/*`
+          # when asked about `refs/heads/infra`). We need an EXACT match only.
+          # `git ls-remote` returns all matching refs as a list; we filter for the
+          # exact ref name with `grep -Fxq`.
           PARENT_REF="${BRANCH%%/*}"
           if [[ "$PARENT_REF" != "$BRANCH" ]]; then
-            if gh api "repos/${REPO}/git/refs/heads/${PARENT_REF}" >/dev/null 2>&1; then
+            if git ls-remote origin "refs/heads/${PARENT_REF}" 2>/dev/null \
+                | awk '{print $2}' \
+                | grep -Fxq "refs/heads/${PARENT_REF}"; then
               echo "::error::Repository ${REPO} has a conflicting ref 'refs/heads/${PARENT_REF}'."
               echo "::error::This blocks creation of '${BRANCH}' (git directory/file conflict)."
               echo "::error::Resolve manually, then re-run this workflow for target=${{ matrix.repo }}:"

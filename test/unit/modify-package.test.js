@@ -70,7 +70,7 @@ test('should not overwrite existing scripts with same implementation', async () 
     }
 });
 
-test('should throw error when script exists with different implementation', async () => {
+test('should preserve customized script and warn (not throw)', async () => {
     let tempDir = await createTempDir();
     try {
         // Setup
@@ -83,15 +83,49 @@ test('should throw error when script exists with different implementation', asyn
         };
         writeJson(tempDir, 'package.json', pkg);
 
-        // Execute & Verify
-        await assert.rejects(
-            async () => {
-                await runModifyPackage(tempDir);
-            },
-            (error) => {
-                return error.message.includes('already configured with different program');
-            },
+        // Execute — should not throw, just warn
+        const {stderr} = await runModifyPackage(tempDir);
+
+        // Verify the customized value is preserved and a warning is printed
+        const result = readJson(tempDir, 'package.json');
+        assert.strictEqual(
+            result.scripts.lint,
+            'different command',
+            'customized script should be preserved',
         );
+        assert(
+            stderr.includes('WARNING') && stderr.includes('lint'),
+            `expected a WARNING about "lint" script in stderr, got: ${stderr}`,
+        );
+    } finally {
+        await removeTempDir(tempDir);
+    }
+});
+
+test('should migrate legacy "lint update && lint" → "lint"', async () => {
+    let tempDir = await createTempDir();
+    try {
+        // Setup: legacy pull-distribution scripts
+        const pkg = {
+            name: 'test-package',
+            version: '1.0.0',
+            scripts: {
+                lint: 'lint update && lint',
+                'lint:fix': 'lint update && lint fix',
+                'pre-commit': 'lint update && lint-staged',
+            },
+        };
+        writeJson(tempDir, 'package.json', pkg);
+
+        // Execute
+        const {stdout} = await runModifyPackage(tempDir);
+
+        // Verify legacy values are migrated to canonical ones
+        const result = readJson(tempDir, 'package.json');
+        assert.strictEqual(result.scripts.lint, 'lint');
+        assert.strictEqual(result.scripts['lint:fix'], 'lint fix');
+        assert.strictEqual(result.scripts['pre-commit'], 'lint-staged');
+        assert(stdout.includes('Migrate'), `expected Migrate log in stdout, got: ${stdout}`);
     } finally {
         await removeTempDir(tempDir);
     }
