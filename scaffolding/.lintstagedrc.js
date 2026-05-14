@@ -11,7 +11,7 @@ const {join} = require('node:path');
 const isInfraPkg = (() => {
     try {
         const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
-        return pkg.name === '@diplodoc/infra' || pkg.name === '@diplodoc/lint';
+        return pkg.name === '@diplodoc/infra';
     } catch {
         return false;
     }

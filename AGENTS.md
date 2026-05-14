@@ -192,6 +192,30 @@ When `@diplodoc/infra` is used as a standalone npm package:
 - `integration-test.yml` — pre-release smoke tests: applies scaffolding to 3 reference packages, runs their full CI
 - `tests.yml`, `release.yml`, `release-please.yml`, etc. — standard CI for this package itself
 
+### GitHub Tokens
+
+Two auth methods are used:
+
+- **`YC_UI_BOT_GITHUB_TOKEN`** — common org-wide PAT used by most workflows. Has `repo` scope but **no `workflow` scope**.
+- **GitHub App** (`INFRA_APP_ID` + `INFRA_APP_PRIVATE_KEY`) — used **only** by `distribute-infra.yml` to push `.github/workflows/*.yml` files to consumer repos. App has `Contents: Write`, `Workflows: Write`, `Pull requests: Write` permissions and must be installed on every target repo (or org-wide).
+
+Why a GitHub App instead of extending PAT: GitHub blocks pushing `.github/workflows/*.yml` without `workflow` scope. Using a dedicated App scopes the privilege to the distribution use case and generates short-lived installation tokens per repo (instead of a long-lived PAT with broad permissions).
+
+The workflow uses `actions/create-github-app-token@v1` to generate a fresh installation token for each target repo:
+
+```yaml
+- name: Generate App token for target repo
+  id: app-token
+  uses: actions/create-github-app-token@v1
+  with:
+    app-id: ${{ secrets.INFRA_APP_ID }}
+    private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+    owner: diplodoc-platform
+    repositories: ${{ matrix.repo }}
+```
+
+The token is then passed to subsequent steps via `${{ steps.app-token.outputs.token }}`.
+
 ## Environment Variables
 
 The helper scripts in `scripts/` support two environment variables that enable the `infra sync` command to apply scaffolding to external directories with blacklist filtering:

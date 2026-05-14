@@ -27,6 +27,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ vars.NODE_VERSION }}
+
+      - name: Install latest npm (>= 11.5.1)
+        run: |
+          [ "$(printf '%s\n' "11.5.1" "$(npm -v)" | sort -V | head -n1)" = "11.5.1" ] || npm install -g npm@11.5.1
+        shell: bash
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Determine version
         id: version
         run: |
@@ -49,12 +61,12 @@ jobs:
             exit 0
           fi
 
-          # Extract repo names from distribution.yml
+          # Extract repo names from distribution.yml (only from repos: section)
           REPOS=$(node -e "
+            const yaml = require('js-yaml');
             const fs = require('fs');
-            const content = fs.readFileSync('distribution.yml', 'utf8');
-            const repoLines = content.match(/^  \\w[\\w-]*:/gm) || [];
-            const repos = repoLines.map(l => l.trim().replace(':', ''));
+            const config = yaml.load(fs.readFileSync('distribution.yml', 'utf8'));
+            const repos = Object.keys(config.repos || {});
             console.log(JSON.stringify(repos));
           ")
 
@@ -71,11 +83,19 @@ jobs:
       fail-fast: false
       max-parallel: 5
     env:
-      GH_TOKEN: ${{ secrets.YC_UI_BOT_GITHUB_TOKEN }}
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Checkout infra repo
         uses: actions/checkout@v4
+
+      - name: Generate App token for target repo
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ matrix.repo }}
 
       - uses: actions/setup-node@v4
         with:
@@ -90,8 +110,12 @@ jobs:
         run: npm ci
 
       - name: Clone target repository
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh repo clone diplodoc-platform/${{ matrix.repo }} target -- --depth 1
+          cd target
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/diplodoc-platform/${{ matrix.repo }}.git"
 
       - name: Apply scaffolding
         run: |
@@ -132,6 +156,48 @@ jobs:
             }
           "
 
+      # ============================================================================
+      # === BEGIN MIGRATION: @diplodoc/lint → @diplodoc/infra (REMOVE AFTER DONE) ===
+      # ============================================================================
+      # Temporary one-shot rewrite of legacy package references in consumer source
+      # files (e.g. `esbuild/build.mjs` imports `@diplodoc/lint/esbuild`). Scaffolding
+      # files are already shipped with the new name; this step only touches files
+      # that are NOT managed by scaffolding (custom build scripts, helpers, etc.).
+      #
+      # Remove this step once `MIGRATION.md` § Cleanup is complete and no consumer
+      # repository contains the legacy reference. See MIGRATION.md for the checklist.
+      # ============================================================================
+      - name: 'MIGRATION: Replace legacy @diplodoc/lint references in source files'
+        working-directory: target
+        run: |
+          set -euo pipefail
+
+          FILES=$(grep -rl '@diplodoc/lint' . \
+            --include='*.mjs' \
+            --include='*.cjs' \
+            --include='*.js' \
+            --include='*.ts' \
+            --include='*.tsx' \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            --exclude-dir=build \
+            --exclude-dir=dist \
+            --exclude-dir=lib \
+            --exclude-dir=coverage \
+            || true)
+
+          if [[ -z "$FILES" ]]; then
+            echo "No legacy @diplodoc/lint references found — migration step is a no-op."
+            exit 0
+          fi
+
+          echo "Rewriting @diplodoc/lint → @diplodoc/infra in:"
+          echo "$FILES"
+          echo "$FILES" | xargs sed -i 's|@diplodoc/lint|@diplodoc/infra|g'
+      # ============================================================================
+      # === END MIGRATION ==========================================================
+      # ============================================================================
+
       - name: Check for changes
         id: changes
         working-directory: target
@@ -147,53 +213,64 @@ jobs:
       - name: Create pull request
         if: steps.changes.outputs.has_changes == 'true'
         working-directory: target
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           BRANCH="infra/update-${VERSION}"
 
-          # Check if branch already exists (update existing PR)
-          if git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
-            git fetch origin "${BRANCH}"
-            git checkout "${BRANCH}"
-            git reset --hard HEAD
-          else
-            git checkout -b "${BRANCH}"
-          fi
+          # Create local branch on top of current HEAD (with scaffolding changes applied).
+          # -B creates the branch or resets it if it exists locally.
+          git checkout -B "${BRANCH}"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add -A
           git commit -m "chore: update infrastructure to ${VERSION}"
-          git push --force-with-lease origin "${BRANCH}"
+          # Force push and set upstream so `gh pr create` knows the head branch.
+          git push -u --force origin "${BRANCH}"
 
           # Create PR if it doesn't exist
           EXISTING_PR=$(gh pr list --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [[ -z "$EXISTING_PR" ]]; then
+            DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
+
+            # Ensure the "infra-auto" label exists (idempotent — silently succeeds if already present).
+            gh label create "infra-auto" --color "0E8A16" --description "Automated infrastructure update PR" 2>/dev/null || true
+
+            # Heredoc without quotes around the delimiter to allow ${VERSION} substitution.
+            # Backticks around `.infrarc.yml` are escaped to prevent command substitution.
             gh pr create \
+              --head "${BRANCH}" \
+              --base "${DEFAULT_BRANCH}" \
               --title "chore: update infrastructure to ${VERSION}" \
-              --body "$(cat <<'BODY'
+              --label "infra-auto" \
+              --body "$(cat <<BODY
           ## Automated Infrastructure Update
 
           This PR was automatically created by the infrastructure distribution workflow.
 
-          **Version:** ${VERSION}
-          **Source:** @diplodoc/infra
+          **Source:** [@diplodoc/infra](https://github.com/diplodoc-platform/infra)
+          **Version:** [\`${VERSION}\`](https://github.com/diplodoc-platform/infra/releases/tag/${VERSION})
 
           ### What changed
           Infrastructure scaffolding files have been updated to the latest version.
           This includes linting configs, CI workflows, and other shared configuration.
 
+          See the [release notes](https://github.com/diplodoc-platform/infra/releases/tag/${VERSION}) for the full changelog.
+
           ---
           _If this PR breaks CI, please review the changes and adjust as needed._
-          _To exclude specific files from future updates, add them to `.infrarc.yml`._
+          _To exclude specific files from future updates, add them to \`.infrarc.yml\` (see [docs](https://github.com/diplodoc-platform/infra#blacklist))._
           BODY
-          )" \
-              --label "infra-auto"
+          )"
           fi
 
       - name: Enable auto-merge
         if: steps.changes.outputs.has_changes == 'true'
         working-directory: target
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           AUTO_MERGE=$(node -e "
             const yaml = require('js-yaml');

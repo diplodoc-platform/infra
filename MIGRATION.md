@@ -162,15 +162,24 @@ git submodule update --init
 
 ## Что произойдёт в каждой репе-потребителе при мерже PR
 
-| Файл                  | Изменение                                                          |
-| --------------------- | ------------------------------------------------------------------ |
-| `package.json`        | `@diplodoc/lint` удалён → `@diplodoc/infra: "1.0.0"` добавлен      |
-| `.eslintrc.js`        | `require('@diplodoc/lint/...')` → `require('@diplodoc/infra/...')` |
-| `.prettierrc.js`      | Аналогично                                                         |
-| `.stylelintrc.js`     | Аналогично                                                         |
-| `.lintstagedrc.js`    | Аналогично                                                         |
-| `.github/workflows/*` | Обновлены из scaffolding (если не в blacklist)                     |
-| `package-lock.json`   | Пересоздан с новым пакетом                                         |
+| Файл                                 | Изменение                                                          |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| `package.json`                       | `@diplodoc/lint` удалён → `@diplodoc/infra: "1.0.0"` добавлен      |
+| `.eslintrc.js`                       | `require('@diplodoc/lint/...')` → `require('@diplodoc/infra/...')` |
+| `.prettierrc.js`                     | Аналогично                                                         |
+| `.stylelintrc.js`                    | Аналогично                                                         |
+| `.lintstagedrc.js`                   | Аналогично                                                         |
+| `.github/workflows/*`                | Обновлены из scaffolding (если не в blacklist)                     |
+| `esbuild/build.mjs`                  | `@diplodoc/lint/esbuild` → `@diplodoc/infra/esbuild` (см. ниже)    |
+| Прочие `*.mjs/*.js/*.ts/*.tsx/*.cjs` | `@diplodoc/lint` → `@diplodoc/infra` (см. ниже)                    |
+| `package-lock.json`                  | Пересоздан с новым пакетом                                         |
+
+> **Про `esbuild/build.mjs` и другие source-файлы:** scaffolding **не распространяет**
+> `build.mjs` (он в каждой репе свой). Чтобы починить импорт `@diplodoc/lint/esbuild`
+> на лету, в `distribute-infra.yml` есть **временный** шаг
+> `MIGRATION: Replace legacy @diplodoc/lint references in source files`, который
+> прогоняет `sed` по `*.mjs/*.cjs/*.js/*.ts/*.tsx` в репе. Этот шаг нужно выпилить
+> после завершения миграции — см. раздел [Cleanup после миграции](#cleanup-после-миграции).
 
 ---
 
@@ -221,3 +230,64 @@ gh workflow run distribute-infra.yml \
 1. Проверь какой файл вызвал проблему
 2. Добавь его в blacklist (`.infrarc.yml` в репе ИЛИ `distribution.yml` централизованно)
 3. Пересоздай PR: ручной запуск `distribute-infra.yml` с `target=<repo>`
+
+---
+
+## Cleanup после миграции
+
+В `distribute-infra.yml` есть **временный** шаг
+`MIGRATION: Replace legacy @diplodoc/lint references in source files`, который на лету
+заменяет старое имя пакета на новое в source-файлах потребителей. Он нужен **только на
+переходный период**, пока не все репы прошли через первый distribute-PR. Его обязательно
+нужно удалить, чтобы workflow не делал лишнюю работу и не маскировал случайно
+вернувшиеся ссылки на старый пакет.
+
+### Когда удалять
+
+Шаг можно выпиливать, когда выполнены **все** условия:
+
+- [ ] Все репы из `distribution.yml` получили distribute-PR хотя бы один раз и он замержен
+- [ ] В мастер-ветке каждой репы из `distribution.yml` поиск `@diplodoc/lint` по
+      `*.mjs/*.cjs/*.js/*.ts/*.tsx` ничего не находит
+- [ ] `package-template` обновлён (новые репы стартуют сразу с `@diplodoc/infra`)
+- [ ] Старый пакет `@diplodoc/lint` помечен deprecated на npm (см. шаг 6)
+
+### Как проверить, что нигде не осталось старых ссылок
+
+Скрипт для прохода по всем репам из `distribution.yml`:
+
+```bash
+# Из корня infra репы
+node -e "
+  const yaml = require('js-yaml');
+  const fs = require('fs');
+  const config = yaml.load(fs.readFileSync('distribution.yml', 'utf8'));
+  console.log(Object.keys(config.repos || {}).join('\n'));
+" | while read repo; do
+  echo "=== $repo ==="
+  gh api "search/code?q=org:diplodoc-platform+repo:diplodoc-platform/$repo+@diplodoc/lint" \
+    --jq '.total_count'
+done
+```
+
+Если для всех реп `total_count` равен `0` — миграция завершена.
+
+### Как удалить шаг
+
+В `.github/workflows/distribute-infra.yml` удалить весь блок между маркерами:
+
+```
+# === BEGIN MIGRATION: @diplodoc/lint → @diplodoc/infra (REMOVE AFTER DONE) ===
+...
+# === END MIGRATION ===
+```
+
+И этот раздел `Cleanup после миграции` из текущего файла.
+
+Также после полного перехода стоит:
+
+- Удалить из `Update @diplodoc/infra version in package.json` ветку
+  `if (pkg[depType]['@diplodoc/lint']) { ... }` — она тоже временная.
+- Удалить упоминания `@diplodoc/lint` из таблицы «Что произойдёт в каждой репе-потребителе».
+
+После этого закрыть migration-issue.
