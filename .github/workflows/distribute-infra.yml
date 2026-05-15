@@ -16,6 +16,10 @@ on:
 
 permissions:
   contents: read
+  # actions: read is required for the aggregate-changed job to list workflow
+  # run artifacts via the GitHub API (used to derive the list of repos with
+  # pending changes from `pending-changes-<repo>` artifact names).
+  actions: read
 
 jobs:
   prepare:
@@ -72,8 +76,16 @@ jobs:
 
           echo "list=${REPOS}" >> "$GITHUB_OUTPUT"
 
-  distribute:
-    name: 'Update ${{ matrix.repo }}'
+  # ============================================================================
+  # check-changes: clone target repo, apply scaffolding, detect if anything
+  # actually changed. If there are no changes — this job ends with exit 0 and
+  # does NOT upload the `pending-changes-<repo>` artifact. The aggregate-changed
+  # job below then derives the list of repos with real diffs from the set of
+  # uploaded artifacts; that list becomes the matrix for `distribute`, so repos
+  # without changes simply never get a matrix cell.
+  # ============================================================================
+  check-changes:
+    name: 'Check ${{ matrix.repo }}'
     needs: prepare
     if: needs.prepare.outputs.repos != '[]'
     runs-on: ubuntu-latest
@@ -204,14 +216,139 @@ jobs:
         run: |
           if [[ -z $(git status --porcelain) ]]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=No changes::No scaffolding changes for ${{ matrix.repo }} — distribute job will be skipped."
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "Changes in ${{ matrix.repo }}:"
             git diff --stat
           fi
 
-      - name: Create pull request
+      # Pack the prepared target tree (with applied scaffolding + uncommitted
+      # changes) so the `distribute` job can pick it up and push without redoing
+      # the heavy clone/sync work. We use `tar` to preserve permissions and the
+      # full `.git` directory (needed for `git commit` & `git push` later).
+      - name: Pack target directory
         if: steps.changes.outputs.has_changes == 'true'
+        run: tar -czf target.tar.gz -C target .
+
+      # Upload the prepared target as an artifact so the `distribute` job can
+      # pick it up without redoing the clone/sync work.
+      - name: Upload prepared target as artifact
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pending-changes-${{ matrix.repo }}
+          path: target.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  # ============================================================================
+  # aggregate-changed: collect the list of repos that have pending changes
+  # (i.e. whose check-changes cell uploaded a `pending-changes-<repo>` artifact)
+  # and emit it as a JSON array. The `distribute` job uses this array as its
+  # matrix source — so repos without changes simply don't get a matrix cell,
+  # giving a clean per-repo skip behavior.
+  #
+  # If the resulting list is empty, the `distribute` job itself is shown as
+  # ⊘ Skipped (grey icon) in the GitHub UI thanks to its `if:` guard.
+  # ============================================================================
+  aggregate-changed:
+    name: Aggregate changed repos
+    needs: [prepare, check-changes]
+    # `always()` so we still aggregate when some matrix cells failed.
+    # Empty-repo guard short-circuits the rest.
+    if: always() && needs.prepare.outputs.repos != '[]'
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.aggregate.outputs.repos }}
+      count: ${{ steps.aggregate.outputs.count }}
+    steps:
+      - name: Build list of repos with pending changes
+        id: aggregate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // List all artifacts for the current workflow run. The presence of
+            // a `pending-changes-<repo>` artifact is the signal that this repo
+            // has actual diff to distribute.
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+
+            const prefix = 'pending-changes-';
+            const repos = data.artifacts
+              .filter(a => !a.expired && a.name.startsWith(prefix))
+              .map(a => a.name.slice(prefix.length));
+
+            core.info(`Repos with pending changes (${repos.length}): ${JSON.stringify(repos)}`);
+            core.setOutput('repos', JSON.stringify(repos));
+            core.setOutput('count', String(repos.length));
+
+            if (repos.length === 0) {
+              core.notice('No repos have pending changes — distribute job will be skipped.');
+            }
+
+  # ============================================================================
+  # distribute: push branch & open PR for repos that have pending changes.
+  # The matrix is built dynamically from `aggregate-changed.outputs.repos` so:
+  #   - Repos without changes don't get a matrix cell at all (clean skip)
+  #   - If the list is empty, the whole job is ⊘ Skipped (grey icon)
+  # Neither case contributes to the workflow's overall failure status.
+  # ============================================================================
+  distribute:
+    name: 'Update ${{ matrix.repo }}'
+    needs: [prepare, check-changes, aggregate-changed]
+    # Skip the entire job if there are no repos with pending changes. This
+    # produces a real ⊘ Skipped (grey icon) status at the job level.
+    if: |
+      needs.aggregate-changed.result == 'success' &&
+      needs.aggregate-changed.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: ${{ fromJson(needs.aggregate-changed.outputs.repos) }}
+      fail-fast: false
+      max-parallel: 5
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Checkout infra repo
+        uses: actions/checkout@v4
+
+      - name: Generate App token for target repo
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ matrix.repo }}
+
+      - name: Download prepared target
+        uses: actions/download-artifact@v4
+        with:
+          name: pending-changes-${{ matrix.repo }}
+          path: .
+
+      - name: Unpack target directory
+        run: |
+          mkdir -p target
+          tar -xzf target.tar.gz -C target
+          rm target.tar.gz
+
+      - name: Re-point origin remote with auth token
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        working-directory: target
+        run: |
+          # Artifact preserves the original remote URL; we replace it with an
+          # authenticated URL using the freshly minted GitHub App token.
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/diplodoc-platform/${{ matrix.repo }}.git"
+
+      - name: Create pull request
         working-directory: target
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -314,7 +451,6 @@ jobs:
           fi
 
       - name: Enable auto-merge
-        if: steps.changes.outputs.has_changes == 'true'
         working-directory: target
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
