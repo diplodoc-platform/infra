@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.0.0](https://github.com/diplodoc-platform/infra/compare/v1.14.2...v1.0.0) (2026-05-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* package renamed from @diplodoc/lint to @diplodoc/infra. npm run lint no longer pulls infrastructure updates. Infrastructure is now distributed via automated PRs.
+
+### Features
+
+* rename to @diplodoc/infra, switch to push distribution model ([dcbe7c3](https://github.com/diplodoc-platform/infra/commit/dcbe7c35b35833c2be8977a89c1e41e48f6cf1b5))
+
+
+### Bug Fixes
+
+* Add ! to commit prefix ([449893e](https://github.com/diplodoc-platform/infra/commit/449893e9ddcb44bcb3d19262b899fbbaf24e3830))
+* **ci:** set auto_merge -&gt; true ([10fc3d8](https://github.com/diplodoc-platform/infra/commit/10fc3d883918a7adb32476e7889231643088e677))
+* **infra:** migrate legacy lint scripts during sync, not just init ([9365cbc](https://github.com/diplodoc-platform/infra/commit/9365cbc01e98eec13adb3b10af6aa102d1383bf7))
+* set node version as variable ([69bf939](https://github.com/diplodoc-platform/infra/commit/69bf93918c901dacda14105bafeae88a017e270a))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 ([28c6d48](https://github.com/diplodoc-platform/infra/commit/28c6d4879d26ab280fdad77cccde4316aae80860))
+
 ## [1.14.2](https://github.com/diplodoc-platform/lint/compare/v1.14.1...v1.14.2) (2026-03-30)
 
 
