@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/diplodoc-platform/infra/compare/v2.0.0...v2.0.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* extend report, fix automerge, wait publish package ([6c59bb7](https://github.com/diplodoc-platform/infra/commit/6c59bb70aa0b78a2f1f4cc3a6ca7acf5b319c46d))
+
 ## [2.0.0](https://github.com/diplodoc-platform/infra/compare/v1.14.2...v2.0.0) (2026-05-15)
 
 
