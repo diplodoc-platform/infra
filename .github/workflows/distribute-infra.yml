@@ -154,17 +154,9 @@ jobs:
             let updated = false;
 
             for (const depType of ['devDependencies', 'dependencies']) {
-              if (pkg[depType]) {
-                if (pkg[depType]['@diplodoc/infra']) {
-                  pkg[depType]['@diplodoc/infra'] = version;
-                  updated = true;
-                }
-                // Migration: replace @diplodoc/lint with @diplodoc/infra
-                if (pkg[depType]['@diplodoc/lint']) {
-                  delete pkg[depType]['@diplodoc/lint'];
-                  pkg[depType]['@diplodoc/infra'] = version;
-                  updated = true;
-                }
+              if (pkg[depType] && pkg[depType]['@diplodoc/infra']) {
+                pkg[depType]['@diplodoc/infra'] = version;
+                updated = true;
               }
             }
 
@@ -175,48 +167,6 @@ jobs:
               console.log('@diplodoc/infra not found in dependencies, skipping');
             }
           "
-
-      # ============================================================================
-      # === BEGIN MIGRATION: @diplodoc/lint → @diplodoc/infra (REMOVE AFTER DONE) ===
-      # ============================================================================
-      # Temporary one-shot rewrite of legacy package references in consumer source
-      # files (e.g. `esbuild/build.mjs` imports `@diplodoc/lint/esbuild`). Scaffolding
-      # files are already shipped with the new name; this step only touches files
-      # that are NOT managed by scaffolding (custom build scripts, helpers, etc.).
-      #
-      # Remove this step once `MIGRATION.md` § Cleanup is complete and no consumer
-      # repository contains the legacy reference. See MIGRATION.md for the checklist.
-      # ============================================================================
-      - name: 'MIGRATION: Replace legacy @diplodoc/lint references in source files'
-        working-directory: target
-        run: |
-          set -euo pipefail
-
-          FILES=$(grep -rl '@diplodoc/lint' . \
-            --include='*.mjs' \
-            --include='*.cjs' \
-            --include='*.js' \
-            --include='*.ts' \
-            --include='*.tsx' \
-            --exclude-dir=node_modules \
-            --exclude-dir=.git \
-            --exclude-dir=build \
-            --exclude-dir=dist \
-            --exclude-dir=lib \
-            --exclude-dir=coverage \
-            || true)
-
-          if [[ -z "$FILES" ]]; then
-            echo "No legacy @diplodoc/lint references found — migration step is a no-op."
-            exit 0
-          fi
-
-          echo "Rewriting @diplodoc/lint → @diplodoc/infra in:"
-          echo "$FILES"
-          echo "$FILES" | xargs sed -i 's|@diplodoc/lint|@diplodoc/infra|g'
-      # ============================================================================
-      # === END MIGRATION ==========================================================
-      # ============================================================================
 
       - name: Check for changes
         id: changes
@@ -361,7 +311,7 @@ jobs:
             exit 0
           fi
 
-          if gh pr merge "$PR_NUMBER" --repo "${REPO}" --auto --squash; then
+          if gh pr merge "$PR_NUMBER" --repo "${REPO}" --auto --rebase; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::Auto-merge not available for ${REPO} (likely missing branch protection rules)"
