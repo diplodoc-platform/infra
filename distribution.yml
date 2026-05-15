@@ -15,18 +15,21 @@
 #     until: "2026-07-01"                  # auto-expires after this date
 
 defaults:
-  auto_merge: false
+  auto_merge: true
   exclude: []
 
 repos:
   # === packages ===
   cli:
+    auto_merge: false
     exclude:
       - path: .github/workflows/release.yml
         reason: 'Custom release workflow'
   client:
+    auto_merge: false
     exclude: []
   components:
+    auto_merge: false
     exclude: []
   directive:
     exclude: []
@@ -35,6 +38,7 @@ repos:
   sentenizer:
     exclude: []
   transform:
+    auto_merge: false
     exclude: []
   translation:
     exclude: []
@@ -73,8 +77,11 @@ repos:
 
   # === devops ===
   babel-preset:
+    auto_merge: false
     exclude: []
   tsconfig:
+    auto_merge: false
     exclude: []
   testpack:
+    auto_merge: false
     exclude: []
