@@ -18,6 +18,10 @@ permissions:
   contents: read
 
 jobs:
+  # ============================================================================
+  # prepare: build the list of repos to process and resolve the version tag.
+  # Output is consumed by the `distribute` matrix below.
+  # ============================================================================
   prepare:
     name: Prepare repository list
     runs-on: ubuntu-latest
@@ -72,6 +76,17 @@ jobs:
 
           echo "list=${REPOS}" >> "$GITHUB_OUTPUT"
 
+  # ============================================================================
+  # distribute: a single matrix that does ALL the work per repo —
+  # clone target, apply scaffolding, detect diff, push branch, open PR, enable
+  # auto-merge. Each matrix cell ends green (✓) on either "updated" or "skipped"
+  # (skip is a valid outcome). A real failure turns the cell red (✗).
+  #
+  # Each cell writes a tiny `status-<repo>.json` artifact with the per-repo
+  # outcome; the downstream `report` job aggregates them into a markdown summary
+  # table — that table is where the grey-icon "skipped" signal lives now
+  # (GitHub Actions does not expose a per-cell neutral state since 2020).
+  # ============================================================================
   distribute:
     name: 'Update ${{ matrix.repo }}'
     needs: prepare
@@ -84,7 +99,12 @@ jobs:
       max-parallel: 5
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      REPO: 'diplodoc-platform/${{ matrix.repo }}'
     steps:
+      - name: Record start time
+        id: start
+        run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout infra repo
         uses: actions/checkout@v4
 
@@ -204,18 +224,34 @@ jobs:
         run: |
           if [[ -z $(git status --porcelain) ]]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=No changes::No scaffolding changes for ${{ matrix.repo }} — nothing to distribute."
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "Changes in ${{ matrix.repo }}:"
             git diff --stat
           fi
 
+      - name: Resolve auto-merge flag
+        id: auto-merge
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          AUTO_MERGE=$(node -e "
+            const yaml = require('js-yaml');
+            const fs = require('fs');
+            const config = yaml.load(fs.readFileSync('distribution.yml', 'utf8'));
+            const defaults = config.defaults || {};
+            const repo = (config.repos || {})['${{ matrix.repo }}'] || {};
+            const autoMerge = repo.auto_merge !== undefined ? repo.auto_merge : (defaults.auto_merge || false);
+            console.log(autoMerge ? 'true' : 'false');
+          ")
+          echo "value=${AUTO_MERGE}" >> "$GITHUB_OUTPUT"
+
       - name: Create pull request
+        id: pr
         if: steps.changes.outputs.has_changes == 'true'
         working-directory: target
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          REPO: 'diplodoc-platform/${{ matrix.repo }}'
         run: |
           BRANCH="infra/update-${VERSION}"
 
@@ -245,8 +281,6 @@ jobs:
           fi
 
           # ----- Commit & push the branch -----
-          # Create local branch on top of current HEAD (with scaffolding changes applied).
-          # -B creates the branch or resets it if it exists locally.
           git checkout -B "${BRANCH}"
 
           git config user.name "github-actions[bot]"
@@ -254,7 +288,6 @@ jobs:
 
           git add -A
           git commit -m "chore: update infrastructure to ${VERSION}"
-          # Force push and set upstream so `gh pr create` knows the head branch.
           git push -u --force origin "${BRANCH}"
 
           # ----- Create PR if it doesn't exist -----
@@ -263,14 +296,14 @@ jobs:
           EXISTING_PR=$(gh pr list --repo "${REPO}" --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [[ -n "$EXISTING_PR" ]]; then
             echo "PR already exists: #${EXISTING_PR} — skipping creation."
-            echo "pr_url=https://github.com/${REPO}/pull/${EXISTING_PR}" >> "$GITHUB_OUTPUT"
+            PR_URL="https://github.com/${REPO}/pull/${EXISTING_PR}"
+            echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+            echo "pr_number=${EXISTING_PR}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           DEFAULT_BRANCH=$(gh repo view "${REPO}" --json defaultBranchRef --jq '.defaultBranchRef.name')
 
-          # Heredoc without quotes around the delimiter to allow ${VERSION} substitution.
-          # Backticks around `.infrarc.yml` are escaped to prevent command substitution.
           PR_URL=$(gh pr create \
             --repo "${REPO}" \
             --head "${BRANCH}" \
@@ -297,6 +330,9 @@ jobs:
           )")
 
           echo "Created PR: ${PR_URL}"
+          PR_NUMBER=$(echo "${PR_URL}" | awk -F/ '{print $NF}')
+          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
           # ----- Attach label (best-effort, non-fatal) -----
           # In some repos (notably forks with disabled Issues) labels API may be
@@ -314,33 +350,231 @@ jobs:
           fi
 
       - name: Enable auto-merge
-        if: steps.changes.outputs.has_changes == 'true'
-        working-directory: target
+        id: automerge
+        if: steps.changes.outputs.has_changes == 'true' && steps.auto-merge.outputs.value == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          REPO: 'diplodoc-platform/${{ matrix.repo }}'
         run: |
-          AUTO_MERGE=$(node -e "
-            const yaml = require('js-yaml');
-            const fs = require('fs');
-            const config = yaml.load(fs.readFileSync('../distribution.yml', 'utf8'));
-            const defaults = config.defaults || {};
-            const repo = (config.repos || {})['${{ matrix.repo }}'] || {};
-            const autoMerge = repo.auto_merge !== undefined ? repo.auto_merge : (defaults.auto_merge || false);
-            console.log(autoMerge ? 'true' : 'false');
-          ")
-
-          if [[ "$AUTO_MERGE" != "true" ]]; then
-            echo "Auto-merge disabled for ${REPO} (manual review required)"
-            exit 0
-          fi
-
-          BRANCH="infra/update-${VERSION}"
-          PR_NUMBER=$(gh pr list --repo "${REPO}" --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
           if [[ -z "$PR_NUMBER" ]]; then
-            echo "::warning::No PR found for ${REPO}@${BRANCH}, skipping auto-merge"
+            echo "::warning::No PR number recorded, skipping auto-merge"
             exit 0
           fi
 
-          gh pr merge "$PR_NUMBER" --repo "${REPO}" --auto --squash \
-            || echo "::warning::Auto-merge not available for ${REPO} (likely missing branch protection rules)"
+          if gh pr merge "$PR_NUMBER" --repo "${REPO}" --auto --squash; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Auto-merge not available for ${REPO} (likely missing branch protection rules)"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Always write a tiny status-<repo>.json artifact, even on failure. This is
+      # the only channel the `report` job reads to build the summary table.
+      # Schema:
+      #   {
+      #     "repo": "<name>",
+      #     "status": "updated" | "skipped" | "failed",
+      #     "pr_url"?: string,
+      #     "pr_number"?: string,
+      #     "auto_merge"?: "true" | "false",
+      #     "auto_merge_enabled"?: "true" | "false",
+      #     "duration_s": number,
+      #     "started_at": "<ISO-8601>"
+      #   }
+      - name: Write status artifact payload
+        id: status
+        if: always()
+        env:
+          STARTED_TS: ${{ steps.start.outputs.ts }}
+          HAS_CHANGES: ${{ steps.changes.outputs.has_changes }}
+          AUTO_MERGE: ${{ steps.auto-merge.outputs.value }}
+          AUTO_MERGE_ENABLED: ${{ steps.automerge.outputs.enabled }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p .status
+          NOW_TS=$(date -u +%s)
+          STARTED_TS_SAFE="${STARTED_TS:-$NOW_TS}"
+          DURATION=$(( NOW_TS - STARTED_TS_SAFE ))
+          STARTED_AT=$(date -u -d "@${STARTED_TS_SAFE}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "${STARTED_TS_SAFE}" +%Y-%m-%dT%H:%M:%SZ)
+
+          # Pick status based on job state and detected changes.
+          # `job.status` is 'success' | 'failure' | 'cancelled' at this point.
+          if [[ "${JOB_STATUS}" != "success" ]]; then
+            STATUS="failed"
+          elif [[ "${HAS_CHANGES}" == "true" ]]; then
+            STATUS="updated"
+          else
+            STATUS="skipped"
+          fi
+
+          node -e "
+            const fs = require('fs');
+            const payload = {
+              repo: '${{ matrix.repo }}',
+              status: '${STATUS}',
+              duration_s: Number('${DURATION}') || 0,
+              started_at: '${STARTED_AT}',
+            };
+            if (process.env.PR_URL) payload.pr_url = process.env.PR_URL;
+            if (process.env.PR_NUMBER) payload.pr_number = process.env.PR_NUMBER;
+            if (process.env.AUTO_MERGE) payload.auto_merge = process.env.AUTO_MERGE;
+            if (process.env.AUTO_MERGE_ENABLED) payload.auto_merge_enabled = process.env.AUTO_MERGE_ENABLED;
+            fs.writeFileSync('.status/status-${{ matrix.repo }}.json', JSON.stringify(payload, null, 2));
+            console.log(JSON.stringify(payload));
+          "
+
+      - name: Upload status artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-${{ matrix.repo }}
+          path: .status/status-${{ matrix.repo }}.json
+          retention-days: 1
+          if-no-files-found: error
+
+  # ============================================================================
+  # report: aggregate per-repo status artifacts into a single markdown summary
+  # table written to $GITHUB_STEP_SUMMARY. Runs even if some distribute cells
+  # failed (`if: always()`). Marks the run as failed (`core.setFailed`) only
+  # when at least one repo ended in `failed` state.
+  #
+  # This table is where the "Skipped" signal lives now — per-cell grey icons
+  # are not achievable in GitHub Actions (no neutral exit since 2020), so the
+  # rich summary replaces them with explicit ⊘ rows including PR links,
+  # durations and reasons.
+  # ============================================================================
+  report:
+    name: Build distribution report
+    needs: [prepare, distribute]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all status artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: .status
+          pattern: status-*
+          merge-multiple: true
+
+      - name: Render summary table
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          REPOS_JSON: ${{ needs.prepare.outputs.repos }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const version = process.env.VERSION || '';
+            const allRepos = JSON.parse(process.env.REPOS_JSON || '[]');
+
+            // Read every status-<repo>.json file downloaded into .status/
+            const statusDir = '.status';
+            const statuses = new Map(); // repo -> payload
+            if (fs.existsSync(statusDir)) {
+              for (const name of fs.readdirSync(statusDir)) {
+                if (!name.startsWith('status-') || !name.endsWith('.json')) continue;
+                try {
+                  const raw = fs.readFileSync(path.join(statusDir, name), 'utf8');
+                  const data = JSON.parse(raw);
+                  if (data && data.repo) statuses.set(data.repo, data);
+                } catch (err) {
+                  core.warning(`Failed to parse ${name}: ${err.message}`);
+                }
+              }
+            }
+
+            // Repos that ended without any status artifact at all are treated
+            // as failed (typically: matrix cell crashed before reaching the
+            // "Write status artifact payload" step, or upload failed).
+            const rows = allRepos.map((repo) => {
+              const s = statuses.get(repo);
+              if (!s) {
+                return {
+                  repo,
+                  status: 'failed',
+                  reason: 'no status artifact produced',
+                };
+              }
+              return s;
+            });
+
+            const fmtDuration = (s) => {
+              if (typeof s !== 'number' || !Number.isFinite(s) || s < 0) return '—';
+              const m = Math.floor(s / 60);
+              const sec = s % 60;
+              return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+            };
+
+            const icons = {
+              updated: '✅ Updated',
+              skipped: '⊘ Skipped',
+              failed: '❌ Failed',
+            };
+
+            const counts = { updated: 0, skipped: 0, failed: 0 };
+            for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
+
+            // Per-repo annotations for quick UI scanning.
+            for (const r of rows) {
+              const head = `[${r.repo}]`;
+              if (r.status === 'updated') {
+                const pr = r.pr_url ? ` — ${r.pr_url}` : '';
+                const am = r.auto_merge === 'true'
+                  ? (r.auto_merge_enabled === 'true' ? ' (auto-merge enabled)' : ' (auto-merge requested but not enabled)')
+                  : '';
+                core.notice(`${head} ✅ Updated${pr}${am}`);
+              } else if (r.status === 'skipped') {
+                core.notice(`${head} ⊘ Skipped — no scaffolding changes`);
+              } else {
+                const reason = r.reason ? ` — ${r.reason}` : '';
+                core.error(`${head} ❌ Failed${reason}`);
+              }
+            }
+
+            // Sort: failed first, then updated, then skipped — alpha within group.
+            const order = { failed: 0, updated: 1, skipped: 2 };
+            rows.sort((a, b) => {
+              const oa = order[a.status] ?? 99;
+              const ob = order[b.status] ?? 99;
+              if (oa !== ob) return oa - ob;
+              return a.repo.localeCompare(b.repo);
+            });
+
+            const formatRow = (r) => {
+              const status = icons[r.status] || r.status;
+              const pr = r.pr_url
+                ? `[#${r.pr_number || '?'}](${r.pr_url})`
+                : '—';
+              let am = '—';
+              if (r.auto_merge === 'true') {
+                am = r.auto_merge_enabled === 'true' ? '✅ enabled' : '⚠️ requested';
+              } else if (r.auto_merge === 'false') {
+                am = 'off';
+              }
+              const dur = fmtDuration(r.duration_s);
+              return `| \`${r.repo}\` | ${status} | ${pr} | ${am} | ${dur} |`;
+            };
+
+            const title = version
+              ? `Distribution summary — ${version}`
+              : 'Distribution summary';
+
+            const lines = [
+              `## ${title}`,
+              '',
+              `Total: **${rows.length}** · ✅ Updated: **${counts.updated || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
+              '',
+              '| Repo | Status | PR | Auto-merge | Duration |',
+              '| --- | --- | --- | --- | --- |',
+              ...rows.map(formatRow),
+            ];
+
+            await core.summary.addRaw(lines.join('\n')).write();
+
+            if ((counts.failed || 0) > 0) {
+              core.setFailed(`${counts.failed} repo(s) failed to distribute. See the summary table above.`);
+            }
