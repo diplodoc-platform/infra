@@ -13,6 +13,15 @@ on:
         description: 'Version tag (auto-detected from release)'
         required: false
         type: string
+      release_type:
+        description: 'Release type — only "stable" actually distributes; anything else makes the workflow a no-op'
+        required: false
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - prerelease
+          - deprecate
 
 permissions:
   contents: read
@@ -25,6 +34,14 @@ jobs:
   prepare:
     name: Prepare repository list
     runs-on: ubuntu-latest
+    # Distribution must run ONLY for stable releases. Prerelease/deprecate runs
+    # of the publish workflow do not produce a new "latest" of @diplodoc/infra
+    # and must not propagate the version across 26 target repos. The `release`
+    # event from GitHub UI is always stable; for workflow_dispatch we trust the
+    # explicit `release_type` input (default = stable).
+    if: |
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.release_type == '' || inputs.release_type == 'stable'))
     outputs:
       repos: ${{ steps.repos.outputs.list }}
       version: ${{ steps.version.outputs.tag }}
@@ -54,6 +71,37 @@ jobs:
             VERSION=$(node -p "require('./package.json').version")
             echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           fi
+
+      # The release event for the source repo fires in parallel with the publish
+      # workflow that pushes the tarball to npmjs.org. If we start distribution
+      # immediately we may rewrite `@diplodoc/infra` in 26 target repos to a
+      # version that does not yet exist on the registry — `npm ci` in those
+      # repos will then 404 and the freshly merged PRs will brick CI on master.
+      # Wait for the version to actually appear on the public registry before
+      # proceeding. Hard-fail after ~10 minutes; that is long enough to absorb
+      # transient publish delays but short enough to surface real publish
+      # failures (e.g. NPM_TOKEN permissions, registry outages).
+      - name: Wait for @diplodoc/infra to be published on npm
+        env:
+          VERSION: ${{ steps.version.outputs.tag }}
+        run: |
+          PKG="@diplodoc/infra"
+          # Strip leading "v" from tag (release tags are vX.Y.Z, npm versions are X.Y.Z).
+          NPM_VERSION="${VERSION#v}"
+          MAX_ATTEMPTS=60
+          SLEEP_SECONDS=10
+          echo "Waiting for ${PKG}@${NPM_VERSION} on npm registry…"
+          for i in $(seq 1 ${MAX_ATTEMPTS}); do
+            FOUND=$(npm view "${PKG}@${NPM_VERSION}" version 2>/dev/null || true)
+            if [[ "${FOUND}" == "${NPM_VERSION}" ]]; then
+              echo "::notice title=npm publish verified::${PKG}@${NPM_VERSION} is available after ${i} attempt(s)."
+              exit 0
+            fi
+            echo "Attempt ${i}/${MAX_ATTEMPTS}: ${PKG}@${NPM_VERSION} not on npm yet, sleeping ${SLEEP_SECONDS}s…"
+            sleep ${SLEEP_SECONDS}
+          done
+          echo "::error title=npm publish missing::${PKG}@${NPM_VERSION} was not published within $((MAX_ATTEMPTS * SLEEP_SECONDS / 60)) minutes. Aborting distribution to avoid breaking downstream repos."
+          exit 1
 
       - name: Build repo list
         id: repos
@@ -408,6 +456,82 @@ jobs:
           pattern: status-*
           merge-multiple: true
 
+      # Auto-merge does not actually merge synchronously: GitHub waits for CI
+      # to go green (or fail) and only then resolves the merge. We poll each
+      # PR for up to ~2 minutes to enrich the summary table with the actual
+      # post-distribution outcome (merged / blocked / dirty / still pending).
+      # Without this poll the table would show "auto-merge requested" for
+      # every successful run and hide real failures behind a green tick.
+      - name: Generate App token for PR status polling
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+      - name: Poll merge state for distributed PRs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # Collect (repo, pr_number, status-file) triples we need to follow.
+          # Using jq (preinstalled on GitHub-hosted runners) keeps this robust
+          # against status payloads with quotes/backslashes in string fields.
+          declare -a TASKS=()
+          for f in .status/status-*.json; do
+            REPO=$(jq -r '.repo // ""' "$f")
+            PR=$(jq -r '.pr_number // ""' "$f")
+            if [[ -n "${REPO}" && -n "${PR}" ]]; then
+              TASKS+=("${REPO}|${PR}|${f}")
+            fi
+          done
+          if [[ ${#TASKS[@]} -eq 0 ]]; then
+            echo "::notice title=Polling skipped::No PRs to poll."
+            exit 0
+          fi
+
+          # Poll up to 24 rounds × 5s = 2 minutes.
+          # We exit early as soon as every PR is in a terminal state.
+          MAX_ROUNDS=24
+          SLEEP_SECONDS=5
+          for round in $(seq 1 ${MAX_ROUNDS}); do
+            ALL_TERMINAL=true
+            for task in "${TASKS[@]}"; do
+              IFS='|' read -r repo pr file <<<"${task}"
+              json=$(gh pr view "${pr}" --repo "diplodoc-platform/${repo}" \
+                --json state,mergeStateStatus,mergedAt,mergeable 2>/dev/null || echo '{}')
+              state=$(jq -r '.state // ""' <<<"${json}")
+              merge_state=$(jq -r '.mergeStateStatus // ""' <<<"${json}")
+              merged_at=$(jq -r '.mergedAt // ""' <<<"${json}")
+              # Update the status artifact in place so the renderer below picks
+              # up the freshest values. Pass the new fields as jq args (--arg)
+              # rather than splicing them into a script string, which would
+              # mis-handle empty values and any future special characters.
+              tmp=$(mktemp)
+              jq \
+                --arg state "${state}" \
+                --arg ms "${merge_state}" \
+                --arg merged_at "${merged_at}" \
+                '.pr_state = $state
+                 | .pr_merge_state = $ms
+                 | (if ($merged_at | length) > 0 then .pr_merged_at = $merged_at else . end)' \
+                "${file}" > "${tmp}"
+              mv "${tmp}" "${file}"
+              # Terminal states: MERGED / CLOSED / explicitly blocked / dirty.
+              # CLEAN/UNSTABLE/HAS_HOOKS/BEHIND/UNKNOWN — still resolving, keep polling.
+              if [[ "${state}" != "MERGED" && "${state}" != "CLOSED" \
+                    && "${merge_state}" != "BLOCKED" && "${merge_state}" != "DIRTY" ]]; then
+                ALL_TERMINAL=false
+              fi
+            done
+            if ${ALL_TERMINAL}; then
+              echo "::notice title=Polling complete::All PRs reached a terminal state after ${round} round(s)."
+              break
+            fi
+            sleep ${SLEEP_SECONDS}
+          done
+
       - name: Render summary table
         uses: actions/github-script@v7
         env:
@@ -494,6 +618,23 @@ jobs:
               return a.repo.localeCompare(b.repo);
             });
 
+            const fmtMerge = (r) => {
+              // Reflect the actual post-poll merge state of the PR, not just
+              // whether auto-merge was requested. See "Poll merge state for
+              // distributed PRs" step above for the source of these fields.
+              const s = r.pr_state || '';
+              const ms = r.pr_merge_state || '';
+              if (s === 'MERGED') return '✅ merged';
+              if (s === 'CLOSED') return '🚫 closed';
+              if (ms === 'BLOCKED') return '⛔ blocked';
+              if (ms === 'DIRTY') return '⚠️ dirty';
+              if (ms === 'UNSTABLE') return '🟡 unstable';
+              if (ms === 'BEHIND') return '⏳ behind';
+              if (ms === 'CLEAN' || ms === 'HAS_HOOKS') return '⏳ pending';
+              if (s === 'OPEN') return '⏳ open';
+              return '—';
+            };
+
             const formatRow = (r) => {
               const status = icons[r.status] || r.status;
               const pr = r.pr_url
@@ -505,8 +646,9 @@ jobs:
               } else if (r.auto_merge === 'false') {
                 am = 'off';
               }
+              const merge = fmtMerge(r);
               const dur = fmtDuration(r.duration_s);
-              return `| \`${r.repo}\` | ${status} | ${pr} | ${am} | ${dur} |`;
+              return `| \`${r.repo}\` | ${status} | ${pr} | ${am} | ${merge} | ${dur} |`;
             };
 
             const title = version
@@ -518,8 +660,8 @@ jobs:
               '',
               `Total: **${rows.length}** · ✅ Updated: **${counts.updated || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
               '',
-              '| Repo | Status | PR | Auto-merge | Duration |',
-              '| --- | --- | --- | --- | --- |',
+              '| Repo | Status | PR | Auto-merge | Merge state | Duration |',
+              '| --- | --- | --- | --- | --- | --- |',
               ...rows.map(formatRow),
             ];
 
