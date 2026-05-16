@@ -13,15 +13,6 @@ on:
         description: 'Version tag (auto-detected from release)'
         required: false
         type: string
-      release_type:
-        description: 'Release type — only "stable" actually distributes; anything else makes the workflow a no-op'
-        required: false
-        default: 'stable'
-        type: choice
-        options:
-          - stable
-          - prerelease
-          - deprecate
 
 permissions:
   contents: read
@@ -34,14 +25,27 @@ jobs:
   prepare:
     name: Prepare repository list
     runs-on: ubuntu-latest
-    # Distribution must run ONLY for stable releases. Prerelease/deprecate runs
-    # of the publish workflow do not produce a new "latest" of @diplodoc/infra
-    # and must not propagate the version across 26 target repos. The `release`
-    # event from GitHub UI is always stable; for workflow_dispatch we trust the
-    # explicit `release_type` input (default = stable).
+    # Distribution must run ONLY for stable releases. We deliberately use a
+    # WHITELIST (positive check) rather than a blacklist: any new release flag
+    # GitHub introduces in the future will be rejected by default until this
+    # condition is explicitly extended. A stable GitHub release is defined as
+    # the conjunction of two boolean flags on the `release` event payload:
+    #   - prerelease == false   (the "Set as a pre-release" checkbox is off)
+    #   - draft      == false   (the release is actually published, not draft)
+    # Anything else — prerelease, draft, or any hypothetical future variant —
+    # must not propagate the version across 26 target repos, because the
+    # @diplodoc/infra version it advertises would not be on the npm `latest`
+    # dist-tag and `npm ci` downstream would 404.
+    #
+    # Deprecate is a workflow_dispatch action in release.yml; it never produces
+    # a `release` event and therefore cannot reach this branch.
+    #
+    # `workflow_dispatch` is a manual recovery channel — we trust the operator.
     if: |
-      github.event_name == 'release' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.release_type == '' || inputs.release_type == 'stable'))
+      (github.event_name == 'release'
+        && github.event.release.prerelease == false
+        && github.event.release.draft == false) ||
+      github.event_name == 'workflow_dispatch'
     outputs:
       repos: ${{ steps.repos.outputs.list }}
       version: ${{ steps.version.outputs.tag }}
@@ -345,6 +349,58 @@ jobs:
           if ! gh pr edit "${PR_URL}" --add-label "infra-auto"; then
             echo "::warning::Could not add 'infra-auto' label to ${PR_URL}. PR was created without it."
             echo "::warning::This usually means Issues are disabled in ${REPO} (common for forks)."
+          fi
+
+      # GitHub auto-merge does NOT use Ruleset `bypass_actors` to satisfy the
+      # `pull_request` rule (e.g. required_approving_review_count: 1 or
+      # require_code_owner_review: true). A bypass only grants the right to
+      # merge DIRECTLY past the queue; the auto-merge queue itself still waits
+      # for actual approving reviews from non-bypassed actors.
+      #
+      # On top of that, **GitHub Apps cannot be code-owners** — CODEOWNERS
+      # syntax accepts only @user and @org/team handles. Since every repo
+      # gets `* @diplodoc-platform/team` from the infra scaffolding, an App
+      # review cannot satisfy require_code_owner_review.
+      #
+      # Solution: use a real machine user (`diplodoc-bot`) that is a member
+      # of @diplodoc-platform/team. Its PR review counts as a code-owner
+      # approval. The token below is a fine-grained PAT scoped to PR-write
+      # on the 26 target repos; it MUST belong to a user that is also NOT
+      # the PR author (the PR is opened by INFRA_APP_ID; GitHub forbids
+      # self-approval).
+      #
+      # Skip when auto_merge is off for the repo: a human will decide whether
+      # to approve and merge; the bot must not silently approve PRs that a
+      # maintainer explicitly chose to gate manually.
+      - name: Auto-approve PR via diplodoc-bot machine user
+        id: approve
+        if: steps.changes.outputs.has_changes == 'true' && steps.auto-merge.outputs.value == 'true'
+        env:
+          # Fine-grained PAT issued by `diplodoc-bot` user account. Required
+          # scopes: `Pull requests: Read and write` on the 26 distribution
+          # target repos. NOT an App token — because Apps cannot be CODEOWNERS.
+          GH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+        run: |
+          if [[ -z "${PR_NUMBER}" ]]; then
+            echo "::warning::No PR number recorded — skipping auto-approve."
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "::warning::INFRA_APPROVER_PAT secret is not set — skipping auto-approve."
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh pr review "${PR_NUMBER}" \
+                --repo "${REPO}" \
+                --approve \
+                --body "Auto-approved by diplodoc-bot (machine user, member of @diplodoc-platform/team) to satisfy required_approving_review_count and require_code_owner_review for the mechanical infrastructure update. Human review of the change itself happens upstream in diplodoc-platform/infra."; then
+            echo "::notice title=Approved::${REPO}#${PR_NUMBER}"
+            echo "approved=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Failed to auto-approve ${REPO}#${PR_NUMBER}. PR remains awaiting review."
+            echo "approved=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Enable auto-merge
