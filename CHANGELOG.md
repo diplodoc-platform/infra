@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/diplodoc-platform/infra/compare/v2.0.1...v2.0.2) (2026-05-28)
+
+
+### Bug Fixes
+
+* **deps:** update node to 24 ([4999e6e](https://github.com/diplodoc-platform/infra/commit/4999e6e28beba656b108ae9e34c669e438815e0c))
+
 ## [2.0.1](https://github.com/diplodoc-platform/infra/compare/v2.0.0...v2.0.1) (2026-05-15)
 
 
