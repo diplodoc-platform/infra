@@ -57,20 +57,46 @@ jobs:
           node-version: ${{ vars.NODE_VERSION }}
 
       - name: Install latest npm (>= 11.5.1)
-        run: |
-          [ "$(printf '%s\n' "11.5.1" "$(npm -v)" | sort -V | head -n1)" = "11.5.1" ] || npm install -g npm@11.5.1
         shell: bash
+        run: |
+          REQUIRED=11.5.1
+          if [ "$(printf '%s\n' "$REQUIRED" "$(npm -v)" | sort -V | head -n1)" = "$REQUIRED" ]; then
+            echo "npm $(npm -v) is up-to-date (>= $REQUIRED)"
+            exit 0
+          fi
+          # Use a user-writable prefix so this works in PRs from forks where
+          # the default global prefix may be read-only. Prepend its bin dir to
+          # PATH via $GITHUB_PATH so subsequent steps pick up the new npm.
+          NPM_PREFIX="$RUNNER_TEMP/npm-global"
+          mkdir -p "$NPM_PREFIX"
+          npm install --prefix "$NPM_PREFIX" -g "npm@$REQUIRED"
+          # On Linux/macOS npm puts binaries into $prefix/bin, on Windows
+          # directly into $prefix (as npm.cmd). Pick whichever exists.
+          if [ -x "$NPM_PREFIX/bin/npm" ] || [ -x "$NPM_PREFIX/bin/npm.cmd" ]; then
+            NPM_BIN_DIR="$NPM_PREFIX/bin"
+          else
+            NPM_BIN_DIR="$NPM_PREFIX"
+          fi
+          echo "$NPM_BIN_DIR" >> "$GITHUB_PATH"
+          "$NPM_BIN_DIR"/npm -v 2>/dev/null || "$NPM_BIN_DIR"/npm.cmd -v
 
       - name: Install dependencies
         run: npm ci
 
       - name: Determine version
         id: version
+        # workflow_dispatch inputs and event payloads are user-controlled.
+        # Route them through env: and reference as "$VAR" to avoid
+        # interpolating raw values into the shell body.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          elif [[ -n "${{ inputs.version }}" ]]; then
-            echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$INPUT_VERSION" ]]; then
+            echo "tag=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
           else
             VERSION=$(node -p "require('./package.json').version")
             echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
@@ -109,11 +135,18 @@ jobs:
 
       - name: Build repo list
         id: repos
+        # Funnel the user-controlled `target` input through env. Also build the
+        # JSON list with JSON.stringify in node (not by string-interpolating
+        # $TARGET into the YAML/JSON output) so quotes / backslashes in the
+        # input are JSON-escaped rather than corrupting the array literal.
+        env:
+          INPUT_TARGET: ${{ inputs.target }}
         run: |
-          TARGET="${{ inputs.target || 'all' }}"
+          export TARGET="${INPUT_TARGET:-all}"
 
           if [[ "$TARGET" != "all" ]]; then
-            echo "list=[\"${TARGET}\"]" >> "$GITHUB_OUTPUT"
+            SAFE_LIST=$(node -e 'process.stdout.write(JSON.stringify([process.env.TARGET]))')
+            echo "list=${SAFE_LIST}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -149,8 +182,14 @@ jobs:
         repo: ${{ fromJson(needs.prepare.outputs.repos) }}
       fail-fast: false
       max-parallel: 5
+    # matrix.repo is derived from a user-controlled input (workflow_dispatch
+    # inputs.target) or from distribution.yml. Either way, we must never let
+    # the raw value reach a shell line as ${{ matrix.repo }} — that would
+    # be a classic injection vector (quotes / $(...) / ;-chains). Funnel it
+    # through env vars and reference as "$REPO_NAME" / "$REPO" instead.
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      REPO_NAME: ${{ matrix.repo }}
       REPO: 'diplodoc-platform/${{ matrix.repo }}'
     steps:
       - name: Record start time
@@ -167,6 +206,8 @@ jobs:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
           owner: diplodoc-platform
+          # Action `with:` inputs are not shell — they are passed verbatim to
+          # the action runtime — so direct ${{ matrix.repo }} here is fine.
           repositories: ${{ matrix.repo }}
 
       - uses: actions/setup-node@v4
@@ -185,15 +226,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          gh repo clone diplodoc-platform/${{ matrix.repo }} target -- --depth 1
+          gh repo clone "diplodoc-platform/${REPO_NAME}" target -- --depth 1
           cd target
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/diplodoc-platform/${{ matrix.repo }}.git"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/diplodoc-platform/${REPO_NAME}.git"
 
       - name: Apply scaffolding
         run: |
           node bin/infra.js sync \
             --target ./target \
-            --repo ${{ matrix.repo }} \
+            --repo "${REPO_NAME}" \
             --config ./distribution.yml
 
       - name: Update @diplodoc/infra version in package.json
@@ -226,23 +267,27 @@ jobs:
         run: |
           if [[ -z $(git status --porcelain) ]]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=No changes::No scaffolding changes for ${{ matrix.repo }} — nothing to distribute."
+            echo "::notice title=No changes::No scaffolding changes for ${REPO_NAME} — nothing to distribute."
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "Changes in ${{ matrix.repo }}:"
+            echo "Changes in ${REPO_NAME}:"
             git diff --stat
           fi
 
       - name: Resolve auto-merge flag
         id: auto-merge
         if: steps.changes.outputs.has_changes == 'true'
+        # Do NOT splice ${{ matrix.repo }} into the node -e source string —
+        # quotes / backslashes in the repo name would close the JS string
+        # literal and execute arbitrary JS (full RCE in the runner). Read
+        # the repo name from process.env instead.
         run: |
           AUTO_MERGE=$(node -e "
             const yaml = require('js-yaml');
             const fs = require('fs');
             const config = yaml.load(fs.readFileSync('distribution.yml', 'utf8'));
             const defaults = config.defaults || {};
-            const repo = (config.repos || {})['${{ matrix.repo }}'] || {};
+            const repo = (config.repos || {})[process.env.REPO_NAME] || {};
             const autoMerge = repo.auto_merge !== undefined ? repo.auto_merge : (defaults.auto_merge || false);
             console.log(autoMerge ? 'true' : 'false');
           ")
@@ -276,7 +321,7 @@ jobs:
                 | grep -Fxq "refs/heads/${PARENT_REF}"; then
               echo "::error::Repository ${REPO} has a conflicting ref 'refs/heads/${PARENT_REF}'."
               echo "::error::This blocks creation of '${BRANCH}' (git directory/file conflict)."
-              echo "::error::Resolve manually, then re-run this workflow for target=${{ matrix.repo }}:"
+              echo "::error::Resolve manually, then re-run this workflow for target=${REPO_NAME}:"
               echo "::error::  gh api -X DELETE repos/${REPO}/git/refs/heads/${PARENT_REF}"
               exit 1
             fi
@@ -408,8 +453,8 @@ jobs:
         if: steps.changes.outputs.has_changes == 'true' && steps.auto-merge.outputs.value == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
-          PR_NUMBER="${{ steps.pr.outputs.pr_number }}"
           if [[ -z "$PR_NUMBER" ]]; then
             echo "::warning::No PR number recorded, skipping auto-merge"
             exit 0
@@ -438,6 +483,11 @@ jobs:
       - name: Write status artifact payload
         id: status
         if: always()
+        # All values consumed by the node script below come from process.env —
+        # we deliberately avoid ${{ ... }} interpolation INSIDE the node -e
+        # source string. matrix.repo / status / duration / started_at could
+        # otherwise contain quotes or backslashes that would close the JS
+        # string literal and execute attacker-controlled code.
         env:
           STARTED_TS: ${{ steps.start.outputs.ts }}
           HAS_CHANGES: ${{ steps.changes.outputs.has_changes }}
@@ -463,21 +513,27 @@ jobs:
             STATUS="skipped"
           fi
 
-          node -e "
-            const fs = require('fs');
+          export STATUS DURATION STARTED_AT
+          # node -e source uses SINGLE quotes (no shell expansion) and reads
+          # every potentially-tainted value from process.env. Do NOT switch
+          # back to double-quoting plus workflow-expression interpolation
+          # of inputs/matrix — that would re-introduce the JS-literal
+          # injection that this rewrite removes.
+          node -e '
+            const fs = require("fs");
             const payload = {
-              repo: '${{ matrix.repo }}',
-              status: '${STATUS}',
-              duration_s: Number('${DURATION}') || 0,
-              started_at: '${STARTED_AT}',
+              repo: process.env.REPO_NAME,
+              status: process.env.STATUS,
+              duration_s: Number(process.env.DURATION) || 0,
+              started_at: process.env.STARTED_AT,
             };
             if (process.env.PR_URL) payload.pr_url = process.env.PR_URL;
             if (process.env.PR_NUMBER) payload.pr_number = process.env.PR_NUMBER;
             if (process.env.AUTO_MERGE) payload.auto_merge = process.env.AUTO_MERGE;
             if (process.env.AUTO_MERGE_ENABLED) payload.auto_merge_enabled = process.env.AUTO_MERGE_ENABLED;
-            fs.writeFileSync('.status/status-${{ matrix.repo }}.json', JSON.stringify(payload, null, 2));
+            fs.writeFileSync(".status/status-" + process.env.REPO_NAME + ".json", JSON.stringify(payload, null, 2));
             console.log(JSON.stringify(payload));
-          "
+          '
 
       - name: Upload status artifact
         if: always()

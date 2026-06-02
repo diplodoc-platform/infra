@@ -79,6 +79,9 @@ repos:
   babel-preset:
     auto_merge: false
     exclude: []
+  package-template:
+    auto_merge: false
+    exclude: []
   tsconfig:
     auto_merge: false
     exclude: []
