@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/diplodoc-platform/infra/compare/v2.0.2...v2.0.3) (2026-06-02)
+
+
+### Bug Fixes
+
+* **infra:** Update workflow for support PR from fork ([e8988b1](https://github.com/diplodoc-platform/infra/commit/e8988b124629dfe8c22bc9dda2b56d9b4684dd22))
+
 ## [2.0.2](https://github.com/diplodoc-platform/infra/compare/v2.0.1...v2.0.2) (2026-05-28)
 
 
