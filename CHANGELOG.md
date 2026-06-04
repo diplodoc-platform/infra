@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.4](https://github.com/diplodoc-platform/infra/compare/v2.0.3...v2.0.4) (2026-06-04)
+
+
+### Bug Fixes
+
+* add diplodoc-bot ([02cdbae](https://github.com/diplodoc-platform/infra/commit/02cdbaeb4993bdefa52491e5534f1ed2ddc5a9c3))
+
 ## [2.0.3](https://github.com/diplodoc-platform/infra/compare/v2.0.2...v2.0.3) (2026-06-02)
 
 
