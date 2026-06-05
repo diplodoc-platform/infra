@@ -81,8 +81,15 @@ jobs:
           path: coverage/
           retention-days: 7
 
+      # Secrets aren't exposed to workflows triggered by pull_request from a fork,
+      # so SONAR_TOKEN is empty and SonarCloud responds with "Project not found".
+      # Skip the scan in that case — coverage artifact is still uploaded above.
       - name: SonarCloud Scan
-        if: success() && steps.coverage-run.outputs.ran == 'true'
+        if: |
+          success() &&
+          steps.coverage-run.outputs.ran == 'true' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
         uses: SonarSource/sonarqube-scan-action@v7.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
