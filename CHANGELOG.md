@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.5](https://github.com/diplodoc-platform/infra/compare/v2.0.4...v2.0.5) (2026-06-09)
+
+
+### Bug Fixes
+
+* **infra:** set default node version 24 ([0bc8297](https://github.com/diplodoc-platform/infra/commit/0bc82978b40c9431c3e59c8ebe33cca7468ca2d5))
+* Skip Sonar from fork PR ([c60f257](https://github.com/diplodoc-platform/infra/commit/c60f257c67a521f5f4116b42d7ab464b98f6ce77))
+
 ## [2.0.4](https://github.com/diplodoc-platform/infra/compare/v2.0.3...v2.0.4) (2026-06-04)
 
 
