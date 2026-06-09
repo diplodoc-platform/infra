@@ -38,6 +38,7 @@ on:
           - '@diplodoc/search-extension'
           - '@diplodoc/tabs-extension'
 
+
       update_as_dev:
         description: 'Update as devDependency (only for single package selection)'
         required: false
