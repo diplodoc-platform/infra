@@ -1,6 +1,6 @@
 {
   "name": "@diplodoc/infra",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Diplodoc platform infrastructure management — linting, CI workflows, and scaffolding",
   "bin": {
     "lint": "./bin/lint.js",
