@@ -88,3 +88,5 @@ repos:
   testpack:
     auto_merge: false
     exclude: []
+  vsc:
+    exclude: []

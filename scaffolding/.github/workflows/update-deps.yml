@@ -22,6 +22,7 @@ on:
           - '@diplodoc/transform'
           - '@diplodoc/translation'
           - '@diplodoc/utils'
+          - '@diplodoc/vsc'
           - '@diplodoc/yfmlint'
           # === extensions ===
           - '@diplodoc/algolia-extension'
@@ -37,6 +38,7 @@ on:
           - '@diplodoc/quote-link-extension'
           - '@diplodoc/search-extension'
           - '@diplodoc/tabs-extension'
+
 
 
       update_as_dev:
