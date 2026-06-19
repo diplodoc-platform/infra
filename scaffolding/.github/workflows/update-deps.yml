@@ -14,6 +14,7 @@ on:
         type: choice
         options:
           # === packages ===
+          - '@diplodoc/ajv'
           - '@diplodoc/client'
           - '@diplodoc/components'
           - '@diplodoc/directive'
@@ -38,6 +39,7 @@ on:
           - '@diplodoc/quote-link-extension'
           - '@diplodoc/search-extension'
           - '@diplodoc/tabs-extension'
+
 
 
 

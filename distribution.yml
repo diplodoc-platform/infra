@@ -90,3 +90,5 @@ repos:
     exclude: []
   vsc:
     exclude: []
+  ajv:
+    exclude: []
