@@ -50,7 +50,7 @@ jobs:
       repos: ${{ steps.repos.outputs.list }}
       version: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js and install dependencies
         uses: diplodoc-platform/setup-node-action@v1
@@ -172,7 +172,7 @@ jobs:
         run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout infra repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Generate App token for target repo
         id: app-token
