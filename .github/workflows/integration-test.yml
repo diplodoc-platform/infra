@@ -24,7 +24,7 @@ jobs:
       GH_TOKEN: ${{ secrets.YC_UI_BOT_GITHUB_TOKEN }}
     steps:
       - name: Checkout infra (PR branch)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js and install infra dependencies
         uses: diplodoc-platform/setup-node-action@v1
@@ -68,7 +68,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.YC_UI_BOT_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js and install dependencies
         uses: diplodoc-platform/setup-node-action@v1
