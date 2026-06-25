@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.6](https://github.com/diplodoc-platform/infra/compare/v2.0.5...v2.0.6) (2026-06-25)
+
+
+### Bug Fixes
+
+* enable auto_merge, optimize cli release workflow ([02c88b7](https://github.com/diplodoc-platform/infra/commit/02c88b7da62a19be9e9f2825a188996f2b986f94))
+
 ## [2.0.5](https://github.com/diplodoc-platform/infra/compare/v2.0.4...v2.0.5) (2026-06-09)
 
 
