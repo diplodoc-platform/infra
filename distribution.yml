@@ -21,15 +21,10 @@ defaults:
 repos:
   # === packages ===
   cli:
-    auto_merge: false
-    exclude:
-      - path: .github/workflows/release.yml
-        reason: 'Custom release workflow'
+    exclude: []
   client:
-    auto_merge: false
     exclude: []
   components:
-    auto_merge: false
     exclude: []
   directive:
     exclude: []
@@ -38,7 +33,6 @@ repos:
   sentenizer:
     exclude: []
   transform:
-    auto_merge: false
     exclude: []
   translation:
     exclude: []
@@ -80,7 +74,6 @@ repos:
     auto_merge: false
     exclude: []
   package-template:
-    auto_merge: false
     exclude: []
   tsconfig:
     auto_merge: false
