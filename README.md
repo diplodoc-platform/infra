@@ -1,3 +1,7 @@
+**english** | [русский](https://github.com/diplodoc-platform/infra/blob/master/README.ru.md)
+
+---
+
 [![NPM version](https://img.shields.io/npm/v/@diplodoc/infra.svg?style=flat)](https://www.npmjs.org/package/@diplodoc/infra)
 
 # @diplodoc/infra
