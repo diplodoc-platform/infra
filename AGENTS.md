@@ -201,12 +201,12 @@ Two auth methods are used:
 
 Why a GitHub App instead of extending PAT: GitHub blocks pushing `.github/workflows/*.yml` without `workflow` scope. Using a dedicated App scopes the privilege to the distribution use case and generates short-lived installation tokens per repo (instead of a long-lived PAT with broad permissions).
 
-The workflow uses `actions/create-github-app-token@v1` to generate a fresh installation token for each target repo:
+The workflow uses `actions/create-github-app-token@v3` to generate a fresh installation token for each target repo:
 
 ```yaml
 - name: Generate App token for target repo
   id: app-token
-  uses: actions/create-github-app-token@v1
+  uses: actions/create-github-app-token@v3
   with:
     app-id: ${{ secrets.INFRA_APP_ID }}
     private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}

@@ -176,7 +176,7 @@ jobs:
 
       - name: Generate App token for target repo
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
@@ -506,7 +506,7 @@ jobs:
 
       - name: Upload status artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: status-${{ matrix.repo }}
           path: .status/status-${{ matrix.repo }}.json
@@ -531,7 +531,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all status artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: .status
           pattern: status-*
@@ -545,7 +545,7 @@ jobs:
       # every successful run and hide real failures behind a green tick.
       - name: Generate App token for PR status polling
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
