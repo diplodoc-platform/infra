@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.7](https://github.com/diplodoc-platform/infra/compare/v2.0.6...v2.0.7) (2026-06-26)
+
+
+### Bug Fixes
+
+* **ci:** update actions versions ([b2dd111](https://github.com/diplodoc-platform/infra/commit/b2dd1115ffe2e62a0d72656aea94114cdc30f3a5))
+
 ## [2.0.6](https://github.com/diplodoc-platform/infra/compare/v2.0.5...v2.0.6) (2026-06-25)
 
 
