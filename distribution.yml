@@ -18,6 +18,23 @@ defaults:
   auto_merge: true
   exclude: []
 
+# CI gate configuration (Ruleset A "master CI gate", see ADR-002).
+# The sync-ci-gate workflow discovers each repo's actual CI status-check contexts
+# from the HEAD commit of its default branch and points the ruleset at them.
+# `exclude_checks` removes contexts that are NOT guaranteed to report on every PR
+# (conditional / non-PR / scheduled workflows) so a PR never blocks forever.
+# Glob patterns: `*` matches any run of characters.
+# Per-repo override is supported via repos.<name>.ci_gate.{ruleset_name,exclude_checks,required_checks}.
+ci_gate:
+  ruleset_name: 'master CI gate'
+  exclude_checks:
+    - 'coverage*' # coverage.yml — runs only when test:coverage exists
+    - 'SonarCloud*' # sonarcloud.yml — runs only when coverage was generated
+    - 'release-please*' # release-please.yml — release PRs, not a PR gate
+    - 'Update Dependencies*' # update-deps.yml — manual dispatch
+    - 'package-lock*' # package-lock.yml — not a PR gate
+    - 'Distribute*' # distribution workflow checks (infra repo only)
+
 repos:
   # === packages ===
   cli:
