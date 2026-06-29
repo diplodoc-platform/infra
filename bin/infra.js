@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const {execSync} = require('node:child_process');
+const {execSync, execFileSync} = require('node:child_process');
 const {realpathSync, readFileSync, existsSync, writeFileSync, mkdirSync} = require('node:fs');
 const {dirname, join, resolve} = require('node:path');
 const yaml = require('js-yaml');
@@ -96,6 +96,7 @@ Usage:
   infra init                Initialize infrastructure in current package
   infra update              Update scaffolding in current package
   infra sync                Distribute infrastructure to target repositories
+  infra gate sync           Sync the "master CI gate" ruleset with each repo's checks
   infra blacklist show      Show blacklist for a repository
   infra blacklist audit     Check for expired exclusions
 
@@ -106,6 +107,13 @@ Sync options:
   --dry-run                 Show diff without creating PRs
   --config <path>           Path to distribution.yml (default: ./distribution.yml)
   --output <path>           Output diff report to file (with --dry-run)
+
+Gate options (requires GH_TOKEN with Administration: write):
+  --repo <name>             Target a specific repository (name or owner/name)
+  --all                     Target all repositories from distribution.yml
+  --dry-run                 Compute and print contexts without writing the ruleset
+  --config <path>           Path to distribution.yml (default: ./distribution.yml)
+  --output <path>           Write the JSON result to a file
 
 Blacklist options:
   --repo <name>             Repository to inspect
@@ -269,6 +277,56 @@ function runSync() {
     }
 }
 
+function runGate() {
+    const sub = args[1];
+    if (sub !== 'sync') {
+        console.error('Unknown gate command. Use: sync');
+        process.exit(1);
+    }
+
+    const configPath = resolve(flags.config || join(srcDir, 'distribution.yml'));
+    const dryRun = !!flags['dry-run'];
+    const repoFilter = flags.repo;
+    const all = !!flags.all;
+    const output = flags.output;
+
+    if (!repoFilter && !all) {
+        console.error('Error: specify --repo <name> or --all');
+        process.exit(1);
+    }
+
+    const repos = repoFilter ? [repoFilter] : getAllRepos(configPath);
+    if (repos.length === 0) {
+        console.error('Error: no repositories found in distribution config');
+        process.exit(1);
+    }
+
+    const gateScript = join(srcDir, 'scripts/sync-ci-gate.js');
+    let failed = 0;
+
+    for (const repo of repos) {
+        // Use execFileSync with an argv array (NO shell) so repo / config /
+        // output values are passed verbatim to node and can never be parsed as
+        // shell syntax — quotes, $(...), ;-chains in a repo name are inert.
+        const gateArgs = [gateScript, '--repo', repo, '--config', configPath];
+        if (dryRun) gateArgs.push('--dry-run');
+        // With --all we never collide on a single --output file; only honor it
+        // for a single-repo invocation.
+        if (output && repoFilter) gateArgs.push('--output', output);
+
+        try {
+            execFileSync(process.execPath, gateArgs, {stdio: 'inherit', cwd: process.cwd()});
+        } catch {
+            failed++;
+        }
+    }
+
+    if (failed > 0) {
+        console.error(`[@diplodoc/infra] gate sync: ${failed} repository(ies) failed`);
+        process.exit(1);
+    }
+}
+
 function applySyncToTarget(targetDir, repoName, blacklist, dryRun) {
     if (dryRun) return;
 
@@ -426,6 +484,9 @@ switch (command) {
         break;
     case 'sync':
         runSync();
+        break;
+    case 'gate':
+        runGate();
         break;
     case 'blacklist':
         if (args[1] === 'show') {

@@ -33,7 +33,7 @@ after another during rollout:
 
 GitHub Rulesets allow listing actors that can bypass the rules. This works for
 **direct merges** through the API, but **auto-merge queues** wait for the rules
-to be *actually* satisfied — they do not consult `bypass_actors`. As a result,
+to be _actually_ satisfied — they do not consult `bypass_actors`. As a result,
 PRs opened by the App with `auto_merge` enabled stayed in `BLOCKED` state even
 though the App was in `bypass_actors`.
 
@@ -110,20 +110,20 @@ Enforces CI for everyone, including the distribution App. The only bypass is
 {
   "name": "master CI gate",
   "enforcement": "active",
-  "bypass_actors": [
-    { "actor_type": "OrganizationAdmin", "bypass_mode": "always" }
+  "bypass_actors": [{"actor_type": "OrganizationAdmin", "bypass_mode": "always"}],
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          {"context": "test (ubuntu-latest, 22)"},
+          {"context": "test (macos-latest, 22)"},
+          {"context": "test (windows-latest, 22)"},
+        ],
+      },
+    },
   ],
-  "rules": [{
-    "type": "required_status_checks",
-    "parameters": {
-      "strict_required_status_checks_policy": false,
-      "required_status_checks": [
-        { "context": "test (ubuntu-latest, 22)" },
-        { "context": "test (macos-latest, 22)" },
-        { "context": "test (windows-latest, 22)" }
-      ]
-    }
-  }]
 }
 ```
 
@@ -141,10 +141,10 @@ satisfy the rules with real approvals.
 
 ### Two actors
 
-| Actor | Identity | Role |
-|---|---|---|
-| **Publisher** | GitHub App `diplodoc-infra` (`INFRA_APP_ID`) | Opens the PR, pushes the branch, enables auto-merge. |
-| **Approver** | Machine user `diplodoc-bot`, member of `@diplodoc-platform/team` | Reviews and approves the PR using a fine-grained PAT (`INFRA_APPROVER_PAT`). |
+| Actor         | Identity                                                         | Role                                                                         |
+| ------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Publisher** | GitHub App `diplodoc-infra` (`INFRA_APP_ID`)                     | Opens the PR, pushes the branch, enables auto-merge.                         |
+| **Approver**  | Machine user `diplodoc-bot`, member of `@diplodoc-platform/team` | Reviews and approves the PR using a fine-grained PAT (`INFRA_APPROVER_PAT`). |
 
 The Approver is a **real GitHub account**, not an App, because:
 
@@ -259,11 +259,11 @@ prototyped before discovering the CODEOWNERS restriction.
 
 ### Required secrets (organization-level)
 
-| Secret | Purpose | Owner |
-|---|---|---|
-| `INFRA_APP_ID` | Publisher App ID | GitHub App `diplodoc-infra` |
-| `INFRA_APP_PRIVATE_KEY` | Publisher App private key | GitHub App `diplodoc-infra` |
-| `INFRA_APPROVER_PAT` | Fine-grained PAT for the Approver | Machine user `diplodoc-bot` |
+| Secret                  | Purpose                           | Owner                       |
+| ----------------------- | --------------------------------- | --------------------------- |
+| `INFRA_APP_ID`          | Publisher App ID                  | GitHub App `diplodoc-infra` |
+| `INFRA_APP_PRIVATE_KEY` | Publisher App private key         | GitHub App `diplodoc-infra` |
+| `INFRA_APPROVER_PAT`    | Fine-grained PAT for the Approver | Machine user `diplodoc-bot` |
 
 ### `INFRA_APPROVER_PAT` configuration
 
@@ -272,7 +272,7 @@ prototyped before discovering the CODEOWNERS restriction.
 - **Repository access:** all 26 target repos (selected explicitly).
 - **Permissions:** `Pull requests: Read and write`.
 - **Approval:** an org admin must Approve the token in
-  *Organization settings → Personal access tokens → Pending requests*.
+  _Organization settings → Personal access tokens → Pending requests_.
 - **Lifetime:** 366 days. Rotation procedure:
   1. `diplodoc-bot` logs in, regenerates the PAT with the same scope.
   2. Org admin approves the new token.
@@ -297,6 +297,9 @@ prototyped before discovering the CODEOWNERS restriction.
 
 ## Related Documents
 
+- [ADR-002](ADR-002-dynamic-ci-gate.md) — dynamic per-repo `master CI gate`,
+  `INFRA_APPROVER_PAT` expiry monitoring (closes the "Future work" item below),
+  and auto-approval of automated bot PRs.
 - `devops/infra/.github/workflows/distribute-infra.yml` — pipeline implementation.
 - `devops/infra/.github/workflows/release.yml` — upstream release workflow.
 - `devops/infra/scaffolding/.github/CODEOWNERS` — code-owner template distributed to targets.

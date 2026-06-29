@@ -1,0 +1,222 @@
+name: Sync CI Gate
+
+# Points each target repo's "master CI gate" ruleset (Ruleset A, see ADR-002)
+# at the actual set of CI status-check contexts that repo currently produces.
+# Runs on a daily schedule (new workflows appear rarely) and on manual dispatch.
+
+on:
+  schedule:
+    # Daily at 06:00 UTC. Discovery is idempotent, so re-runs simply rewrite the
+    # required-checks list with the freshest contexts.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target repo name (or "all" for all repos)'
+        default: 'all'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================================
+  # prepare: resolve the list of repos to process from distribution.yml.
+  # ============================================================================
+  prepare:
+    name: Prepare repository list
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.repos.outputs.list }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js and install dependencies
+        uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+
+      - name: Build repo list
+        id: repos
+        # inputs.target is user-controlled; funnel through env and JSON-encode
+        # in node so quotes/backslashes cannot corrupt the array literal.
+        env:
+          INPUT_TARGET: ${{ inputs.target }}
+        run: |
+          export TARGET="${INPUT_TARGET:-all}"
+
+          if [[ "$TARGET" != "all" ]]; then
+            SAFE_LIST=$(node -e 'process.stdout.write(JSON.stringify([process.env.TARGET]))')
+            echo "list=${SAFE_LIST}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          REPOS=$(node -e "
+            const yaml = require('js-yaml');
+            const fs = require('fs');
+            const config = yaml.load(fs.readFileSync('distribution.yml', 'utf8'));
+            const repos = Object.keys(config.repos || {});
+            console.log(JSON.stringify(repos));
+          ")
+
+          echo "list=${REPOS}" >> "$GITHUB_OUTPUT"
+
+  # ============================================================================
+  # sync: a matrix over all targets. For each repo, mint an App token scoped to
+  # that repo (App must have Administration: write), discover its CI contexts and
+  # create/update the "master CI gate" ruleset. Each cell writes a thin
+  # status-<repo>.json artifact consumed by `report`.
+  # ============================================================================
+  sync:
+    name: 'Sync ${{ matrix.repo }}'
+    needs: prepare
+    if: needs.prepare.outputs.repos != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: ${{ fromJson(needs.prepare.outputs.repos) }}
+      fail-fast: false
+      max-parallel: 5
+    env:
+      REPO_NAME: ${{ matrix.repo }}
+    steps:
+      - name: Checkout infra repo
+        uses: actions/checkout@v5
+
+      - name: Generate App token for target repo
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ matrix.repo }}
+
+      - name: Setup Node.js and install dependencies
+        uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+
+      - name: Sync CI gate ruleset
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          mkdir -p .status
+          node scripts/sync-ci-gate.js \
+            --repo "${REPO_NAME}" \
+            --config ./distribution.yml \
+            --output ".status/status-${REPO_NAME}.json"
+
+      - name: Upload status artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: status-${{ matrix.repo }}
+          path: .status/status-${{ matrix.repo }}.json
+          retention-days: 1
+          if-no-files-found: warn
+
+  # ============================================================================
+  # report: aggregate per-repo status artifacts into a markdown summary table.
+  # Fails the run if any repo ended in `failed`.
+  # ============================================================================
+  report:
+    name: Build sync report
+    needs: [prepare, sync]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all status artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: .status
+          pattern: status-*
+          merge-multiple: true
+
+      - name: Render summary table
+        uses: actions/github-script@v7
+        env:
+          REPOS_JSON: ${{ needs.prepare.outputs.repos }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const allRepos = JSON.parse(process.env.REPOS_JSON || '[]');
+            const statusDir = '.status';
+            const statuses = new Map();
+            if (fs.existsSync(statusDir)) {
+              for (const name of fs.readdirSync(statusDir)) {
+                if (!name.startsWith('status-') || !name.endsWith('.json')) continue;
+                try {
+                  const data = JSON.parse(fs.readFileSync(path.join(statusDir, name), 'utf8'));
+                  if (data && data.repo) statuses.set(data.repo, data);
+                } catch (err) {
+                  core.warning(`Failed to parse ${name}: ${err.message}`);
+                }
+              }
+            }
+
+            const rows = allRepos.map((repo) => {
+              const s = statuses.get(repo);
+              if (!s) return {repo, status: 'failed', reason: 'no status artifact produced'};
+              return s;
+            });
+
+            const icons = {
+              synced: '✅ Synced',
+              'dry-run': '🔎 Dry-run',
+              skipped: '⊘ Skipped',
+              failed: '❌ Failed',
+            };
+
+            const counts = {};
+            for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
+
+            for (const r of rows) {
+              const head = `[${r.repo}]`;
+              if (r.status === 'synced') {
+                core.notice(`${head} ✅ ${r.action || 'synced'} — ${(r.contexts || []).length} context(s)`);
+              } else if (r.status === 'skipped') {
+                core.notice(`${head} ⊘ Skipped — ${r.reason || 'no changes'}`);
+              } else if (r.status === 'failed') {
+                core.error(`${head} ❌ Failed — ${r.reason || 'unknown error'}`);
+              }
+            }
+
+            const order = {failed: 0, skipped: 1, synced: 2, 'dry-run': 3};
+            rows.sort((a, b) => {
+              const oa = order[a.status] ?? 99;
+              const ob = order[b.status] ?? 99;
+              if (oa !== ob) return oa - ob;
+              return a.repo.localeCompare(b.repo);
+            });
+
+            const formatRow = (r) => {
+              const status = icons[r.status] || r.status;
+              const action = r.action && r.action !== 'none' ? r.action : '—';
+              const ctx = (r.contexts || []).length;
+              const list = (r.contexts || []).length
+                ? '<br>' + r.contexts.map((c) => `\`${c}\``).join('<br>')
+                : '';
+              const note = r.reason ? r.reason : '';
+              return `| \`${r.repo}\` | ${status} | ${action} | ${ctx}${list} | ${note} |`;
+            };
+
+            const lines = [
+              '## CI gate sync summary',
+              '',
+              `Total: **${rows.length}** · ✅ Synced: **${counts.synced || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
+              '',
+              '| Repo | Status | Action | Required contexts | Note |',
+              '| --- | --- | --- | --- | --- |',
+              ...rows.map(formatRow),
+            ];
+
+            await core.summary.addRaw(lines.join('\n')).write();
+
+            if ((counts.failed || 0) > 0) {
+              core.setFailed(`${counts.failed} repo(s) failed to sync. See the summary table above.`);
+            }

@@ -1,0 +1,182 @@
+name: Check Approver PAT Expiry
+
+# Monitors the machine user's fine-grained PAT (INFRA_APPROVER_PAT, owned by
+# diplodoc-bot) and alerts ahead of expiry. GitHub has no API to regenerate a
+# fine-grained PAT, so this only detects + alerts; rotation stays manual (see
+# ADR-001 Operational Notes and ADR-002).
+
+on:
+  schedule:
+    # Two reminders tied to the CURRENT INFRA_APPROVER_PAT expiry (2027-05-17):
+    #   - ~2 weeks before  -> May 3
+    #   - ~3 days before   -> May 14
+    # These dates are relative to the current expiry. After each rotation, update
+    # both cron lines (and this comment) to the new expiry date minus 14 / 3 days.
+    # The job still gates on the threshold, so it only alerts when actually near.
+    - cron: '0 7 3 5 *'
+    - cron: '0 7 14 5 *'
+  workflow_dispatch:
+    inputs:
+      threshold_days:
+        description: 'Alert when fewer than this many days remain'
+        default: '14'
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Check PAT expiry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js and install dependencies
+        uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+
+      # Org-level App token. The App must have the org permission
+      # "Personal access tokens: read" to list org PAT grants.
+      - name: Generate App token (org-level)
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+
+      - name: Evaluate PAT expiry
+        id: check
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PAT_THRESHOLD_DAYS: ${{ inputs.threshold_days || '14' }}
+        run: |
+          mkdir -p .status
+          node scripts/check-pat-expiry.js --output .status/pat-expiry.json
+
+      - name: Alert on upcoming/expired PAT
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let result;
+            try {
+              result = JSON.parse(fs.readFileSync('.status/pat-expiry.json', 'utf8'));
+            } catch (err) {
+              core.setFailed(`Could not read PAT expiry result: ${err.message}`);
+              return;
+            }
+
+            const {status, login, daysLeft, expiresAt, thresholdDays, reason} = result;
+
+            // Summary line for the run.
+            await core.summary
+              .addRaw(
+                `## INFRA_APPROVER_PAT expiry check\n\n` +
+                  `- User: \`${login}\`\n` +
+                  `- Status: **${status}**\n` +
+                  (daysLeft != null ? `- Days left: **${daysLeft}**\n` : '') +
+                  (expiresAt ? `- Expires: \`${expiresAt}\`\n` : '') +
+                  (reason ? `- Detail: ${reason}\n` : ''),
+              )
+              .write();
+
+            if (status === 'ok') {
+              core.notice(`PAT for ${login} is healthy (${daysLeft} day(s) left).`);
+              return;
+            }
+
+            // For warn / expired / missing / error — open or update a tracking issue.
+            const {owner, repo} = context.repo;
+            const teamSlug = process.env.PAT_ROTATION_TEAM || 'team';
+
+            // Resolve team members to auto-assign + @mention. Best-effort: needs
+            // org "Members: read"; on failure we still file the issue (with the
+            // team @mention, which notifies the team regardless of assignment).
+            let assignees = [];
+            try {
+              const members = await github.paginate(github.rest.teams.listMembersInOrg, {
+                org: owner,
+                team_slug: teamSlug,
+                per_page: 100,
+              });
+              // GitHub caps assignees at 10.
+              assignees = members.map((m) => m.login).slice(0, 10);
+            } catch (e) {
+              core.warning(`Could not list @${owner}/${teamSlug} members for assignment: ${e.message}`);
+            }
+
+            const title = 'INFRA_APPROVER_PAT needs rotation';
+            const body =
+              `Automated check of the \`diplodoc-bot\` fine-grained PAT (\`INFRA_APPROVER_PAT\`).\n\n` +
+              `- Status: **${status}**\n` +
+              (daysLeft != null ? `- Days left: **${daysLeft}** (threshold ${thresholdDays})\n` : '') +
+              (expiresAt ? `- Expires: \`${expiresAt}\`\n` : '') +
+              (reason ? `- Detail: ${reason}\n` : '') +
+              `\nGitHub provides no API to regenerate a fine-grained PAT — rotation is manual. ` +
+              `Follow the rotation procedure in ADR-001 (Operational Notes).\n\n` +
+              `cc @${owner}/${teamSlug}`;
+
+            const existing = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: 'pat-rotation',
+              per_page: 100,
+            });
+            const found = existing.data.find((i) => i.title === title);
+
+            if (found) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: found.number,
+                body,
+              });
+              // Make sure assignees are set even if the issue was opened earlier.
+              if (assignees.length > 0) {
+                try {
+                  await github.rest.issues.addAssignees({
+                    owner,
+                    repo,
+                    issue_number: found.number,
+                    assignees,
+                  });
+                } catch (e) {
+                  core.warning(`Could not assign issue #${found.number}: ${e.message}`);
+                }
+              }
+              core.warning(`Updated existing rotation issue #${found.number} (status: ${status}).`);
+            } else {
+              // Ensure the label exists (best-effort).
+              try {
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: 'pat-rotation',
+                  color: 'B60205',
+                  description: 'Approver PAT rotation tracking',
+                });
+              } catch (e) {
+                // label likely already exists
+              }
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels: ['pat-rotation'],
+                ...(assignees.length > 0 ? {assignees} : {}),
+              });
+              core.warning(
+                `Opened rotation issue #${created.data.number} (status: ${status}, assignees: ${assignees.join(', ') || 'none'}).`,
+              );
+            }
+
+            if (status === 'expired' || status === 'missing' || status === 'error') {
+              core.setFailed(`PAT status is "${status}" — rotation required.`);
+            }

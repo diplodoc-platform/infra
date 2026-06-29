@@ -1,0 +1,177 @@
+# ADR-002: Dynamic per-repo CI gate, PAT-expiry monitoring, bot-PR auto-approval
+
+## Status
+
+Accepted
+
+## Context
+
+[ADR-001](ADR-001-infra-distribution-pipeline.md) established the distribution
+pipeline and two Rulesets per target repo. Ruleset A — `master CI gate` —
+enforces `required_status_checks` and is the thing GitHub auto-merge actually
+waits on.
+
+That ruleset was set up **by hand** on GitHub with a single, flat, org-wide list
+of common checks (`test (...)` on three OSes). That was a deliberate first step:
+a minimal shared list to get _some_ enforced check in front of auto-merge across
+all repos, with the intent to refine the mechanism later. This ADR is that
+refinement.
+
+Two limitations of the static list:
+
+- **It is flat.** Repos with custom workflows (e.g. `cli`) have checks the gate
+  does not know about, so auto-merge only waits for the common subset.
+- **It is manual.** Any CI change (new workflow, changed matrix) requires
+  editing the ruleset by hand in every repo, and the list drifts from reality.
+
+We also still carry two open items from ADR-001 "Future work" / operational
+needs:
+
+- the `INFRA_APPROVER_PAT` (machine user `diplodoc-bot`) must be rotated before
+  it expires, and nothing watches that today;
+- automated bot PRs (dependency updates, release PRs) still need a human (or the
+  machine user) to approve them, even though the change is mechanical.
+
+## Decision
+
+### 1. Discover the required checks per repo, don't hardcode them
+
+A new tool computes, **per repo**, the actual set of CI status-check contexts and
+points `master CI gate` at exactly that set.
+
+- Source of truth: the check-runs and legacy commit statuses of the **HEAD
+  commit on the default branch**
+  (`GET /repos/{o}/{r}/commits/{branch}/check-runs` + `.../status`). Workflows
+  that fire on `push` to the default branch (`tests.yml`, `security.yml`) report
+  there, which is exactly what we want enforced.
+- A glob exclude list (`ci_gate.exclude_checks` in `distribution.yml`) removes
+  checks that are **not guaranteed to report on every PR** (conditional /
+  scheduled / non-PR workflows like `coverage`, `SonarCloud`, `release-please`,
+  `update-deps`, `package-lock`, the distribution checks). Requiring such a check
+  would block a PR forever waiting for a status that never arrives.
+- The result is written to the ruleset via the Rulesets API: find the ruleset by
+  name and `PUT` it, or `POST` a new one if missing. The operation is
+  **idempotent** — re-running just rewrites the contexts.
+
+Implementation:
+
+- [`scripts/sync-ci-gate.js`](../scripts/sync-ci-gate.js) — discovery + filter +
+  create/update, with pure helpers covered by
+  [`test/unit/sync-ci-gate.test.js`](../test/unit/sync-ci-gate.test.js).
+- CLI: `infra gate sync --repo <name>|--all [--dry-run] [--config <path>] [--output <file>]`
+  (see [`bin/infra.js`](../bin/infra.js)).
+- Workflow: [`.github/workflows/sync-ci-gate.yml`](../.github/workflows/sync-ci-gate.yml)
+  — `prepare` → `sync` (matrix × repos) → `report`. Triggers:
+  - `workflow_dispatch` (`target` = repo name or `all`) — manual / targeted;
+  - `schedule` (daily `0 6 * * *`) — new workflows appear rarely, so daily is
+    enough; idempotency makes repeated runs safe.
+
+Only **Ruleset A** is managed as code here. Ruleset B (review / merge policy)
+stays as configured per ADR-001.
+
+### 2. Extend the distribution App with `Administration: write`
+
+The Rulesets API requires repository `Administration: write`. The existing
+GitHub App `diplodoc-infra` (used by the distribution pipeline) is extended with
+that permission; `sync-ci-gate.yml` mints a per-repo installation token via
+`actions/create-github-app-token@v1`. No new identity is introduced.
+
+This is a **manual GitHub configuration step** (there is no API for it): in the
+App settings add `Repository permissions → Administration: Read and write` and
+re-approve the permission on the target repos. Without it the `PUT/POST
+.../rulesets` calls return `403`.
+
+### 3. Monitor `INFRA_APPROVER_PAT` expiry (remaining ADR-001 item)
+
+GitHub provides **no API to create or regenerate a fine-grained PAT**, so the
+PAT cannot be auto-rotated. Switching the approver to a GitHub App token is also
+**not** an option: an App cannot be a code owner and cannot approve PRs — the
+exact reason the PAT exists (ADR-001 §3, alternatives C and E). Therefore the
+realistic automation is detection + ahead-of-time alerting:
+
+- [`scripts/check-pat-expiry.js`](../scripts/check-pat-expiry.js) — lists org
+  PAT grants (`GET /orgs/{org}/personal-access-tokens`), finds the
+  `diplodoc-bot` token, computes days to expiry. Pure helpers tested in
+  [`test/unit/check-pat-expiry.test.js`](../test/unit/check-pat-expiry.test.js).
+- [`.github/workflows/check-pat-expiry.yml`](../.github/workflows/check-pat-expiry.yml)
+  — `workflow_dispatch` plus **two scheduled reminders** instead of a daily run:
+  one ~2 weeks before and one ~3 days before the current PAT expiry. The `cron`
+  dates are relative to the current expiry and must be updated on each rotation.
+  On `warn` (≤ 14 days), `expired`, `missing` or `error` it opens/updates a
+  `pat-rotation` tracking issue, **assigns it to the `@diplodoc-platform/team`
+  members and @mentions the team**, and annotates the run; `expired` / `missing`
+  / `error` also fail the run.
+
+Rotation itself remains the manual runbook in ADR-001 (Operational Notes). This
+requires the App to have the org permissions **"Personal access tokens: read"**
+(to list tokens) and **"Members: read"** (to resolve team members for issue
+assignment; assignment is best-effort and falls back to the team @mention).
+
+### 4. Auto-approve automated bot PRs with the machine user
+
+Two kinds of automated PRs are mechanically generated and should be approved by
+`diplodoc-bot` without a human:
+
+- dependency updates from [`scaffolding/.github/workflows/update-deps.yml`](../scaffolding/.github/workflows/update-deps.yml)
+  (author `yc-ui-bot`, branch `ci/update-deps/*`);
+- release PRs from [`scaffolding/.github/workflows/release-please.yml`](../scaffolding/.github/workflows/release-please.yml)
+  (author `yc-ui-bot`, branch `release-please--*`).
+
+The PR author (`yc-ui-bot`) differs from the approver (`diplodoc-bot`), so
+GitHub's no-self-approval rule is not violated.
+
+- [`scaffolding/.github/workflows/auto-approve.yml`](../scaffolding/.github/workflows/auto-approve.yml)
+  — distributed to every repo. Triggers on `pull_request` (not
+  `pull_request_target`, and it never checks out PR code), so fork PRs get no
+  secrets. A declarative `if:` gate matches author + branch, then — as defense in
+  depth — it verifies **every commit on the PR was authored and committed by
+  `yc-ui-bot`** before approving via `INFRA_APPROVER_PAT`. This ties the approval
+  to bot-generated content, so a push by someone else to a `ci/update-deps/*` /
+  `release-please--*` branch does not earn a free code-owner approval. It is
+  idempotent (skips if already approved) and **does not** enable auto-merge — the
+  CI gate from decision 1 must still pass.
+- [`scripts/match-auto-approve.js`](../scripts/match-auto-approve.js) — the
+  canonical, unit-tested matcher
+  ([`test/unit/match-auto-approve.test.js`](../test/unit/match-auto-approve.test.js)).
+  The scaffolding workflow mirrors these rules; keep the two in sync.
+
+Per-repo opt-out reuses the existing blacklist mechanism: exclude
+`.github/workflows/auto-approve.yml` via `.infrarc.yml` or `distribution.yml`.
+
+## Consequences
+
+### Positive
+
+- The CI gate reflects each repo's **real** checks and self-heals daily.
+- No more hand-editing rulesets across repos.
+- PAT expiry is surfaced ahead of time instead of failing the pipeline.
+- Mechanical bot PRs no longer wait on a human approval.
+
+### Negative
+
+- The App now has `Administration: write` — a broader permission; scoped to the
+  same distribution identity but worth noting in audits.
+- The matcher logic lives in two places (tested script + scaffolding `if:`) and
+  must be kept in sync.
+- Discovery from the default-branch HEAD only captures checks that also run on
+  `push`; the exclude list handles the rest. See "Notes".
+
+### Neutral
+
+- `strict_required_status_checks_policy: false` is preserved (no forced
+  "branch up to date").
+
+## Notes / risks
+
+- Default-branch HEAD discovery equals PR checks only for workflows that run on
+  both `push` and `pull_request` (true for `tests.yml` / `security.yml`).
+  Reading the checks of the latest merged PR would be more precise but more
+  complex; left as possible future work.
+- If discovery yields zero contexts after filtering, the sync **skips** that repo
+  rather than installing an empty (no-op) gate.
+
+## Related Documents
+
+- [ADR-001](ADR-001-infra-distribution-pipeline.md) — distribution pipeline and
+  the two-Ruleset design this builds on.
+- [`devops/infra/AGENTS.md`](../AGENTS.md) — operational reference.

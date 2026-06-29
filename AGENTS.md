@@ -168,14 +168,17 @@ When `@diplodoc/infra` is used as a standalone npm package:
   - `.husky/pre-commit`, `.husky/commit-msg` — Git hooks
   - `.editorconfig`, `.gitattributes` — editor settings
   - `sonar-project.properties` — SonarCloud config (`{{PACKAGE_NAME}}` substituted)
-  - `.github/workflows/` — CI workflow templates (7 files)
+  - `.github/workflows/` — CI workflow templates (incl. `auto-approve.yml`, which lets `diplodoc-bot` approve dep-update / release PRs; see ADR-002)
   - `.github/CODEOWNERS`, `.github/dependabot.yml` — GitHub config
-- `scripts/` — helper scripts used during init/update
+- `scripts/` — helper scripts used during init/update and distribution
   - `copy-scaffolding.js` — copies scaffolding files with blacklist support
   - `modify-package.js` — adds standard scripts to consumer's package.json
   - `modify-ignore.js` — updates .ignore files with standard patterns
   - `modify-release-please.js` — configures release-please in consumer packages
-- `distribution.yml` — centralized config: target repos, blacklist, auto-merge settings
+  - `sync-ci-gate.js` — discovers each repo's CI checks and updates the `master CI gate` ruleset (ADR-002)
+  - `check-pat-expiry.js` — evaluates `INFRA_APPROVER_PAT` expiry (ADR-002)
+  - `match-auto-approve.js` — canonical (tested) matcher for auto-approvable bot PRs (ADR-002)
+- `distribution.yml` — centralized config: target repos, blacklist, auto-merge settings, and the `ci_gate` block (ruleset name + `exclude_checks`)
 - `test/` — package tests (unit + integration)
 
 ### Configuration Files (at package root)
@@ -189,6 +192,8 @@ When `@diplodoc/infra` is used as a standalone npm package:
 ### GitHub Workflows (in this repo)
 
 - `distribute-infra.yml` — distributes scaffolding to all target repos on release or manual trigger
+- `sync-ci-gate.yml` — discovers each repo's CI checks and updates its `master CI gate` ruleset; runs daily (`cron`) and on `workflow_dispatch` (ADR-002)
+- `check-pat-expiry.yml` — two scheduled reminders (~2 weeks and ~3 days before the current `INFRA_APPROVER_PAT` expiry) + `workflow_dispatch`; opens/updates a `pat-rotation` issue assigned to `@diplodoc-platform/team` when rotation is due (ADR-002). Cron dates are expiry-relative and must be updated on rotation.
 - `integration-test.yml` — pre-release smoke tests: applies scaffolding to 3 reference packages, runs their full CI
 - `tests.yml`, `release.yml`, `release-please.yml`, etc. — standard CI for this package itself
 
@@ -197,7 +202,12 @@ When `@diplodoc/infra` is used as a standalone npm package:
 Two auth methods are used:
 
 - **`YC_UI_BOT_GITHUB_TOKEN`** — common org-wide PAT used by most workflows. Has `repo` scope but **no `workflow` scope**.
-- **GitHub App** (`INFRA_APP_ID` + `INFRA_APP_PRIVATE_KEY`) — used **only** by `distribute-infra.yml` to push `.github/workflows/*.yml` files to consumer repos. App has `Contents: Write`, `Workflows: Write`, `Pull requests: Write` permissions and must be installed on every target repo (or org-wide).
+- **GitHub App** (`INFRA_APP_ID` + `INFRA_APP_PRIVATE_KEY`) — used by `distribute-infra.yml` (push `.github/workflows/*.yml` to consumer repos), `sync-ci-gate.yml` (manage rulesets) and `check-pat-expiry.yml` (list org PATs). App must be installed on every target repo (or org-wide). Required permissions:
+  - `Contents: Write`, `Workflows: Write`, `Pull requests: Write` (distribution);
+  - `Administration: Write` (repository rulesets — needed by `sync-ci-gate.yml`; **must be added manually in the App settings and re-approved on targets**, there is no API for this; without it the Rulesets API returns `403`);
+  - org `Personal access tokens: Read` (so `check-pat-expiry.yml` can list `GET /orgs/{org}/personal-access-tokens`);
+  - org `Members: Read` (so `check-pat-expiry.yml` can resolve `@diplodoc-platform/team` members to auto-assign the rotation issue; best-effort, falls back to a team @mention).
+- **`INFRA_APPROVER_PAT`** — fine-grained PAT of the machine user `diplodoc-bot` (member of `@diplodoc-platform/team`). Used to approve PRs in `distribute-infra.yml` and the distributed `auto-approve.yml`. Rotation is manual (GitHub has no PAT-creation API); `check-pat-expiry.yml` alerts before it lapses. See ADR-001 / ADR-002.
 
 Why a GitHub App instead of extending PAT: GitHub blocks pushing `.github/workflows/*.yml` without `workflow` scope. Using a dedicated App scopes the privilege to the distribution use case and generates short-lived installation tokens per repo (instead of a long-lived PAT with broad permissions).
 
@@ -338,14 +348,15 @@ These exclusions are merged (union) with the central `distribution.yml` exclusio
 
 ### `infra` Binary
 
-| Command                 | Description                                   |
-| ----------------------- | --------------------------------------------- |
-| `infra init`            | Same as `lint init`                           |
-| `infra update`          | Same as `lint update`                         |
-| `infra sync`            | Distribute scaffolding to target repositories |
-| `infra blacklist show`  | Show blacklist for a repository               |
-| `infra blacklist audit` | Check for expired exclusions                  |
-| `infra help`            | Show usage information                        |
+| Command                 | Description                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `infra init`            | Same as `lint init`                                                                                       |
+| `infra update`          | Same as `lint update`                                                                                     |
+| `infra sync`            | Distribute scaffolding to target repositories                                                             |
+| `infra gate sync`       | Sync the `master CI gate` ruleset with each repo's checks (needs `GH_TOKEN` with `Administration: write`) |
+| `infra blacklist show`  | Show blacklist for a repository                                                                           |
+| `infra blacklist audit` | Check for expired exclusions                                                                              |
+| `infra help`            | Show usage information                                                                                    |
 
 ### `infra sync` Options
 

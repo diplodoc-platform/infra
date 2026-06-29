@@ -230,6 +230,23 @@ jobs:
             }
           "
 
+      # Refresh package-lock.json in the SAME commit as package.json so each
+      # repo gets ONE distribution commit instead of two (this one + a separate
+      # follow-up "fix lockfile" workflow). `--package-lock-only` rewrites the
+      # lockfile from the registry WITHOUT installing node_modules or running
+      # lifecycle scripts, so it stays fast and side-effect-free. The new
+      # @diplodoc/infra version is already verified-published on npm by the
+      # `prepare` job (see "Wait for @diplodoc/infra to be published on npm"),
+      # so dependency resolution here cannot 404.
+      - name: Update package-lock.json
+        working-directory: target
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm install --package-lock-only --ignore-scripts
+          else
+            echo "::notice title=No lockfile::${REPO_NAME} has no package-lock.json — skipping lockfile refresh."
+          fi
+
       - name: Check for changes
         id: changes
         working-directory: target
