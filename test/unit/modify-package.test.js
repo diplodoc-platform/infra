@@ -35,6 +35,10 @@ test('should add scripts to empty package.json', async () => {
         assert.strictEqual(result.scripts.lint, 'lint');
         assert.strictEqual(result.scripts['lint:fix'], 'lint fix');
         assert.strictEqual(result.scripts['pre-commit'], 'lint-staged');
+        assert.strictEqual(
+            result.scripts.lock,
+            'npm install --no-workspaces --package-lock-only --ignore-scripts',
+        );
         // prepare script should be set (husky || true is forced)
         assert(result.scripts.prepare !== undefined, 'prepare script should exist');
         assert(result.scripts.prepare.includes('husky'), 'prepare script should contain husky');

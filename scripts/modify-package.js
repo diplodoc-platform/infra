@@ -73,5 +73,6 @@ configure('lint', 'lint');
 configure('lint:fix', 'lint fix');
 configure('pre-commit', 'lint-staged');
 configure('prepare', 'husky || true', {force: true});
+configure('lock', 'npm install --no-workspaces --package-lock-only --ignore-scripts');
 
 writeFileSync(filename, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
