@@ -252,7 +252,8 @@ After `infra init`, the following scripts are added:
   "lint": "lint",
   "lint:fix": "lint fix",
   "pre-commit": "lint-staged",
-  "prepare": "husky || true"
+  "prepare": "husky || true",
+  "lock": "npm install --no-workspaces --package-lock-only --ignore-scripts"
 }
 ```
 
