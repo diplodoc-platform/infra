@@ -6,6 +6,9 @@ const {
     resolveGateConfig,
     buildRulesetPayload,
     selectRulesetAction,
+    workflowTriggersPr,
+    expandJobContexts,
+    contextsFromWorkflowDoc,
     parseRepo,
 } = require('../../scripts/sync-ci-gate');
 
@@ -114,6 +117,78 @@ test('selectRulesetAction: create when absent', () => {
 test('selectRulesetAction: update when present (case-insensitive)', () => {
     const action = selectRulesetAction([{id: 7, name: 'Master CI Gate'}], 'master CI gate');
     assert.deepStrictEqual(action, {method: 'PUT', id: 7});
+});
+
+// --- workflowTriggersPr ---------------------------------------------------
+
+test('workflowTriggersPr: string / array / object / negative', () => {
+    assert.strictEqual(workflowTriggersPr('pull_request'), true);
+    assert.strictEqual(workflowTriggersPr(['push', 'pull_request']), true);
+    assert.strictEqual(workflowTriggersPr({pull_request: {branches: ['main']}}), true);
+    assert.strictEqual(workflowTriggersPr('push'), false);
+    assert.strictEqual(workflowTriggersPr({push: {}}), false);
+    assert.strictEqual(workflowTriggersPr(undefined), false);
+});
+
+// --- expandJobContexts ----------------------------------------------------
+
+test('expandJobContexts: no matrix uses job id', () => {
+    assert.deepStrictEqual(expandJobContexts('audit', {name: 'Security audit'}), [
+        'Security audit',
+    ]);
+    assert.deepStrictEqual(expandJobContexts('build', {}), ['build']);
+});
+
+test('expandJobContexts: matrix cartesian product (GitHub naming)', () => {
+    const job = {
+        strategy: {
+            matrix: {os: ['ubuntu-latest', 'windows-latest', 'macos-latest'], 'node-version': [24]},
+        },
+    };
+    assert.deepStrictEqual(expandJobContexts('test', job), [
+        'test (ubuntu-latest, 24)',
+        'test (windows-latest, 24)',
+        'test (macos-latest, 24)',
+    ]);
+});
+
+test('expandJobContexts: oversized matrix falls back to base name (DoS guard)', () => {
+    const big = Array.from({length: 20}, (_, i) => `v${i}`);
+    const job = {strategy: {matrix: {a: big, b: big, c: big}}};
+    // 20*20*20 = 8000 > cap -> no expansion
+    assert.deepStrictEqual(expandJobContexts('job', job), ['job']);
+});
+
+test('expandJobContexts: name with expression falls back to job id', () => {
+    const job = {name: 'build ${{ matrix.os }}', strategy: {matrix: {os: ['a']}}};
+    assert.deepStrictEqual(expandJobContexts('build', job), ['build (a)']);
+});
+
+// --- contextsFromWorkflowDoc ----------------------------------------------
+
+test('contextsFromWorkflowDoc: PR workflow yields job contexts', () => {
+    const doc = {
+        on: {pull_request: {branches: ['main']}, push: {branches: ['main']}},
+        jobs: {
+            test: {strategy: {matrix: {os: ['ubuntu-latest'], 'node-version': [24]}}},
+            audit: {name: 'Security audit'},
+        },
+    };
+    assert.deepStrictEqual(contextsFromWorkflowDoc(doc), [
+        'test (ubuntu-latest, 24)',
+        'Security audit',
+    ]);
+});
+
+test('contextsFromWorkflowDoc: non-PR workflow yields nothing', () => {
+    const doc = {on: {push: {branches: ['main']}}, jobs: {deploy: {}}};
+    assert.deepStrictEqual(contextsFromWorkflowDoc(doc), []);
+});
+
+test('contextsFromWorkflowDoc: handles YAML 1.1 boolean on-key', () => {
+    // js-yaml may parse `on:` as the boolean true.
+    const doc = {true: ['pull_request'], jobs: {lint: {}}};
+    assert.deepStrictEqual(contextsFromWorkflowDoc(doc), ['lint']);
 });
 
 // --- parseRepo ------------------------------------------------------------

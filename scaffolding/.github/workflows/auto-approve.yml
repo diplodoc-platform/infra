@@ -14,11 +14,13 @@
 # (yc-ui-bot), so GitHub's no-self-approval rule is not violated. This workflow
 # only approves; it does NOT enable auto-merge (the CI gate still must pass).
 #
-# Defense in depth: the branch name alone is not trusted. Before approving we
-# also verify EVERY commit on the PR was authored AND committed by yc-ui-bot, so
-# a push by anyone else to a ci/update-deps/* or release-please--* branch does
-# not earn a free code-owner approval. (Mirrors commitsAllAuthoredBy() in
-# scripts/match-auto-approve.js.)
+# Defense in depth:
+#   - The branch name alone is not trusted: before approving we verify EVERY
+#     commit on the PR was authored AND committed by yc-ui-bot (mirrors
+#     commitsAllAuthoredBy() in scripts/match-auto-approve.js).
+#   - On every push (synchronize) any prior bot approval made for an older commit
+#     is DISMISSED, so an approval never lingers over unreviewed new code. A fresh
+#     approval is only re-issued when the new head is still all-bot content.
 #
 # To opt a repo out, exclude this file via .infrarc.yml or distribution.yml.
 
@@ -36,64 +38,113 @@ jobs:
     runs-on: ubuntu-latest
     # Mirror of scripts/match-auto-approve.js: author must be the dep/release
     # bot and the head branch must match one of the two automated PR shapes.
+    # (For fork PRs GitHub does not expose secrets, so HAS_PAT is false and the
+    # step below is skipped — fork PRs can never be auto-approved.)
     if: >
       github.event.pull_request.user.login == 'yc-ui-bot' &&
       (startsWith(github.event.pull_request.head.ref, 'ci/update-deps/') ||
        startsWith(github.event.pull_request.head.ref, 'release-please--'))
+    env:
+      # `secrets` is not available in a step-level `if`; map to a job-level env
+      # flag (which can read secrets) so we can skip cleanly when the PAT is unset.
+      HAS_PAT: ${{ secrets.INFRA_APPROVER_PAT != '' }}
     steps:
-      - name: Approve PR via diplodoc-bot machine user
-        env:
-          # Fine-grained PAT issued by the diplodoc-bot user (member of
-          # @diplodoc-platform/team). Required scope: Pull requests: Read and write.
-          GH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          # The only identity whose automated commits we trust to auto-approve.
-          ALLOWED_AUTHOR: 'yc-ui-bot'
-        run: |
-          if [[ -z "${GH_TOKEN}" ]]; then
-            echo "::warning::INFRA_APPROVER_PAT is not set — skipping auto-approve."
-            exit 0
-          fi
+      # Runs as diplodoc-bot (fine-grained PAT, member of @diplodoc-platform/team,
+      # scope: Pull requests: Read and write). Skips cleanly if the secret is unset.
+      - name: Approve / dismiss via diplodoc-bot machine user
+        if: env.HAS_PAT == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.INFRA_APPROVER_PAT }}
+          script: |
+            // The only identity whose automated commits we trust to auto-approve.
+            const ALLOWED_AUTHOR = 'yc-ui-bot';
 
-          # Content check: every commit on the PR must be authored AND committed
-          # by the trusted bot. One commit per line as "<author>\t<committer>"
-          # (one line per commit, so this is robust to pagination). A missing
-          # GitHub-resolved login becomes an empty field and fails the match.
-          mapfile -t COMMIT_LINES < <(gh api "repos/${REPO}/pulls/${PR_NUMBER}/commits" --paginate \
-            --jq '.[] | [(.author.login // ""), (.committer.login // "")] | @tsv' 2>/dev/null || true)
-          if [[ ${#COMMIT_LINES[@]} -eq 0 ]]; then
-            echo "::warning::Could not read commits for PR #${PR_NUMBER} — skipping auto-approve."
-            exit 0
-          fi
-          for line in "${COMMIT_LINES[@]}"; do
-            C_AUTHOR=$(cut -f1 <<<"${line}")
-            C_COMMITTER=$(cut -f2 <<<"${line}")
-            if [[ "${C_AUTHOR}" != "${ALLOWED_AUTHOR}" || "${C_COMMITTER}" != "${ALLOWED_AUTHOR}" ]]; then
-              echo "::notice::PR #${PR_NUMBER} has a commit not authored by ${ALLOWED_AUTHOR} (author='${C_AUTHOR}', committer='${C_COMMITTER}') — skipping auto-approve."
-              exit 0
-            fi
-          done
+            const {owner, repo} = context.repo;
+            const pr = context.payload.pull_request;
+            const prNumber = pr.number;
+            const headSha = pr.head.sha;
+            const prAuthor = pr.user.login;
 
-          # Resolve the approver login so we never self-approve and so we can
-          # make the step idempotent (skip if already approved by this user).
-          APPROVER=$(gh api user --jq '.login' 2>/dev/null || echo "")
-          if [[ -n "${APPROVER}" && "${APPROVER}" == "${PR_AUTHOR}" ]]; then
-            echo "::notice::Approver equals PR author (${APPROVER}) — skipping to avoid self-approval."
-            exit 0
-          fi
+            // Resolve the approver (this PAT's identity).
+            let approver = '';
+            try {
+              approver = (await github.rest.users.getAuthenticated()).data.login;
+            } catch (e) {
+              core.warning(`Could not resolve approver identity: ${e.message}`);
+              return;
+            }
+            if (approver === prAuthor) {
+              core.notice(`Approver equals PR author (${approver}) — skipping to avoid self-approval.`);
+              return;
+            }
 
-          if [[ -n "${APPROVER}" ]]; then
-            ALREADY=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" \
-              --json reviews \
-              --jq "[.reviews[] | select(.author.login == \"${APPROVER}\" and .state == \"APPROVED\")] | length" \
-              2>/dev/null || echo "0")
-            if [[ "${ALREADY}" != "0" ]]; then
-              echo "::notice::PR #${PR_NUMBER} already approved by ${APPROVER} — nothing to do."
-              exit 0
-            fi
-          fi
+            // Existing APPROVED reviews left by this approver.
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner, repo, pull_number: prNumber, per_page: 100,
+            });
+            const botApprovals = reviews.filter(
+              (r) => r.user && r.user.login === approver && r.state === 'APPROVED',
+            );
 
-          gh pr review "${PR_NUMBER}" --repo "${REPO}" --approve \
-            --body "Auto-approved by diplodoc-bot (machine user, member of @diplodoc-platform/team) for an automated bot PR (dependency update / release). The change itself is generated by automation; this approval only satisfies branch-protection review requirements. CI must still pass."
+            // SECURITY: a new commit must invalidate a prior approval. Dismiss any
+            // of our approvals that were made for an older commit than the current
+            // head, so the approval never lingers over unreviewed new code.
+            for (const r of botApprovals) {
+              if (r.commit_id !== headSha) {
+                try {
+                  await github.rest.pulls.dismissReview({
+                    owner, repo, pull_number: prNumber, review_id: r.id,
+                    message: 'Dismissed by auto-approve: new commits were pushed; re-review required.',
+                  });
+                  core.notice(`Dismissed stale approval #${r.id} (was for ${r.commit_id}).`);
+                } catch (e) {
+                  core.warning(`Could not dismiss review #${r.id}: ${e.message}`);
+                }
+              }
+            }
+
+            // Content check: EVERY commit on the PR must be authored AND committed
+            // by the trusted bot (mirrors commitsAllAuthoredBy in
+            // scripts/match-auto-approve.js). Otherwise we only dismissed above and
+            // stop here — a foreign commit gets no fresh approval.
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner, repo, pull_number: prNumber, per_page: 100,
+            });
+
+            // TOCTOU guard: only vouch for the exact head we were triggered for.
+            // If commits were pushed between the event and this read, the commit
+            // list no longer ends at headSha — bail and let the follow-up
+            // `synchronize` run re-evaluate the new head from scratch.
+            const listHead = commits.length ? commits[commits.length - 1].sha : null;
+            if (listHead !== headSha) {
+              core.notice(`Head moved since the event (event=${headSha}, now=${listHead}) — skipping.`);
+              return;
+            }
+
+            const contentOk =
+              commits.length > 0 &&
+              commits.every(
+                (c) =>
+                  c.author && c.committer &&
+                  c.author.login === ALLOWED_AUTHOR &&
+                  c.committer.login === ALLOWED_AUTHOR,
+              );
+            if (!contentOk) {
+              core.notice(`PR #${prNumber} has commits not authored by ${ALLOWED_AUTHOR} — not approving.`);
+              return;
+            }
+
+            // Idempotent: skip if we already approved the current head.
+            if (botApprovals.some((r) => r.commit_id === headSha)) {
+              core.notice(`PR #${prNumber} already approved for current head — nothing to do.`);
+              return;
+            }
+
+            // Pin the approval to the validated SHA so the review record can never
+            // silently apply to a commit we did not inspect.
+            await github.rest.pulls.createReview({
+              owner, repo, pull_number: prNumber, event: 'APPROVE', commit_id: headSha,
+              body: 'Auto-approved by diplodoc-bot (machine user, member of @diplodoc-platform/team) for an automated bot PR (dependency update / release). The change is generated by automation; this approval only satisfies branch-protection review requirements. CI must still pass.',
+            });
+            core.notice(`Approved PR #${prNumber} for ${headSha}.`);

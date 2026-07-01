@@ -29,6 +29,9 @@ const yaml = require('js-yaml');
 const DEFAULT_OWNER = 'diplodoc-platform';
 const DEFAULT_RULESET_NAME = 'master CI gate';
 const API_ROOT = 'https://api.github.com';
+// Upper bound on matrix combinations we will expand in the workflow-parse
+// fallback, to bound work on a hostile / pathological matrix definition.
+const MAX_MATRIX_COMBINATIONS = 256;
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests — no network, no process state)
@@ -137,6 +140,88 @@ function selectRulesetAction(rulesets = [], rulesetName) {
 }
 
 /**
+ * Does a workflow `on:` trigger include `pull_request`? Handles the string,
+ * array and mapping forms. (js-yaml may parse the bare `on:` key as the boolean
+ * `true` under YAML 1.1 rules — callers should pass the resolved value.)
+ *
+ * @param {*} on
+ * @returns {boolean}
+ */
+function workflowTriggersPr(on) {
+    if (!on) return false;
+    if (typeof on === 'string') return on === 'pull_request';
+    if (Array.isArray(on)) return on.includes('pull_request');
+    if (typeof on === 'object') {
+        return Object.prototype.hasOwnProperty.call(on, 'pull_request');
+    }
+    return false;
+}
+
+function cartesian(arrays) {
+    return arrays.reduce(
+        (acc, arr) => acc.flatMap((prefix) => arr.map((value) => [...prefix, value])),
+        [[]],
+    );
+}
+
+/**
+ * Compute the check-run context name(s) a single job produces, mirroring
+ * GitHub's naming: base name is `job.name` (when static) else the job id; a
+ * `strategy.matrix` expands to `base (v1, v2, ...)` over the cartesian product
+ * of its array dimensions (in declaration order). `include`/`exclude` and
+ * non-primitive / expression values are not expanded (best-effort; falls back
+ * to the base name) — see the fallback caveats in ADR-002.
+ *
+ * @param {string} jobId
+ * @param {object} job
+ * @returns {string[]}
+ */
+function expandJobContexts(jobId, job = {}) {
+    const base =
+        typeof job.name === 'string' && !job.name.includes('${{') ? job.name : jobId;
+
+    const matrix = job.strategy && job.strategy.matrix;
+    if (!matrix || typeof matrix !== 'object') return [base];
+
+    const dims = Object.entries(matrix)
+        .filter(([key, value]) => key !== 'include' && key !== 'exclude' && Array.isArray(value))
+        .map(([, value]) => value);
+    if (dims.length === 0) return [base];
+
+    const allPrimitive = dims.every((arr) =>
+        arr.every((v) => ['string', 'number', 'boolean'].includes(typeof v)),
+    );
+    if (!allPrimitive) return [base];
+
+    // Guard against a crafted workflow whose matrix cartesian product explodes
+    // (memory/CPU DoS on the sync job). Well past any realistic real matrix.
+    const combinations = dims.reduce((acc, arr) => acc * arr.length, 1);
+    if (combinations > MAX_MATRIX_COMBINATIONS) return [base];
+
+    return cartesian(dims).map((combo) => `${base} (${combo.map(String).join(', ')})`);
+}
+
+/**
+ * Derive check-run context names from a parsed workflow document, but only for
+ * workflows that run on `pull_request` (the ones that gate a PR).
+ *
+ * @param {object} doc parsed workflow YAML
+ * @returns {string[]}
+ */
+function contextsFromWorkflowDoc(doc = {}) {
+    // Under YAML 1.1, js-yaml can turn the `on:` key into the boolean `true`.
+    const onField = doc.on !== undefined ? doc.on : doc[true];
+    if (!workflowTriggersPr(onField)) return [];
+
+    const jobs = doc.jobs || {};
+    const out = [];
+    for (const [jobId, job] of Object.entries(jobs)) {
+        for (const ctx of expandJobContexts(jobId, job || {})) out.push(ctx);
+    }
+    return out;
+}
+
+/**
  * Split a `--repo` value (either "name" or "owner/name") into parts.
  *
  * @param {string} repoArg
@@ -242,6 +327,50 @@ async function discoverContexts(token, owner, name, ref) {
     return [...names];
 }
 
+/**
+ * Fallback discovery for repos with no CI runs yet (e.g. a brand-new repo where
+ * scaffolding was just pushed): read the workflow YAML files on the default
+ * branch and derive the PR check contexts statically.
+ */
+async function discoverContextsFromWorkflows(token, owner, name, ref) {
+    let listing;
+    try {
+        listing = await ghRequest(
+            token,
+            'GET',
+            `/repos/${owner}/${name}/contents/.github/workflows?ref=${encodeURIComponent(ref)}`,
+        );
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(listing)) return [];
+
+    const files = listing.filter(
+        (f) => f && f.type === 'file' && /\.ya?ml$/i.test(f.name || ''),
+    );
+
+    const names = new Set();
+    for (const file of files) {
+        let doc;
+        try {
+            const item = await ghRequest(
+                token,
+                'GET',
+                `/repos/${owner}/${name}/contents/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(ref)}`,
+            );
+            const content =
+                item && item.content
+                    ? Buffer.from(item.content, item.encoding || 'base64').toString('utf8')
+                    : '';
+            doc = yaml.load(content) || {};
+        } catch {
+            continue;
+        }
+        for (const ctx of contextsFromWorkflowDoc(doc)) names.add(ctx);
+    }
+    return [...names];
+}
+
 async function listRulesets(token, owner, name) {
     const data = await ghRequest(
         token,
@@ -293,10 +422,34 @@ async function syncCiGate({token, owner, name, gate, dryRun}) {
         contexts = filterChecks(gate.requiredChecks, []);
         result.source = 'config';
     } else {
-        const discovered = await discoverContexts(token, owner, name, defaultBranch);
+        let discovered = [];
+        try {
+            discovered = await discoverContexts(token, owner, name, defaultBranch);
+        } catch (error) {
+            // e.g. an empty repo with no HEAD commit — fall through to parsing.
+            result.discover_error = error.message;
+        }
         contexts = filterChecks(discovered, gate.excludeChecks);
         result.source = 'discovery';
         result.discovered_count = discovered.length;
+
+        // New repo / no CI runs yet: nothing reported any check-run. Fall back to
+        // parsing the workflow files so the gate is populated from day one; the
+        // daily sync then replaces these with real discovered contexts once CI runs.
+        if (contexts.length === 0) {
+            let parsed = [];
+            try {
+                parsed = await discoverContextsFromWorkflows(token, owner, name, defaultBranch);
+            } catch (error) {
+                result.parse_error = error.message;
+            }
+            const parsedContexts = filterChecks(parsed, gate.excludeChecks);
+            if (parsedContexts.length > 0) {
+                contexts = parsedContexts;
+                result.source = 'workflow-parse';
+                result.parsed_count = parsed.length;
+            }
+        }
     }
     result.contexts = contexts;
 
@@ -393,6 +546,9 @@ module.exports = {
     resolveGateConfig,
     buildRulesetPayload,
     selectRulesetAction,
+    workflowTriggersPr,
+    expandJobContexts,
+    contextsFromWorkflowDoc,
     parseRepo,
     syncCiGate,
 };

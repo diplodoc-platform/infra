@@ -52,6 +52,13 @@ points `master CI gate` at exactly that set.
 - The result is written to the ruleset via the Rulesets API: find the ruleset by
   name and `PUT` it, or `POST` a new one if missing. The operation is
   **idempotent** — re-running just rewrites the contexts.
+- **New-repo fallback.** A brand-new repo (scaffolding just pushed, no CI runs
+  yet) reports zero check-runs. In that case discovery falls back to **parsing
+  the workflow YAML files** on the default branch: for each workflow that runs on
+  `pull_request`, job names are derived (`job.name` or job id) and `strategy.matrix`
+  is expanded to `base (v1, v2, ...)` over the cartesian product of its array
+  dimensions. This seeds the gate from day one; the daily sync then replaces it
+  with the real discovered contexts once CI has actually run.
 
 Implementation:
 
@@ -127,9 +134,12 @@ GitHub's no-self-approval rule is not violated.
   depth — it verifies **every commit on the PR was authored and committed by
   `yc-ui-bot`** before approving via `INFRA_APPROVER_PAT`. This ties the approval
   to bot-generated content, so a push by someone else to a `ci/update-deps/*` /
-  `release-please--*` branch does not earn a free code-owner approval. It is
-  idempotent (skips if already approved) and **does not** enable auto-merge — the
-  CI gate from decision 1 must still pass.
+  `release-please--*` branch does not earn a free code-owner approval. On every
+  push (`synchronize`) a prior bot approval made for an older commit is
+  **dismissed** so an approval never lingers over unreviewed new code; a fresh
+  approval is re-issued only when the new head is still all-bot content. It is
+  idempotent (skips if the current head is already approved) and **does not**
+  enable auto-merge — the CI gate from decision 1 must still pass.
 - [`scripts/match-auto-approve.js`](../scripts/match-auto-approve.js) — the
   canonical, unit-tested matcher
   ([`test/unit/match-auto-approve.test.js`](../test/unit/match-auto-approve.test.js)).
@@ -167,8 +177,38 @@ Per-repo opt-out reuses the existing blacklist mechanism: exclude
   both `push` and `pull_request` (true for `tests.yml` / `security.yml`).
   Reading the checks of the latest merged PR would be more precise but more
   complex; left as possible future work.
-- If discovery yields zero contexts after filtering, the sync **skips** that repo
-  rather than installing an empty (no-op) gate.
+- If both live discovery and the workflow-parse fallback yield zero contexts
+  after filtering, the sync **skips** that repo rather than installing an empty
+  (no-op) gate.
+- The workflow-parse fallback is best-effort: it does not expand `matrix.include`
+  / `exclude`, cannot resolve `${{ }}` expressions in names, and does not model
+  reusable-workflow (`uses:`) job naming. A wrong guess could momentarily require
+  a check that never reports; since it only applies to brand-new repos and is
+  overwritten by the next real-discovery sync, the blast radius is small. Our own
+  scaffolding (`tests.yml`, `security.yml`) is expanded exactly. The matrix
+  expansion is capped (`MAX_MATRIX_COMBINATIONS`) so a pathological/hostile matrix
+  cannot explode the sync job; oversized matrices degrade to the bare job name.
+
+### Residual risk: commit-author check vs. email spoofing
+
+The auto-approve content check trusts GitHub's `author.login` / `committer.login`,
+which GitHub derives from the commit's **email**. The bot's email is the public
+noreply address, and `update-deps` commits are plain `git commit` pushes (not
+GPG-signed / `verified`). So a **repo collaborator with write access** could push
+a commit to a `ci/update-deps/*` / `release-please--*` branch with that email
+spoofed and defeat the content check. Mitigating factors and options:
+
+- The PR **author** (`pull_request.user.login`) cannot be spoofed by email — only
+  the real `yc-ui-bot` can open the qualifying PR — so this is strictly an
+  _insider-with-write-access_ threat, not an external one. Fork PRs get no secrets.
+- This workflow only **approves**; it does not enable auto-merge, and the CI gate
+  must still pass. A subsequent `synchronize` also dismisses stale approvals.
+- Stronger fix (deferred): require `commit.verification.verified === true`. That
+  would need `update-deps` to sign its commits (or create them via the GitHub API,
+  which auto-signs), otherwise legit dep PRs would stop being approved. Complementary:
+  restrict push to bot branches to the bot via branch protection.
+- Approvals are pinned to the validated head SHA and only issued when the commit
+  list still ends at the exact SHA from the triggering event (TOCTOU guard).
 
 ## Related Documents
 
