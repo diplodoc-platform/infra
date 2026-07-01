@@ -28,12 +28,30 @@ defaults:
 ci_gate:
   ruleset_name: 'master CI gate'
   exclude_checks:
+    - '*coverage*' # Coverage job ("Test coverage") — continue-on-error, must not gate
     - 'coverage*' # coverage.yml — runs only when test:coverage exists
     - 'SonarCloud*' # sonarcloud.yml — runs only when coverage was generated
     - 'release-please*' # release-please.yml — release PRs, not a PR gate
     - 'Update Dependencies*' # update-deps.yml — manual dispatch
     - 'package-lock*' # package-lock.yml — not a PR gate
     - 'Distribute*' # distribution workflow checks (infra repo only)
+    - 'Publish*' # publish/release jobs — run on release/tag, skipped on PRs
+
+# Protection gate (Ruleset B "master protection (auto-merge via app)", ADR-001).
+# Review + merge policy, independent of any status check. sync ONLY creates it
+# when a ruleset with this name is missing; it never modifies an existing one
+# (so manual tweaks are preserved). Per-repo override / opt-out via
+# repos.<name>.protection_gate.{enabled,ruleset_name,required_approving_review_count,
+# require_code_owner_review,dismiss_stale_reviews_on_push,allowed_merge_methods}.
+protection_gate:
+  enabled: true
+  ruleset_name: 'master protection (auto-merge via app)'
+  required_approving_review_count: 1
+  require_code_owner_review: true
+  dismiss_stale_reviews_on_push: false
+  allowed_merge_methods:
+    - 'rebase'
+    - 'squash'
 
 repos:
   # === packages ===

@@ -102,6 +102,9 @@ jobs:
       - name: Sync CI gate ruleset
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # App id is used as the Integration bypass actor on the protection gate
+          # (Ruleset B) when the script has to create it on a repo that lacks one.
+          INFRA_APP_ID: ${{ secrets.INFRA_APP_ID }}
         run: |
           mkdir -p .status
           node scripts/sync-ci-gate.js \
@@ -177,10 +180,14 @@ jobs:
 
             for (const r of rows) {
               const head = `[${r.repo}]`;
+              const prot =
+                r.protection_action && r.protection_action !== 'none'
+                  ? ` · protection: ${r.protection_action}`
+                  : '';
               if (r.status === 'synced') {
-                core.notice(`${head} ✅ ${r.action || 'synced'} — ${(r.contexts || []).length} context(s)`);
+                core.notice(`${head} ✅ ${r.action || 'synced'} — ${(r.contexts || []).length} context(s)${prot}`);
               } else if (r.status === 'skipped') {
-                core.notice(`${head} ⊘ Skipped — ${r.reason || 'no changes'}`);
+                core.notice(`${head} ⊘ Skipped — ${r.reason || 'no changes'}${prot}`);
               } else if (r.status === 'failed') {
                 core.error(`${head} ❌ Failed — ${r.reason || 'unknown error'}`);
               }
@@ -197,12 +204,16 @@ jobs:
             const formatRow = (r) => {
               const status = icons[r.status] || r.status;
               const action = r.action && r.action !== 'none' ? r.action : '—';
+              const prot =
+                r.protection_action && r.protection_action !== 'none'
+                  ? r.protection_action
+                  : '—';
               const ctx = (r.contexts || []).length;
               const list = (r.contexts || []).length
                 ? '<br>' + r.contexts.map((c) => `\`${c}\``).join('<br>')
                 : '';
               const note = r.reason ? r.reason : '';
-              return `| \`${r.repo}\` | ${status} | ${action} | ${ctx}${list} | ${note} |`;
+              return `| \`${r.repo}\` | ${status} | ${action} | ${prot} | ${ctx}${list} | ${note} |`;
             };
 
             const lines = [
@@ -210,8 +221,8 @@ jobs:
               '',
               `Total: **${rows.length}** · ✅ Synced: **${counts.synced || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
               '',
-              '| Repo | Status | Action | Required contexts | Note |',
-              '| --- | --- | --- | --- | --- |',
+              '| Repo | Status | CI gate | Protection | Required contexts | Note |',
+              '| --- | --- | --- | --- | --- | --- |',
               ...rows.map(formatRow),
             ];
 

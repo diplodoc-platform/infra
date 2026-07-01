@@ -175,7 +175,7 @@ When `@diplodoc/infra` is used as a standalone npm package:
   - `modify-package.js` — adds standard scripts to consumer's package.json
   - `modify-ignore.js` — updates .ignore files with standard patterns
   - `modify-release-please.js` — configures release-please in consumer packages
-  - `sync-ci-gate.js` — discovers each repo's CI checks (with a workflow-file parse fallback for new repos that have no CI runs yet) and updates the `master CI gate` ruleset (ADR-002)
+  - `sync-ci-gate.js` — discovers each repo's CI checks (with a workflow-file parse fallback for new repos that have no CI runs yet) and updates the `master CI gate` ruleset; also **create-only** ensures the check-independent `master protection (auto-merge via app)` ruleset (Ruleset B) exists (ADR-002)
   - `check-pat-expiry.js` — evaluates `INFRA_APPROVER_PAT` expiry (ADR-002)
   - `match-auto-approve.js` — canonical (tested) matcher for auto-approvable bot PRs (ADR-002)
 - `distribution.yml` — centralized config: target repos, blacklist, auto-merge settings, and the `ci_gate` block (ruleset name + `exclude_checks`)

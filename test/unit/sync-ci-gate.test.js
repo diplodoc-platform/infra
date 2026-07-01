@@ -4,7 +4,9 @@ const {
     matchesGlob,
     filterChecks,
     resolveGateConfig,
+    resolveProtectionConfig,
     buildRulesetPayload,
+    buildProtectionRulesetPayload,
     selectRulesetAction,
     workflowTriggersPr,
     expandJobContexts,
@@ -105,6 +107,84 @@ test('buildRulesetPayload: shape and contexts', () => {
         {context: 'build'},
         {context: 'lint'},
     ]);
+});
+
+// --- exclude globs (real-world superfluous checks) ------------------------
+
+test('filterChecks: drops publish + coverage, keeps real gates', () => {
+    const discovered = [
+        'Publish to npm',
+        'Security audit',
+        'test (macos-latest, 24)',
+        'test (ubuntu-latest, 24)',
+        'test (windows-latest, 24)',
+        'Test coverage',
+    ];
+    const excludes = ['*coverage*', 'coverage*', 'Publish*'];
+    assert.deepStrictEqual(filterChecks(discovered, excludes), [
+        'Security audit',
+        'test (macos-latest, 24)',
+        'test (ubuntu-latest, 24)',
+        'test (windows-latest, 24)',
+    ]);
+});
+
+// --- resolveProtectionConfig ----------------------------------------------
+
+test('resolveProtectionConfig: defaults when nothing configured', () => {
+    const p = resolveProtectionConfig({}, 'cli');
+    assert.strictEqual(p.enabled, true);
+    assert.strictEqual(p.rulesetName, 'master protection (auto-merge via app)');
+    assert.strictEqual(p.requiredApprovingReviewCount, 1);
+    assert.strictEqual(p.requireCodeOwnerReview, true);
+    assert.strictEqual(p.dismissStaleReviewsOnPush, false);
+    assert.deepStrictEqual(p.allowedMergeMethods, ['rebase', 'squash']);
+});
+
+test('resolveProtectionConfig: per-repo override + disable', () => {
+    const config = {
+        protection_gate: {required_approving_review_count: 1},
+        repos: {cli: {protection_gate: {enabled: false, required_approving_review_count: 2}}},
+    };
+    const p = resolveProtectionConfig(config, 'cli');
+    assert.strictEqual(p.enabled, false);
+    assert.strictEqual(p.requiredApprovingReviewCount, 2);
+});
+
+// --- buildProtectionRulesetPayload ----------------------------------------
+
+test('buildProtectionRulesetPayload: rules + app bypass', () => {
+    const payload = buildProtectionRulesetPayload({
+        rulesetName: 'master protection (auto-merge via app)',
+        requiredApprovingReviewCount: 1,
+        requireCodeOwnerReview: true,
+        allowedMergeMethods: ['rebase', 'squash'],
+        appId: '12345',
+    });
+    assert.strictEqual(payload.name, 'master protection (auto-merge via app)');
+    assert.deepStrictEqual(payload.conditions.ref_name.include, ['~DEFAULT_BRANCH']);
+
+    const types = payload.rules.map((r) => r.type);
+    assert.deepStrictEqual(types, ['pull_request', 'deletion', 'non_fast_forward']);
+
+    const pr = payload.rules.find((r) => r.type === 'pull_request');
+    assert.strictEqual(pr.parameters.required_approving_review_count, 1);
+    assert.strictEqual(pr.parameters.require_code_owner_review, true);
+    assert.deepStrictEqual(pr.parameters.allowed_merge_methods, ['rebase', 'squash']);
+
+    const integration = payload.bypass_actors.find((a) => a.actor_type === 'Integration');
+    assert.strictEqual(integration.actor_id, 12345);
+});
+
+test('buildProtectionRulesetPayload: no app bypass when appId missing', () => {
+    const payload = buildProtectionRulesetPayload({
+        rulesetName: 'master protection (auto-merge via app)',
+    });
+    assert.strictEqual(
+        payload.bypass_actors.some((a) => a.actor_type === 'Integration'),
+        false,
+    );
+    assert.strictEqual(payload.bypass_actors[0].actor_type, 'OrganizationAdmin');
 });
 
 // --- selectRulesetAction --------------------------------------------------

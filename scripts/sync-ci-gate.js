@@ -8,6 +8,9 @@
  * at exactly that set. This keeps the required_status_checks list in sync with
  * each repo's real workflows instead of a hand-maintained, org-wide flat list.
  *
+ * It also ensures the check-independent protection gate (Ruleset B, ADR-001)
+ * exists: create-only — an existing ruleset with that name is left untouched.
+ *
  * Discovery source: the check-runs and legacy commit statuses of the HEAD commit
  * on the default branch. Workflows that fire on `push` to the default branch
  * (tests.yml, security.yml) appear there; non-PR / conditional jobs are removed
@@ -28,6 +31,8 @@ const yaml = require('js-yaml');
 
 const DEFAULT_OWNER = 'diplodoc-platform';
 const DEFAULT_RULESET_NAME = 'master CI gate';
+// Ruleset B from ADR-001: review/merge policy, independent of any status check.
+const DEFAULT_PROTECTION_RULESET_NAME = 'master protection (auto-merge via app)';
 const API_ROOT = 'https://api.github.com';
 // Upper bound on matrix combinations we will expand in the workflow-parse
 // fallback, to bound work on a hostile / pathological matrix definition.
@@ -91,6 +96,95 @@ function resolveGateConfig(config = {}, repoName) {
         // Explicit pin: when provided, discovery is skipped entirely.
         requiredChecks:
             override.required_checks !== undefined ? override.required_checks : null,
+    };
+}
+
+/**
+ * Resolve the effective protection-gate (Ruleset B) config for a repo: global
+ * `protection_gate` block overlaid with an optional per-repo override. This
+ * ruleset is check-independent (review + merge policy); sync only *creates* it
+ * when missing and never modifies a manually-tuned existing one.
+ *
+ * @param {object} config parsed distribution.yml
+ * @param {string} repoName
+ * @returns {{enabled: boolean, rulesetName: string, requiredApprovingReviewCount: number, requireCodeOwnerReview: boolean, dismissStaleReviewsOnPush: boolean, allowedMergeMethods: string[]}}
+ */
+function resolveProtectionConfig(config = {}, repoName) {
+    const base = config.protection_gate || {};
+    const rawOverride =
+        config.repos && config.repos[repoName] && config.repos[repoName].protection_gate;
+    const override = rawOverride && typeof rawOverride === 'object' ? rawOverride : {};
+    const merged = {...base, ...override};
+
+    return {
+        enabled: merged.enabled !== undefined ? !!merged.enabled : true,
+        rulesetName: merged.ruleset_name || DEFAULT_PROTECTION_RULESET_NAME,
+        requiredApprovingReviewCount:
+            merged.required_approving_review_count !== undefined
+                ? merged.required_approving_review_count
+                : 1,
+        requireCodeOwnerReview:
+            merged.require_code_owner_review !== undefined
+                ? !!merged.require_code_owner_review
+                : true,
+        dismissStaleReviewsOnPush:
+            merged.dismiss_stale_reviews_on_push !== undefined
+                ? !!merged.dismiss_stale_reviews_on_push
+                : false,
+        allowedMergeMethods: merged.allowed_merge_methods || ['rebase', 'squash'],
+    };
+}
+
+/**
+ * Build the GitHub ruleset payload for the check-independent protection gate
+ * (Ruleset B). The distribution App is added as a bypass actor (when its id is
+ * known) so it can direct-merge hotfixes; auto-merge still needs a real approval.
+ *
+ * @param {object} params
+ * @returns {object} body for POST /repos/{owner}/{repo}/rulesets
+ */
+function buildProtectionRulesetPayload({
+    rulesetName,
+    requiredApprovingReviewCount = 1,
+    requireCodeOwnerReview = true,
+    dismissStaleReviewsOnPush = false,
+    allowedMergeMethods = ['rebase', 'squash'],
+    appId = null,
+}) {
+    const bypassActors = [
+        {actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'always'},
+    ];
+    if (appId) {
+        bypassActors.push({
+            actor_id: Number(appId),
+            actor_type: 'Integration',
+            bypass_mode: 'always',
+        });
+    }
+
+    return {
+        name: rulesetName,
+        target: 'branch',
+        enforcement: 'active',
+        conditions: {
+            ref_name: {include: ['~DEFAULT_BRANCH'], exclude: []},
+        },
+        bypass_actors: bypassActors,
+        rules: [
+            {
+                type: 'pull_request',
+                parameters: {
+                    required_approving_review_count: requiredApprovingReviewCount,
+                    dismiss_stale_reviews_on_push: dismissStaleReviewsOnPush,
+                    require_code_owner_review: requireCodeOwnerReview,
+                    require_last_push_approval: false,
+                    required_review_thread_resolution: false,
+                    allowed_merge_methods: allowedMergeMethods,
+                },
+            },
+            {type: 'deletion'},
+            {type: 'non_fast_forward'},
+        ],
     };
 }
 
@@ -405,12 +499,13 @@ function loadConfig(configPath) {
     return yaml.load(readFileSync(configPath, 'utf8')) || {};
 }
 
-async function syncCiGate({token, owner, name, gate, dryRun}) {
+async function syncCiGate({token, owner, name, gate, protection, appId, dryRun}) {
     const result = {
         repo: name,
         ruleset_name: gate.rulesetName,
         status: 'skipped',
         action: 'none',
+        protection_action: 'none',
         contexts: [],
     };
 
@@ -453,27 +548,59 @@ async function syncCiGate({token, owner, name, gate, dryRun}) {
     }
     result.contexts = contexts;
 
-    if (contexts.length === 0) {
-        result.status = 'skipped';
-        result.reason = 'no CI contexts discovered after filtering — gate left untouched';
-        return result;
-    }
-
-    const payload = buildRulesetPayload({rulesetName: gate.rulesetName, contexts});
+    const protectionEnabled = protection && protection.enabled;
 
     if (dryRun) {
-        result.status = 'dry-run';
+        result.status = contexts.length ? 'dry-run' : 'skipped';
+        if (!contexts.length) {
+            result.reason =
+                'no CI contexts discovered after filtering — CI gate left untouched';
+        }
+        result.protection_action = protectionEnabled ? 'planned-if-missing' : 'disabled';
         return result;
     }
 
+    // Fetch the ruleset list once; used for both gates.
     const existing = await listRulesets(token, owner, name);
+
+    // Ensure the check-independent protection gate (Ruleset B) exists. Create
+    // only — never modify an existing (possibly hand-tuned) ruleset.
+    if (protectionEnabled) {
+        const prot = selectRulesetAction(existing, protection.rulesetName);
+        if (prot.method === 'POST') {
+            await ghRequest(
+                token,
+                'POST',
+                `/repos/${owner}/${name}/rulesets`,
+                buildProtectionRulesetPayload({...protection, appId}),
+            );
+            result.protection_action = 'created';
+        } else {
+            result.protection_action = 'exists';
+        }
+    } else {
+        result.protection_action = 'disabled';
+    }
+
+    // CI gate (Ruleset A): create/update to the discovered contexts.
+    if (contexts.length === 0) {
+        result.status = 'skipped';
+        result.reason = 'no CI contexts discovered after filtering — CI gate left untouched';
+        return result;
+    }
+
     const {method, id} = selectRulesetAction(existing, gate.rulesetName);
     const path =
         method === 'PUT'
             ? `/repos/${owner}/${name}/rulesets/${id}`
             : `/repos/${owner}/${name}/rulesets`;
 
-    await ghRequest(token, method, path, payload);
+    await ghRequest(
+        token,
+        method,
+        path,
+        buildRulesetPayload({rulesetName: gate.rulesetName, contexts}),
+    );
 
     result.status = 'synced';
     result.action = method === 'PUT' ? 'updated' : 'created';
@@ -498,6 +625,8 @@ async function main() {
     const configPath = resolve(flags.config || 'distribution.yml');
     const config = loadConfig(configPath);
     const gate = resolveGateConfig(config, name);
+    const protection = resolveProtectionConfig(config, name);
+    const appId = process.env.INFRA_APP_ID || null;
 
     const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
     if (!token && !dryRun) {
@@ -506,7 +635,7 @@ async function main() {
 
     let result;
     try {
-        result = await syncCiGate({token, owner, name, gate, dryRun});
+        result = await syncCiGate({token, owner, name, gate, protection, appId, dryRun});
     } catch (error) {
         result = {
             repo: name,
@@ -544,7 +673,9 @@ module.exports = {
     matchesGlob,
     filterChecks,
     resolveGateConfig,
+    resolveProtectionConfig,
     buildRulesetPayload,
+    buildProtectionRulesetPayload,
     selectRulesetAction,
     workflowTriggersPr,
     expandJobContexts,

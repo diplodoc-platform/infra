@@ -46,9 +46,11 @@ points `master CI gate` at exactly that set.
   there, which is exactly what we want enforced.
 - A glob exclude list (`ci_gate.exclude_checks` in `distribution.yml`) removes
   checks that are **not guaranteed to report on every PR** (conditional /
-  scheduled / non-PR workflows like `coverage`, `SonarCloud`, `release-please`,
-  `update-deps`, `package-lock`, the distribution checks). Requiring such a check
-  would block a PR forever waiting for a status that never arrives.
+  scheduled / non-PR workflows like `Test coverage` (continue-on-error),
+  `SonarCloud`, `release-please`, `update-deps`, `package-lock`, `Publish*`, the
+  distribution checks). Requiring such a check would block a PR forever waiting
+  for a status that never arrives. Note the glob is case-sensitive and anchored,
+  so `Test coverage` needs `*coverage*` (not `coverage*`).
 - The result is written to the ruleset via the Rulesets API: find the ruleset by
   name and `PUT` it, or `POST` a new one if missing. The operation is
   **idempotent** — re-running just rewrites the contexts.
@@ -59,6 +61,22 @@ points `master CI gate` at exactly that set.
   is expanded to `base (v1, v2, ...)` over the cartesian product of its array
   dimensions. This seeds the gate from day one; the daily sync then replaces it
   with the real discovered contexts once CI has actually run.
+  - Caveat: the parser does **not** evaluate job-level `if:`. A job that is
+    present but skipped on PRs (e.g. a `Publish to npm` job gated by
+    `if: github.event_name == 'push'`) would otherwise be added as a required
+    check that never reports and deadlocks PRs. Such names are dropped via the
+    exclude list (`Publish*`).
+
+### 1b. Also ensure the check-independent protection gate (Ruleset B)
+
+The same sync now also guarantees Ruleset B — `master protection (auto-merge via
+app)` (review + merge policy, ADR-001). Unlike the CI gate, it is **create-only**:
+if a ruleset with that name already exists it is left untouched (manual tweaks are
+preserved); only when it is missing (e.g. a freshly created repo) is it created
+from `protection_gate` in `distribution.yml` (`required_approving_review_count`,
+`require_code_owner_review`, `deletion`, `non_fast_forward`, allowed merge methods).
+The distribution App (`INFRA_APP_ID`) is added as an `Integration` bypass actor
+when its id is available, matching the hand-made rulesets on existing repos.
 
 Implementation:
 
