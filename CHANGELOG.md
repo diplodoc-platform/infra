@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.0](https://github.com/diplodoc-platform/infra/compare/v2.0.7...v2.1.0) (2026-07-01)
+
+
+### Features
+
+* Add "npm run lock" command ([33c77d9](https://github.com/diplodoc-platform/infra/commit/33c77d99a7a343a995d802f8469351442fd5636d))
+* Improve pack ([8295f74](https://github.com/diplodoc-platform/infra/commit/8295f74d8f6092b277d8ee663bad3e74bbfc976b))
+
+
+### Bug Fixes
+
+* improve gate ([8b953ac](https://github.com/diplodoc-platform/infra/commit/8b953ac67661bb500d461d7a10d195926e176690))
+
 ## [2.0.7](https://github.com/diplodoc-platform/infra/compare/v2.0.6...v2.0.7) (2026-06-26)
 
 
