@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.2.0](https://github.com/diplodoc-platform/infra/compare/v2.1.0...v2.2.0) (2026-07-03)
+
+
+### Features
+
+* provide shared tsconfig DOCSTOOLS-4928 ([ce8b203](https://github.com/diplodoc-platform/infra/commit/ce8b203fb38dd75d63d986fa46482f34105b10ea))
+
+
+### Bug Fixes
+
+* add "unchanged" in sync gate report ([a71f60c](https://github.com/diplodoc-platform/infra/commit/a71f60ca403452aa1828d2bb2e28b8bb80068cbd))
+* ci-gate get checks from workflow ([c398355](https://github.com/diplodoc-platform/infra/commit/c3983552b6a9f0c2258bfb1d11e71302f00682e7))
+
 ## [2.1.0](https://github.com/diplodoc-platform/infra/compare/v2.0.7...v2.1.0) (2026-07-01)
 
 
