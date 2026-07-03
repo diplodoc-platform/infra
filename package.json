@@ -36,6 +36,7 @@
     "src",
     "scaffolding",
     "scripts",
+    "tsconfig.json",
     "distribution.yml",
     "eslint-common-config.js",
     "eslint-client-config.js",
@@ -45,6 +46,8 @@
     "lintstaged-config.js"
   ],
   "exports": {
+    "./tsconfig.json": "./tsconfig.json",
+    "./tsconfig": "./tsconfig.json",
     "./esbuild": {
       "types": "./src/esbuild.d.ts",
       "import": "./src/esbuild.mjs",

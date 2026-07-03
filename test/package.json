@@ -12,7 +12,6 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@diplodoc/infra": "^1.0.0",
-    "@diplodoc/tsconfig": "^1.0.2"
+    "@diplodoc/infra": "^1.0.0"
   }
 }
