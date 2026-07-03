@@ -39,28 +39,25 @@ needs:
 A new tool computes, **per repo**, the actual set of CI status-check contexts and
 points `master CI gate` at exactly that set.
 
-- Source of truth: the check-runs and legacy commit statuses of the **HEAD
-  commit on the default branch**
-  (`GET /repos/{o}/{r}/commits/{branch}/check-runs` + `.../status`). Workflows
-  that fire on `push` to the default branch (`tests.yml`, `security.yml`) report
-  there, which is exactly what we want enforced.
-- A glob exclude list (`ci_gate.exclude_checks` in `distribution.yml`) removes
-  checks that are **not guaranteed to report on every PR** (conditional /
-  scheduled / non-PR workflows like `Test coverage` (continue-on-error),
-  `SonarCloud`, `release-please`, `update-deps`, `package-lock`, `Publish*`, the
-  distribution checks). Requiring such a check would block a PR forever waiting
-  for a status that never arrives. Note the glob is case-sensitive and anchored,
-  so `Test coverage` needs `*coverage*` (not `coverage*`).
+- Source of truth: **workflow YAML files** on the default branch. For each workflow
+  that runs on `pull_request`, job names are derived (`job.name` or job id) and
+  `strategy.matrix` is expanded to `base (v1, v2, ...)` over the cartesian product
+  of its array dimensions. This is stable and predictable; it does not pick up
+  one-off check-runs from the latest commit (Dependabot, deploy jobs, etc.).
+- **Commit-based discovery is disabled** for now (`GET .../check-runs` on default-
+  branch HEAD was too noisy). The code is kept commented-out in
+  `sync-ci-gate.js` for a possible future re-enable (e.g. reading checks from a
+  merged PR instead of HEAD).
+- A glob exclude list (`ci_gate.exclude_checks` in `distribution.yml`, merged with
+  per-repo patterns) removes checks that must **not** gate a PR (conditional /
+  non-PR workflows like `Test coverage` (continue-on-error), `SonarCloud`,
+  `release-please`, `update-deps`, `Publish*`, `Dependabot*`, repo-specific jobs
+  like `deploy`). **`Update package-lock.json` is intentionally kept** — it runs
+  on every in-repo PR. Note the glob is case-sensitive and anchored, so
+  `Test coverage` needs `*coverage*` (not `coverage*`).
 - The result is written to the ruleset via the Rulesets API: find the ruleset by
   name and `PUT` it, or `POST` a new one if missing. The operation is
   **idempotent** — re-running just rewrites the contexts.
-- **New-repo fallback.** A brand-new repo (scaffolding just pushed, no CI runs
-  yet) reports zero check-runs. In that case discovery falls back to **parsing
-  the workflow YAML files** on the default branch: for each workflow that runs on
-  `pull_request`, job names are derived (`job.name` or job id) and `strategy.matrix`
-  is expanded to `base (v1, v2, ...)` over the cartesian product of its array
-  dimensions. This seeds the gate from day one; the daily sync then replaces it
-  with the real discovered contexts once CI has actually run.
   - Caveat: the parser does **not** evaluate job-level `if:`. A job that is
     present but skipped on PRs (e.g. a `Publish to npm` job gated by
     `if: github.event_name == 'push'`) would otherwise be added as a required
@@ -88,8 +85,8 @@ Implementation:
 - Workflow: [`.github/workflows/sync-ci-gate.yml`](../.github/workflows/sync-ci-gate.yml)
   — `prepare` → `sync` (matrix × repos) → `report`. Triggers:
   - `workflow_dispatch` (`target` = repo name or `all`) — manual / targeted;
-  - `schedule` (daily `0 6 * * *`) — new workflows appear rarely, so daily is
-    enough; idempotency makes repeated runs safe.
+  - `schedule` (weekly `0 6 * * 1`, Monday 06:00 UTC) — new workflows appear
+    rarely; idempotency makes repeated runs safe.
 
 Only **Ruleset A** is managed as code here. Ruleset B (review / merge policy)
 stays as configured per ADR-001.
@@ -170,7 +167,7 @@ Per-repo opt-out reuses the existing blacklist mechanism: exclude
 
 ### Positive
 
-- The CI gate reflects each repo's **real** checks and self-heals daily.
+- The CI gate reflects each repo's **declared** PR workflows and self-heals weekly.
 - No more hand-editing rulesets across repos.
 - PAT expiry is surfaced ahead of time instead of failing the pipeline.
 - Mechanical bot PRs no longer wait on a human approval.
@@ -181,8 +178,8 @@ Per-repo opt-out reuses the existing blacklist mechanism: exclude
   same distribution identity but worth noting in audits.
 - The matcher logic lives in two places (tested script + scaffolding `if:`) and
   must be kept in sync.
-- Discovery from the default-branch HEAD only captures checks that also run on
-  `push`; the exclude list handles the rest. See "Notes".
+- Workflow parsing does not evaluate job-level `if:`; the exclude list handles
+  jobs that exist in YAML but skip on PRs. See "Notes".
 
 ### Neutral
 
@@ -191,21 +188,18 @@ Per-repo opt-out reuses the existing blacklist mechanism: exclude
 
 ## Notes / risks
 
-- Default-branch HEAD discovery equals PR checks only for workflows that run on
-  both `push` and `pull_request` (true for `tests.yml` / `security.yml`).
-  Reading the checks of the latest merged PR would be more precise but more
-  complex; left as possible future work.
-- If both live discovery and the workflow-parse fallback yield zero contexts
-  after filtering, the sync **skips** that repo rather than installing an empty
-  (no-op) gate.
-- The workflow-parse fallback is best-effort: it does not expand `matrix.include`
-  / `exclude`, cannot resolve `${{ }}` expressions in names, and does not model
-  reusable-workflow (`uses:`) job naming. A wrong guess could momentarily require
-  a check that never reports; since it only applies to brand-new repos and is
-  overwritten by the next real-discovery sync, the blast radius is small. Our own
-  scaffolding (`tests.yml`, `security.yml`) is expanded exactly. The matrix
-  expansion is capped (`MAX_MATRIX_COMBINATIONS`) so a pathological/hostile matrix
-  cannot explode the sync job; oversized matrices degrade to the bare job name.
+- Workflow parsing is best-effort: it does not expand `matrix.include` / `exclude`,
+  cannot resolve `${{ }}` expressions in names, and does not model reusable-
+  workflow (`uses:`) job naming or job-level `if:`. Wrong guesses are dropped via
+  `exclude_checks` (global + per-repo merge). Our own scaffolding (`tests.yml`,
+  `security.yml`, `package-lock.yml`) is expanded exactly. The matrix expansion is
+  capped (`MAX_MATRIX_COMBINATIONS`) so a pathological matrix cannot explode the
+  sync job; oversized matrices degrade to the bare job name.
+- Commit-based discovery (default-branch HEAD check-runs) is **disabled** — it
+  picked up Dependabot and other one-off statuses. Possible future re-enable:
+  read checks from the latest merged PR instead of HEAD.
+- If workflow parsing yields zero contexts after filtering, the sync **skips**
+  that repo rather than installing an empty (no-op) gate.
 
 ### Residual risk: commit-author check vs. email spoofing
 

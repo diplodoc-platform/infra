@@ -1,14 +1,13 @@
 name: Sync CI Gate
 
 # Points each target repo's "master CI gate" ruleset (Ruleset A, see ADR-002)
-# at the actual set of CI status-check contexts that repo currently produces.
-# Runs on a daily schedule (new workflows appear rarely) and on manual dispatch.
+# at the set of CI status-check contexts derived from its workflow files.
+# Runs weekly (new workflows appear rarely) and on manual dispatch.
 
 on:
   schedule:
-    # Daily at 06:00 UTC. Discovery is idempotent, so re-runs simply rewrite the
-    # required-checks list with the freshest contexts.
-    - cron: '0 6 * * *'
+    # Weekly on Monday at 06:00 UTC.
+    - cron: '0 6 * * 1'
   workflow_dispatch:
     inputs:
       target:

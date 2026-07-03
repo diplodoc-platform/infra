@@ -19,12 +19,12 @@ defaults:
   exclude: []
 
 # CI gate configuration (Ruleset A "master CI gate", see ADR-002).
-# The sync-ci-gate workflow discovers each repo's actual CI status-check contexts
-# from the HEAD commit of its default branch and points the ruleset at them.
-# `exclude_checks` removes contexts that are NOT guaranteed to report on every PR
-# (conditional / non-PR / scheduled workflows) so a PR never blocks forever.
+# The sync-ci-gate workflow derives each repo's required status-check contexts
+# from its workflow YAML files (jobs that run on `pull_request`).
+# `exclude_checks` removes contexts that must NOT gate a PR (conditional /
+# non-PR / one-off workflows). Per-repo patterns are merged onto this list.
 # Glob patterns: `*` matches any run of characters.
-# Per-repo override is supported via repos.<name>.ci_gate.{ruleset_name,exclude_checks,required_checks}.
+# Per-repo override: repos.<name>.ci_gate.{ruleset_name,exclude_checks,required_checks}.
 ci_gate:
   ruleset_name: 'master CI gate'
   exclude_checks:
@@ -33,9 +33,9 @@ ci_gate:
     - 'SonarCloud*' # sonarcloud.yml — runs only when coverage was generated
     - 'release-please*' # release-please.yml — release PRs, not a PR gate
     - 'Update Dependencies*' # update-deps.yml — manual dispatch
-    - 'package-lock*' # package-lock.yml — not a PR gate
     - 'Distribute*' # distribution workflow checks (infra repo only)
     - 'Publish*' # publish/release jobs — run on release/tag, skipped on PRs
+    - 'Dependabot*' # dependabot security/version PR checks — not our CI gate
 
 # Protection gate (Ruleset B "master protection (auto-merge via app)", ADR-001).
 # Review + merge policy, independent of any status check. sync ONLY creates it
@@ -61,6 +61,11 @@ repos:
     exclude: []
   components:
     exclude: []
+    ci_gate:
+      exclude_checks:
+        - 'Create GitHub Comment'
+        - 'deploy'
+        - 'update-screenshots'
   directive:
     exclude: []
   liquid:

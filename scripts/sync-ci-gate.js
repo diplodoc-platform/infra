@@ -11,11 +11,9 @@
  * It also ensures the check-independent protection gate (Ruleset B, ADR-001)
  * exists: create-only — an existing ruleset with that name is left untouched.
  *
- * Discovery source: the check-runs and legacy commit statuses of the HEAD commit
- * on the default branch. Workflows that fire on `push` to the default branch
- * (tests.yml, security.yml) appear there; non-PR / conditional jobs are removed
- * via the `ci_gate.exclude_checks` glob list so a PR never blocks forever on a
- * check that does not report on every PR.
+ * Discovery source: workflow YAML files on the default branch (jobs that run on
+ * `pull_request`). Commit-based discovery from the HEAD check-runs is disabled
+ * for now — it is too noisy (Dependabot, one-off deploys, etc.).
  *
  * Runnable two ways:
  *   - As a CLI:   node scripts/sync-ci-gate.js --repo <name|owner/name> [--config <path>] [--dry-run] [--output <file>]
@@ -89,10 +87,11 @@ function resolveGateConfig(config = {}, repoName) {
 
     return {
         rulesetName: override.ruleset_name || base.ruleset_name || DEFAULT_RULESET_NAME,
-        excludeChecks:
-            override.exclude_checks !== undefined
-                ? override.exclude_checks
-                : base.exclude_checks || [],
+        // Per-repo patterns are merged onto the global list (not a full replace).
+        excludeChecks: [
+            ...(base.exclude_checks || []),
+            ...(override.exclude_checks || []),
+        ],
         // Explicit pin: when provided, discovery is skipped entirely.
         requiredChecks:
             override.required_checks !== undefined ? override.required_checks : null,
@@ -517,34 +516,32 @@ async function syncCiGate({token, owner, name, gate, protection, appId, dryRun})
         contexts = filterChecks(gate.requiredChecks, []);
         result.source = 'config';
     } else {
-        let discovered = [];
+        // Primary: parse workflow YAML on the default branch. More stable than
+        // reading check-runs off the latest commit (which picks up one-off /
+        // conditional runs like Dependabot, deploy, screenshot updates).
+        let parsed = [];
         try {
-            discovered = await discoverContexts(token, owner, name, defaultBranch);
+            parsed = await discoverContextsFromWorkflows(token, owner, name, defaultBranch);
         } catch (error) {
-            // e.g. an empty repo with no HEAD commit — fall through to parsing.
-            result.discover_error = error.message;
+            result.parse_error = error.message;
         }
-        contexts = filterChecks(discovered, gate.excludeChecks);
-        result.source = 'discovery';
-        result.discovered_count = discovered.length;
+        contexts = filterChecks(parsed, gate.excludeChecks);
+        result.source = 'workflow-parse';
+        result.parsed_count = parsed.length;
 
-        // New repo / no CI runs yet: nothing reported any check-run. Fall back to
-        // parsing the workflow files so the gate is populated from day one; the
-        // daily sync then replaces these with real discovered contexts once CI runs.
-        if (contexts.length === 0) {
-            let parsed = [];
-            try {
-                parsed = await discoverContextsFromWorkflows(token, owner, name, defaultBranch);
-            } catch (error) {
-                result.parse_error = error.message;
-            }
-            const parsedContexts = filterChecks(parsed, gate.excludeChecks);
-            if (parsedContexts.length > 0) {
-                contexts = parsedContexts;
-                result.source = 'workflow-parse';
-                result.parsed_count = parsed.length;
-            }
-        }
+        // Commit-based discovery disabled — too noisy; re-enable when we have a
+        // better filter or read checks from a merged PR instead of default-branch HEAD.
+        // let discovered = [];
+        // try {
+        //     discovered = await discoverContexts(token, owner, name, defaultBranch);
+        // } catch (error) {
+        //     result.discover_error = error.message;
+        // }
+        // if (contexts.length === 0 && discovered.length > 0) {
+        //     contexts = filterChecks(discovered, gate.excludeChecks);
+        //     result.source = 'discovery';
+        //     result.discovered_count = discovered.length;
+        // }
     }
     result.contexts = contexts;
 

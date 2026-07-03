@@ -74,17 +74,25 @@ test('resolveGateConfig: global ci_gate is used', () => {
     assert.deepStrictEqual(gate.excludeChecks, ['coverage*']);
 });
 
-test('resolveGateConfig: per-repo override wins', () => {
+test('resolveGateConfig: per-repo exclude_checks merge onto global', () => {
     const config = {
-        ci_gate: {ruleset_name: 'gate', exclude_checks: ['coverage*']},
+        ci_gate: {ruleset_name: 'gate', exclude_checks: ['Dependabot*', 'Publish*']},
         repos: {
-            cli: {ci_gate: {exclude_checks: [], required_checks: ['build', 'lint']}},
+            components: {ci_gate: {exclude_checks: ['deploy', 'update-screenshots']}},
+            cli: {ci_gate: {required_checks: ['build', 'lint']}},
         },
     };
-    const gate = resolveGateConfig(config, 'cli');
-    assert.strictEqual(gate.rulesetName, 'gate'); // inherited from base
-    assert.deepStrictEqual(gate.excludeChecks, []); // overridden to empty
-    assert.deepStrictEqual(gate.requiredChecks, ['build', 'lint']);
+    const components = resolveGateConfig(config, 'components');
+    assert.deepStrictEqual(components.excludeChecks, [
+        'Dependabot*',
+        'Publish*',
+        'deploy',
+        'update-screenshots',
+    ]);
+
+    const cli = resolveGateConfig(config, 'cli');
+    assert.deepStrictEqual(cli.excludeChecks, ['Dependabot*', 'Publish*']);
+    assert.deepStrictEqual(cli.requiredChecks, ['build', 'lint']);
 });
 
 // --- buildRulesetPayload --------------------------------------------------
@@ -110,6 +118,42 @@ test('buildRulesetPayload: shape and contexts', () => {
 });
 
 // --- exclude globs (real-world superfluous checks) ------------------------
+
+test('filterChecks: keeps Update package-lock.json, drops Dependabot', () => {
+    const parsed = [
+        'Dependabot',
+        'Security audit',
+        'test (ubuntu-latest, 24)',
+        'Update package-lock.json',
+    ];
+    const excludes = ['Dependabot*', 'Publish*', '*coverage*'];
+    assert.deepStrictEqual(filterChecks(parsed, excludes), [
+        'Security audit',
+        'test (ubuntu-latest, 24)',
+        'Update package-lock.json',
+    ]);
+});
+
+test('filterChecks: components-specific excludes', () => {
+    const parsed = [
+        'Create GitHub Comment',
+        'deploy',
+        'update-screenshots',
+        'Security audit',
+        'test (ubuntu-latest, 24)',
+    ];
+    const excludes = [
+        'Dependabot*',
+        'Publish*',
+        'Create GitHub Comment',
+        'deploy',
+        'update-screenshots',
+    ];
+    assert.deepStrictEqual(filterChecks(parsed, excludes), [
+        'Security audit',
+        'test (ubuntu-latest, 24)',
+    ]);
+});
 
 test('filterChecks: drops publish + coverage, keeps real gates', () => {
     const discovered = [
