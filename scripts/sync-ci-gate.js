@@ -35,6 +35,42 @@ const API_ROOT = 'https://api.github.com';
 // Upper bound on matrix combinations we will expand in the workflow-parse
 // fallback, to bound work on a hostile / pathological matrix definition.
 const MAX_MATRIX_COMBINATIONS = 256;
+// Workflow files that are not CI gates and must never appear in Ruleset A.
+const SKIP_WORKFLOW_BASENAMES = new Set(['auto-approve.yml']);
+
+/**
+ * Record contexts produced by one workflow file; tracks which file(s) claim each name.
+ *
+ * @param {Map<string, Set<string>>} byContext context -> workflow basenames
+ * @param {string} workflowBasename e.g. "tests.yml"
+ * @param {string[]} contexts
+ */
+function accumulateWorkflowContexts(byContext, workflowBasename, contexts) {
+    for (const ctx of contexts) {
+        if (!byContext.has(ctx)) byContext.set(ctx, new Set());
+        byContext.get(ctx).add(workflowBasename);
+    }
+}
+
+/**
+ * Contexts claimed by more than one workflow file. GitHub branch protection keys
+ * on the check **name** only — duplicate names from different workflows collapse
+ * to one ruleset entry and GitHub uses the **most recently completed** run's
+ * conclusion, so both jobs are NOT independently enforced. Give jobs distinct
+ * `name:` values when this happens.
+ *
+ * @param {Map<string, Set<string>>} byContext
+ * @returns {Array<{context: string, workflows: string[]}>}
+ */
+function findContextCollisions(byContext) {
+    const out = [];
+    for (const [context, files] of byContext) {
+        if (files.size > 1) {
+            out.push({context, workflows: [...files].sort((a, b) => a.localeCompare(b))});
+        }
+    }
+    return out.sort((a, b) => a.context.localeCompare(b.context));
+}
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests — no network, no process state)
@@ -214,6 +250,44 @@ function buildRulesetPayload({rulesetName, contexts}) {
             },
         ],
     };
+}
+
+/**
+ * Extract required status-check context names from a ruleset API response.
+ *
+ * @param {object} ruleset
+ * @returns {string[]} sorted, de-duplicated
+ */
+function extractRequiredContextsFromRuleset(ruleset = {}) {
+    const rules = Array.isArray(ruleset.rules) ? ruleset.rules : [];
+    const out = [];
+    for (const rule of rules) {
+        if (rule && rule.type === 'required_status_checks' && rule.parameters) {
+            const checks = rule.parameters.required_status_checks;
+            if (Array.isArray(checks)) {
+                for (const item of checks) {
+                    const ctx = typeof item === 'string' ? item : item && item.context;
+                    if (typeof ctx === 'string' && ctx.trim()) out.push(ctx.trim());
+                }
+            }
+        }
+    }
+    return [...new Set(out)].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Compare two sorted context lists for equality.
+ *
+ * @param {string[]} a
+ * @param {string[]} b
+ * @returns {boolean}
+ */
+function contextsEqual(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
 }
 
 /**
@@ -421,9 +495,9 @@ async function discoverContexts(token, owner, name, ref) {
 }
 
 /**
- * Fallback discovery for repos with no CI runs yet (e.g. a brand-new repo where
- * scaffolding was just pushed): read the workflow YAML files on the default
- * branch and derive the PR check contexts statically.
+ * Read workflow YAML files on a ref and derive PR check contexts statically.
+ *
+ * @returns {Promise<{contexts: string[], collisions: Array<{context: string, workflows: string[]}>}>}
  */
 async function discoverContextsFromWorkflows(token, owner, name, ref) {
     let listing;
@@ -434,16 +508,18 @@ async function discoverContextsFromWorkflows(token, owner, name, ref) {
             `/repos/${owner}/${name}/contents/.github/workflows?ref=${encodeURIComponent(ref)}`,
         );
     } catch {
-        return [];
+        return {contexts: [], collisions: []};
     }
-    if (!Array.isArray(listing)) return [];
+    if (!Array.isArray(listing)) return {contexts: [], collisions: []};
 
     const files = listing.filter(
         (f) => f && f.type === 'file' && /\.ya?ml$/i.test(f.name || ''),
     );
 
-    const names = new Set();
+    const byContext = new Map();
     for (const file of files) {
+        if (SKIP_WORKFLOW_BASENAMES.has(file.name)) continue;
+
         let doc;
         try {
             const item = await ghRequest(
@@ -459,9 +535,11 @@ async function discoverContextsFromWorkflows(token, owner, name, ref) {
         } catch {
             continue;
         }
-        for (const ctx of contextsFromWorkflowDoc(doc)) names.add(ctx);
+        accumulateWorkflowContexts(byContext, file.name, contextsFromWorkflowDoc(doc));
     }
-    return [...names];
+
+    const contexts = [...byContext.keys()].sort((a, b) => a.localeCompare(b));
+    return {contexts, collisions: findContextCollisions(byContext)};
 }
 
 async function listRulesets(token, owner, name) {
@@ -471,6 +549,10 @@ async function listRulesets(token, owner, name) {
         `/repos/${owner}/${name}/rulesets?per_page=100&includes_parents=false`,
     );
     return Array.isArray(data) ? data : [];
+}
+
+async function getRuleset(token, owner, name, id) {
+    return ghRequest(token, 'GET', `/repos/${owner}/${name}/rulesets/${id}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -520,14 +602,25 @@ async function syncCiGate({token, owner, name, gate, protection, appId, dryRun})
         // reading check-runs off the latest commit (which picks up one-off /
         // conditional runs like Dependabot, deploy, screenshot updates).
         let parsed = [];
+        let collisions = [];
         try {
-            parsed = await discoverContextsFromWorkflows(token, owner, name, defaultBranch);
+            const discovery = await discoverContextsFromWorkflows(
+                token,
+                owner,
+                name,
+                defaultBranch,
+            );
+            parsed = discovery.contexts;
+            collisions = discovery.collisions;
         } catch (error) {
             result.parse_error = error.message;
         }
         contexts = filterChecks(parsed, gate.excludeChecks);
         result.source = 'workflow-parse';
         result.parsed_count = parsed.length;
+        if (collisions.length > 0) {
+            result.collision_warnings = collisions;
+        }
 
         // Commit-based discovery disabled — too noisy; re-enable when we have a
         // better filter or read checks from a merged PR instead of default-branch HEAD.
@@ -587,20 +680,25 @@ async function syncCiGate({token, owner, name, gate, protection, appId, dryRun})
     }
 
     const {method, id} = selectRulesetAction(existing, gate.rulesetName);
-    const path =
-        method === 'PUT'
-            ? `/repos/${owner}/${name}/rulesets/${id}`
-            : `/repos/${owner}/${name}/rulesets`;
+    const payload = buildRulesetPayload({rulesetName: gate.rulesetName, contexts});
 
-    await ghRequest(
-        token,
-        method,
-        path,
-        buildRulesetPayload({rulesetName: gate.rulesetName, contexts}),
-    );
+    if (method === 'PUT') {
+        const current = await getRuleset(token, owner, name, id);
+        const existingContexts = extractRequiredContextsFromRuleset(current);
+        if (contextsEqual(contexts, existingContexts)) {
+            result.status = 'unchanged';
+            result.action = 'unchanged';
+            return result;
+        }
+        await ghRequest(token, 'PUT', `/repos/${owner}/${name}/rulesets/${id}`, payload);
+        result.status = 'updated';
+        result.action = 'updated';
+        return result;
+    }
 
-    result.status = 'synced';
-    result.action = method === 'PUT' ? 'updated' : 'created';
+    await ghRequest(token, 'POST', `/repos/${owner}/${name}/rulesets`, payload);
+    result.status = 'created';
+    result.action = 'created';
     return result;
 }
 
@@ -653,6 +751,13 @@ async function main() {
     if (result.contexts && result.contexts.length > 0) {
         for (const c of result.contexts) console.error(`    • ${c}`);
     }
+    if (result.collision_warnings && result.collision_warnings.length > 0) {
+        for (const w of result.collision_warnings) {
+            console.error(
+                `[ci-gate] ${name}: collision — "${w.context}" in ${w.workflows.join(', ')}`,
+            );
+        }
+    }
     console.log(JSON.stringify(result));
     writeOutput(outputFile, result);
 
@@ -673,10 +778,14 @@ module.exports = {
     resolveProtectionConfig,
     buildRulesetPayload,
     buildProtectionRulesetPayload,
+    extractRequiredContextsFromRuleset,
+    contextsEqual,
     selectRulesetAction,
     workflowTriggersPr,
     expandJobContexts,
     contextsFromWorkflowDoc,
+    accumulateWorkflowContexts,
+    findContextCollisions,
     parseRepo,
     syncCiGate,
 };

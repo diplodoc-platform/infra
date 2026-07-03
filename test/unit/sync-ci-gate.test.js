@@ -7,9 +7,13 @@ const {
     resolveProtectionConfig,
     buildRulesetPayload,
     buildProtectionRulesetPayload,
+    extractRequiredContextsFromRuleset,
+    contextsEqual,
     selectRulesetAction,
     workflowTriggersPr,
     expandJobContexts,
+    accumulateWorkflowContexts,
+    findContextCollisions,
     contextsFromWorkflowDoc,
     parseRepo,
 } = require('../../scripts/sync-ci-gate');
@@ -155,7 +159,54 @@ test('filterChecks: components-specific excludes', () => {
     ]);
 });
 
-test('filterChecks: drops publish + coverage, keeps real gates', () => {
+test('filterChecks: keeps Test coverage when not excluded', () => {
+    const parsed = ['Test coverage', 'Security audit', 'test (ubuntu-latest, 24)'];
+    const excludes = ['Dependabot*', 'Publish*', 'SonarCloud*'];
+    assert.deepStrictEqual(filterChecks(parsed, excludes), [
+        'Security audit',
+        'test (ubuntu-latest, 24)',
+        'Test coverage',
+    ]);
+});
+
+test('filterChecks: drops publish, keeps real gates', () => {
+    const discovered = [
+        'Publish to npm',
+        'Security audit',
+        'test (macos-latest, 24)',
+        'test (ubuntu-latest, 24)',
+        'test (windows-latest, 24)',
+    ];
+    const excludes = ['Publish*'];
+    assert.deepStrictEqual(filterChecks(discovered, excludes), [
+        'Security audit',
+        'test (macos-latest, 24)',
+        'test (ubuntu-latest, 24)',
+        'test (windows-latest, 24)',
+    ]);
+});
+
+test('findContextCollisions: flags duplicate context from two workflows', () => {
+    const byContext = new Map([
+        ['test (ubuntu-latest, 24)', new Set(['tests.yml', 'integration-tests.yml'])],
+        ['Security audit', new Set(['security.yml'])],
+    ]);
+    assert.deepStrictEqual(findContextCollisions(byContext), [
+        {
+            context: 'test (ubuntu-latest, 24)',
+            workflows: ['integration-tests.yml', 'tests.yml'],
+        },
+    ]);
+});
+
+test('accumulateWorkflowContexts: tracks sources per context', () => {
+    const map = new Map();
+    accumulateWorkflowContexts(map, 'tests.yml', ['test (ubuntu-latest, 24)']);
+    accumulateWorkflowContexts(map, 'integration-tests.yml', ['test (ubuntu-latest, 24)']);
+    assert.strictEqual(map.get('test (ubuntu-latest, 24)').size, 2);
+});
+
+test('filterChecks: drops publish + coverage exclude pattern, keeps real gates', () => {
     const discovered = [
         'Publish to npm',
         'Security audit',
@@ -229,6 +280,34 @@ test('buildProtectionRulesetPayload: no app bypass when appId missing', () => {
         false,
     );
     assert.strictEqual(payload.bypass_actors[0].actor_type, 'OrganizationAdmin');
+});
+
+// --- extractRequiredContextsFromRuleset / contextsEqual -------------------
+
+test('extractRequiredContextsFromRuleset: reads required_status_checks rule', () => {
+    const ruleset = {
+        rules: [
+            {
+                type: 'required_status_checks',
+                parameters: {
+                    required_status_checks: [
+                        {context: 'test (ubuntu-latest, 24)'},
+                        {context: 'Security audit'},
+                    ],
+                },
+            },
+        ],
+    };
+    assert.deepStrictEqual(extractRequiredContextsFromRuleset(ruleset), [
+        'Security audit',
+        'test (ubuntu-latest, 24)',
+    ]);
+});
+
+test('contextsEqual: same sorted lists match', () => {
+    assert.strictEqual(contextsEqual(['a', 'b'], ['a', 'b']), true);
+    assert.strictEqual(contextsEqual(['a'], ['a', 'b']), false);
+    assert.strictEqual(contextsEqual(['b', 'a'], ['a', 'b']), false);
 });
 
 // --- selectRulesetAction --------------------------------------------------

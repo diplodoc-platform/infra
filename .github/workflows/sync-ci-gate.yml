@@ -168,7 +168,9 @@ jobs:
             });
 
             const icons = {
-              synced: '✅ Synced',
+              created: '✅ Created',
+              updated: '✅ Updated',
+              unchanged: '✓ Unchanged',
               'dry-run': '🔎 Dry-run',
               skipped: '⊘ Skipped',
               failed: '❌ Failed',
@@ -183,16 +185,25 @@ jobs:
                 r.protection_action && r.protection_action !== 'none'
                   ? ` · protection: ${r.protection_action}`
                   : '';
-              if (r.status === 'synced') {
-                core.notice(`${head} ✅ ${r.action || 'synced'} — ${(r.contexts || []).length} context(s)${prot}`);
+              if (r.status === 'created' || r.status === 'updated') {
+                core.notice(`${head} ✅ ${r.status} — ${(r.contexts || []).length} context(s)${prot}`);
+              } else if (r.status === 'unchanged') {
+                core.notice(`${head} ✓ Unchanged — ${(r.contexts || []).length} context(s) already match${prot}`);
               } else if (r.status === 'skipped') {
                 core.notice(`${head} ⊘ Skipped — ${r.reason || 'no changes'}${prot}`);
               } else if (r.status === 'failed') {
                 core.error(`${head} ❌ Failed — ${r.reason || 'unknown error'}`);
               }
+              if (Array.isArray(r.collision_warnings) && r.collision_warnings.length) {
+                for (const w of r.collision_warnings) {
+                  core.warning(
+                    `${head} collision: "${w.context}" claimed by ${w.workflows.join(', ')} — give jobs distinct names`,
+                  );
+                }
+              }
             }
 
-            const order = {failed: 0, skipped: 1, synced: 2, 'dry-run': 3};
+            const order = {failed: 0, skipped: 1, unchanged: 2, updated: 3, created: 4, 'dry-run': 5};
             rows.sort((a, b) => {
               const oa = order[a.status] ?? 99;
               const ob = order[b.status] ?? 99;
@@ -202,7 +213,12 @@ jobs:
 
             const formatRow = (r) => {
               const status = icons[r.status] || r.status;
-              const action = r.action && r.action !== 'none' ? r.action : '—';
+              const action =
+                r.action && r.action !== 'none'
+                  ? r.action
+                  : r.status === 'unchanged'
+                    ? 'unchanged'
+                    : '—';
               const prot =
                 r.protection_action && r.protection_action !== 'none'
                   ? r.protection_action
@@ -211,14 +227,23 @@ jobs:
               const list = (r.contexts || []).length
                 ? '<br>' + r.contexts.map((c) => `\`${c}\``).join('<br>')
                 : '';
-              const note = r.reason ? r.reason : '';
+              const noteParts = [];
+              if (r.reason) noteParts.push(r.reason);
+              if (Array.isArray(r.collision_warnings) && r.collision_warnings.length) {
+                for (const w of r.collision_warnings) {
+                  noteParts.push(
+                    `⚠ collision: \`${w.context}\` in ${w.workflows.map((f) => `\`${f}\``).join(', ')}`,
+                  );
+                }
+              }
+              const note = noteParts.join('<br>');
               return `| \`${r.repo}\` | ${status} | ${action} | ${prot} | ${ctx}${list} | ${note} |`;
             };
 
             const lines = [
               '## CI gate sync summary',
               '',
-              `Total: **${rows.length}** · ✅ Synced: **${counts.synced || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
+              `Total: **${rows.length}** · ✅ Created: **${counts.created || 0}** · ✅ Updated: **${counts.updated || 0}** · ✓ Unchanged: **${counts.unchanged || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
               '',
               '| Repo | Status | CI gate | Protection | Required contexts | Note |',
               '| --- | --- | --- | --- | --- | --- |',

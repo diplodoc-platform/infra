@@ -50,11 +50,14 @@ points `master CI gate` at exactly that set.
   merged PR instead of HEAD).
 - A glob exclude list (`ci_gate.exclude_checks` in `distribution.yml`, merged with
   per-repo patterns) removes checks that must **not** gate a PR (conditional /
-  non-PR workflows like `Test coverage` (continue-on-error), `SonarCloud`,
-  `release-please`, `update-deps`, `Publish*`, `Dependabot*`, repo-specific jobs
-  like `deploy`). **`Update package-lock.json` is intentionally kept** — it runs
-  on every in-repo PR. Note the glob is case-sensitive and anchored, so
-  `Test coverage` needs `*coverage*` (not `coverage*`).
+  non-PR workflows like `SonarCloud`, `release-please`, `update-deps`, `Publish*`,
+  `Dependabot*`, `auto-approve*`, repo-specific jobs like `deploy`).
+  **`Test coverage` and `Update package-lock.json` are valid gates** when the repo
+  runs those jobs on PRs.
+- Duplicate check **names** from different workflow files collapse to one ruleset
+  entry; GitHub uses the **most recently completed** run's conclusion, so both
+  jobs are not independently enforced — give jobs distinct static `name:` values
+  (see `collision_warnings` in sync output).
 - The result is written to the ruleset via the Rulesets API: find the ruleset by
   name and `PUT` it, or `POST` a new one if missing. The operation is
   **idempotent** — re-running just rewrites the contexts.

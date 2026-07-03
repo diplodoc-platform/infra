@@ -28,14 +28,13 @@ defaults:
 ci_gate:
   ruleset_name: 'master CI gate'
   exclude_checks:
-    - '*coverage*' # Coverage job ("Test coverage") — continue-on-error, must not gate
-    - 'coverage*' # coverage.yml — runs only when test:coverage exists
     - 'SonarCloud*' # sonarcloud.yml — runs only when coverage was generated
     - 'release-please*' # release-please.yml — release PRs, not a PR gate
     - 'Update Dependencies*' # update-deps.yml — manual dispatch
     - 'Distribute*' # distribution workflow checks (infra repo only)
     - 'Publish*' # publish/release jobs — run on release/tag, skipped on PRs
     - 'Dependabot*' # dependabot security/version PR checks — not our CI gate
+    - 'auto-approve*' # auto-approve.yml — infra meta-workflow, not a CI gate
 
 # Protection gate (Ruleset B "master protection (auto-merge via app)", ADR-001).
 # Review + merge policy, independent of any status check. sync ONLY creates it
