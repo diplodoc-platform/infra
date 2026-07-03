@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   # ============================================================================
@@ -146,6 +147,28 @@ jobs:
             const fs = require('fs');
             const path = require('path');
 
+            const ORG = 'diplodoc-platform';
+            const serverUrl = context.serverUrl || 'https://github.com';
+            const runId = context.runId;
+            const runUrl = `${serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+
+            /** @type {Map<string, string>} repo short name -> matrix job page URL */
+            const jobUrlByRepo = new Map();
+            try {
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+                per_page: 100,
+              });
+              for (const job of jobs) {
+                const match = /^Sync (.+)$/.exec(job.name || '');
+                if (match && job.html_url) jobUrlByRepo.set(match[1], job.html_url);
+              }
+            } catch (err) {
+              core.warning(`Could not list workflow jobs for run ${runId}: ${err.message}`);
+            }
+
             const allRepos = JSON.parse(process.env.REPOS_JSON || '[]');
             const statusDir = '.status';
             const statuses = new Map();
@@ -213,6 +236,9 @@ jobs:
 
             const formatRow = (r) => {
               const status = icons[r.status] || r.status;
+              const repoCell = `[${r.repo}](${serverUrl}/${ORG}/${r.repo})`;
+              const jobUrl = jobUrlByRepo.get(r.repo) || runUrl;
+              const actionCell = `[Sync job](${jobUrl})`;
               const action =
                 r.action && r.action !== 'none'
                   ? r.action
@@ -237,7 +263,7 @@ jobs:
                 }
               }
               const note = noteParts.join('<br>');
-              return `| \`${r.repo}\` | ${status} | ${action} | ${prot} | ${ctx}${list} | ${note} |`;
+              return `| ${repoCell} | ${actionCell} | ${status} | ${action} | ${prot} | ${ctx}${list} | ${note} |`;
             };
 
             const lines = [
@@ -245,8 +271,8 @@ jobs:
               '',
               `Total: **${rows.length}** · ✅ Created: **${counts.created || 0}** · ✅ Updated: **${counts.updated || 0}** · ✓ Unchanged: **${counts.unchanged || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
               '',
-              '| Repo | Status | CI gate | Protection | Required contexts | Note |',
-              '| --- | --- | --- | --- | --- | --- |',
+              '| Repo | Job | Status | CI gate | Protection | Required contexts | Note |',
+              '| --- | --- | --- | --- | --- | --- | --- |',
               ...rows.map(formatRow),
             ];
 
