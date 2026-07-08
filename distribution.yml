@@ -79,6 +79,10 @@ repos:
     exclude: []
   yfmlint:
     exclude: []
+  vsc:
+    exclude: []
+  ajv:
+    exclude: []
 
   # === extensions ===
   algolia-extension:
@@ -109,18 +113,8 @@ repos:
     exclude: []
 
   # === devops ===
-  babel-preset:
-    auto_merge: false
-    exclude: []
   package-template:
-    exclude: []
-  tsconfig:
-    auto_merge: false
     exclude: []
   testpack:
     auto_merge: false
-    exclude: []
-  vsc:
-    exclude: []
-  ajv:
     exclude: []
