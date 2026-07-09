@@ -144,14 +144,14 @@ Both lists are merged during distribution. Entries with expired `until` dates ar
 Scaffolding provides optional SonarCloud integration:
 
 - **`sonar-project.properties`** — copied with `{{PACKAGE_NAME}}` substitution (scope removed, e.g. `@diplodoc/foo` → `foo`)
-- **`.github/workflows/sonarcloud.yml`** — runs analysis on push/PR to `master`/`main` (only when `test:coverage` script exists)
-- **`.github/workflows/coverage.yml`** — optional, runs `test:coverage` when script exists
+- **`.github/workflows/coverage.yml`** — runs `test:coverage` when the script exists and uploads results to SonarCloud via `SonarSource/sonarqube-scan-action`
 
 To enable SonarCloud for a repository:
 
 1. Add the repository in [SonarCloud](https://sonarcloud.io) (organization `diplodoc-platform`)
-2. Add the **SONAR_TOKEN** secret in GitHub repo settings
-3. Optionally add a `test:coverage` script (e.g. `vitest run --coverage`)
+2. **Disable Automatic Analysis** for the project: **Administration → Analysis Method** → uncheck **Enabled for this project**. Repositories auto-imported into SonarCloud have this enabled by default; it conflicts with CI-based analysis and causes the workflow to fail with `You are running CI analysis while Automatic Analysis is enabled`. You need **project-level** admin rights (org admin alone may not be enough — use **Restore Access** in **Projects Management** if the menu is missing).
+3. Add the **SONAR_TOKEN** secret in GitHub repo settings
+4. Optionally add a `test:coverage` script (e.g. `vitest run --coverage`)
 
 ## Commands
 
