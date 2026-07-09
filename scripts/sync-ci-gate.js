@@ -166,6 +166,10 @@ function resolveProtectionConfig(config = {}, repoName) {
             merged.dismiss_stale_reviews_on_push !== undefined
                 ? !!merged.dismiss_stale_reviews_on_push
                 : false,
+        requireLastPushApproval:
+            merged.require_last_push_approval !== undefined
+                ? !!merged.require_last_push_approval
+                : true,
         allowedMergeMethods: merged.allowed_merge_methods || ['rebase', 'squash'],
     };
 }
@@ -183,6 +187,7 @@ function buildProtectionRulesetPayload({
     requiredApprovingReviewCount = 1,
     requireCodeOwnerReview = true,
     dismissStaleReviewsOnPush = false,
+    requireLastPushApproval = true,
     allowedMergeMethods = ['rebase', 'squash'],
     appId = null,
 }) {
@@ -212,7 +217,7 @@ function buildProtectionRulesetPayload({
                     required_approving_review_count: requiredApprovingReviewCount,
                     dismiss_stale_reviews_on_push: dismissStaleReviewsOnPush,
                     require_code_owner_review: requireCodeOwnerReview,
-                    require_last_push_approval: false,
+                    require_last_push_approval: requireLastPushApproval,
                     required_review_thread_resolution: false,
                     allowed_merge_methods: allowedMergeMethods,
                 },

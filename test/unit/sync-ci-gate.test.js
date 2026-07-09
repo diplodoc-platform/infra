@@ -233,6 +233,7 @@ test('resolveProtectionConfig: defaults when nothing configured', () => {
     assert.strictEqual(p.requiredApprovingReviewCount, 1);
     assert.strictEqual(p.requireCodeOwnerReview, true);
     assert.strictEqual(p.dismissStaleReviewsOnPush, false);
+    assert.strictEqual(p.requireLastPushApproval, true);
     assert.deepStrictEqual(p.allowedMergeMethods, ['rebase', 'squash']);
 });
 
@@ -265,6 +266,7 @@ test('buildProtectionRulesetPayload: rules + app bypass', () => {
     const pr = payload.rules.find((r) => r.type === 'pull_request');
     assert.strictEqual(pr.parameters.required_approving_review_count, 1);
     assert.strictEqual(pr.parameters.require_code_owner_review, true);
+    assert.strictEqual(pr.parameters.require_last_push_approval, true);
     assert.deepStrictEqual(pr.parameters.allowed_merge_methods, ['rebase', 'squash']);
 
     const integration = payload.bypass_actors.find((a) => a.actor_type === 'Integration');

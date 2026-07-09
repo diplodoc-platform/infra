@@ -396,9 +396,9 @@ Files in `scaffolding/` are copied to packages during `init`/`update`:
 
 **`sonar-project.properties`**: SonarCloud config. `{{PACKAGE_NAME}}` placeholder is substituted from `package.json` name (without scope, e.g. `@diplodoc/foo` → `foo`). Substitution is done in `scripts/copy-scaffolding.js`.
 
-**`.github/workflows/sonarcloud.yml`**: Runs SonarCloud analysis on push/PR. Only when `test:coverage` script exists and coverage was generated.
+**`.github/workflows/coverage.yml`**: Optional workflow — runs `test:coverage` when script exists, uploads coverage artifact, then runs SonarCloud scan via `SonarSource/sonarqube-scan-action`. Exits successfully when `test:coverage` is absent.
 
-**`.github/workflows/coverage.yml`**: Optional workflow — runs `test:coverage` when script exists, exits successfully when absent.
+**SonarCloud setup for new repos**: After adding a repo in SonarCloud, disable **Automatic Analysis** (**Administration → Analysis Method**). Auto-imported projects enable it by default; CI-based analysis (our `coverage.yml`) fails with `You are running CI analysis while Automatic Analysis is enabled` until it is turned off. Requires project-level admin (not just org admin).
 
 ### Auto-Generated Configuration Files
 

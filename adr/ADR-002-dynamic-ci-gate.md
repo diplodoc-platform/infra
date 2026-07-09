@@ -153,11 +153,13 @@ GitHub's no-self-approval rule is not violated.
   `yc-ui-bot`** before approving via `INFRA_APPROVER_PAT`. This ties the approval
   to bot-generated content, so a push by someone else to a `ci/update-deps/*` /
   `release-please--*` branch does not earn a free code-owner approval. On every
-  push (`synchronize`) a prior bot approval made for an older commit is
-  **dismissed** so an approval never lingers over unreviewed new code; a fresh
-  approval is re-issued only when the new head is still all-bot content. It is
-  idempotent (skips if the current head is already approved) and **does not**
-  enable auto-merge — the CI gate from decision 1 must still pass.
+  On every push (`synchronize`) a prior bot approval made for an older commit is
+  **dismissed** and the workflow stops without re-approving. A fresh approval is
+  re-issued only after other PR workflows complete and all non-excluded checks on
+  the new head are green (`workflow_run` trigger), and only when the new head is
+  still all-bot content. It is idempotent (skips if the current head is already
+  approved) and **does not** enable auto-merge — the CI gate from decision 1 must
+  still pass.
 - [`scripts/match-auto-approve.js`](../scripts/match-auto-approve.js) — the
   canonical, unit-tested matcher
   ([`test/unit/match-auto-approve.test.js`](../test/unit/match-auto-approve.test.js)).
