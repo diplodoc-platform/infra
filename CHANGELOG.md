@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.1](https://github.com/diplodoc-platform/infra/compare/v2.2.0...v2.2.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **ci:** naming in release, commit amend for lock file ([c0e4943](https://github.com/diplodoc-platform/infra/commit/c0e4943996984fc0738cf0dca0411d1f19554b77))
+* dismiss for autoapprove ([8f89678](https://github.com/diplodoc-platform/infra/commit/8f896786d1e6f771711781df368b202eb70ba284))
+
 ## [2.2.0](https://github.com/diplodoc-platform/infra/compare/v2.1.0...v2.2.0) (2026-07-03)
 
 
