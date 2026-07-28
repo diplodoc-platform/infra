@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.2.2](https://github.com/diplodoc-platform/infra/compare/v2.2.1...v2.2.2) (2026-07-28)
+
+
+### Bug Fixes
+
+* Add flag create_pr for non master branch DOCSTOOLS-6243 ([e680a44](https://github.com/diplodoc-platform/infra/commit/e680a44d0cc08f6230bb2421363a2214c26b628d))
+* auto-approve ([e1a445c](https://github.com/diplodoc-platform/infra/commit/e1a445c832c12e23d3efbfb3b3bfede196e4d1b5))
+* Update deps for custom brunch ([c66a6cd](https://github.com/diplodoc-platform/infra/commit/c66a6cd69e1e3f19b4f1a5c399b80f7f3f935805))
+
 ## [2.2.1](https://github.com/diplodoc-platform/infra/compare/v2.2.0...v2.2.1) (2026-07-14)
 
 
