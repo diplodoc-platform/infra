@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "module": "esnext",
-    "moduleResolution": "node",
     "newLine": "lf",
     "jsx": "react",
     "esModuleInterop": true,
