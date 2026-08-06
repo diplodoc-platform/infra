@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.3](https://github.com/diplodoc-platform/infra/compare/v2.2.2...v2.2.3) (2026-08-06)
+
+
+### Bug Fixes
+
+* update tsconfig.json ([49b32ca](https://github.com/diplodoc-platform/infra/commit/49b32ca635b47fccf3d8d3114831e6cf7284028f))
+
 ## [2.2.2](https://github.com/diplodoc-platform/infra/compare/v2.2.1...v2.2.2) (2026-07-28)
 
 
