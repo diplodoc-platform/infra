@@ -29,7 +29,7 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-08-23
+last-updated: 2026-09-15
 
 entries:
   - id: DEP-0001
@@ -45,7 +45,7 @@ entries:
       upstream-issue: https://github.com/svg/svgo/issues/2218
     owner: diplodoc-platform/team
     introduced-at: 2026-06-21
-    review-after: 2026-09-01
+    review-after: 2026-12-01
     expires-at: 2026-12-01
     exit-criteria:
       - Upstream issue is fixed
