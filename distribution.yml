@@ -84,13 +84,17 @@ repos:
   yfmlint:
     exclude: []
   vsc:
-    exclude: []
+    exclude:
+      - path: .github/workflows/dependency-deep-verification.yml
+        reason: 'VS Code integration is not exercised by the CLI/testpack corpus'
   ajv:
     exclude: []
 
   # === extensions ===
   algolia-extension:
-    exclude: []
+    exclude:
+      - path: .github/workflows/dependency-deep-verification.yml
+        reason: 'Algolia is opt-in and is not enabled in the testpack corpus'
   color-extension:
     exclude: []
   cut-extension:
@@ -100,7 +104,9 @@ repos:
   folding-headings-extension:
     exclude: []
   html-extension:
-    exclude: []
+    exclude:
+      - path: .github/workflows/dependency-deep-verification.yml
+        reason: 'The testpack HTML fixture does not load this extension package'
   latex-extension:
     exclude: []
   mermaid-extension:
@@ -118,7 +124,11 @@ repos:
 
   # === devops ===
   package-template:
-    exclude: []
+    exclude:
+      - path: .github/workflows/dependency-deep-verification.yml
+        reason: 'Package scaffolding is not part of the CLI runtime graph'
   testpack:
     auto_merge: false
-    exclude: []
+    exclude:
+      - path: .github/workflows/dependency-deep-verification.yml
+        reason: 'Testpack dependency PRs already run their own corpus and E2E workflows'
