@@ -14,6 +14,8 @@ const WORKFLOW_PATH = join(
 );
 const workflowSource = readFileSync(WORKFLOW_PATH, 'utf8');
 const workflow = yaml.load(workflowSource);
+const distribution = yaml.load(readFileSync(join(__dirname, '../../distribution.yml'), 'utf8'));
+const workflowRelativePath = '.github/workflows/dependency-deep-verification.yml';
 
 test('classifies the actual dependency diff before invoking testpack', () => {
     const classify = workflow.jobs['classify-dependency-diff'];
@@ -41,6 +43,55 @@ test('passes the repository exact SHA and selected profile to testpack', () => {
     assert.strictEqual(deep.with.package, '${{ github.event.repository.name }}');
     assert.strictEqual(deep.with['pr-sha'], '${{ github.event.pull_request.head.sha }}');
     assert.strictEqual(deep.with.profile, '${{ needs.classify-dependency-diff.outputs.profile }}');
+});
+
+test('distributes deep verification only where the candidate reaches the test graph', () => {
+    const excluded = Object.entries(distribution.repos)
+        .filter(([, config]) =>
+            (config.exclude || []).some((entry) =>
+                typeof entry === 'string'
+                    ? entry === workflowRelativePath
+                    : entry.path === workflowRelativePath,
+            ),
+        )
+        .map(([name]) => name)
+        .sort();
+
+    assert.deepStrictEqual(excluded, [
+        'algolia-extension',
+        'html-extension',
+        'package-template',
+        'testpack',
+        'vsc',
+    ]);
+
+    const recipients = Object.keys(distribution.repos)
+        .filter((name) => !excluded.includes(name))
+        .sort();
+    assert.deepStrictEqual(recipients, [
+        'ajv',
+        'cli',
+        'client',
+        'color-extension',
+        'components',
+        'cut-extension',
+        'directive',
+        'file-extension',
+        'folding-headings-extension',
+        'latex-extension',
+        'liquid',
+        'mermaid-extension',
+        'openapi-extension',
+        'page-constructor-extension',
+        'quote-link-extension',
+        'search-extension',
+        'sentenizer',
+        'tabs-extension',
+        'transform',
+        'translation',
+        'utils',
+        'yfmlint',
+    ]);
 });
 
 module.exports = {tests};
