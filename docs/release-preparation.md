@@ -220,35 +220,35 @@ plus the `infra` repo itself (which is the source, not a consumer).
 
 ### 5.1. Distribution Target Repos (27)
 
-| #   | Repository                   | Category  | `auto_merge`     | `exclude` | CI-gate excludes                                        |
-| --- | ---------------------------- | --------- | ---------------- | --------- | ------------------------------------------------------- |
-| 1   | `cli`                        | package   | `true` (default) | —         | —                                                       |
-| 2   | `client`                     | package   | `true`           | —         | —                                                       |
-| 3   | `components`                 | package   | `true`           | —         | `Create GitHub Comment`, `deploy`, `update-screenshots` |
-| 4   | `directive`                  | package   | `true`           | —         | —                                                       |
-| 5   | `liquid`                     | package   | `true`           | —         | —                                                       |
-| 6   | `sentenizer`                 | package   | `true`           | —         | —                                                       |
-| 7   | `transform`                  | package   | `true`           | —         | —                                                       |
-| 8   | `translation`                | package   | `true`           | —         | —                                                       |
-| 9   | `utils`                      | package   | `true`           | —         | —                                                       |
-| 10  | `yfmlint`                    | package   | `true`           | —         | —                                                       |
-| 11  | `vsc`                        | package   | `true`           | —         | —                                                       |
-| 12  | `ajv`                        | package   | `true`           | —         | —                                                       |
-| 13  | `algolia-extension`          | extension | `true`           | —         | —                                                       |
-| 14  | `color-extension`            | extension | `true`           | —         | —                                                       |
-| 15  | `cut-extension`              | extension | `true`           | —         | —                                                       |
-| 16  | `file-extension`             | extension | `true`           | —         | —                                                       |
-| 17  | `folding-headings-extension` | extension | `true`           | —         | —                                                       |
-| 18  | `html-extension`             | extension | `true`           | —         | —                                                       |
-| 19  | `latex-extension`            | extension | `true`           | —         | —                                                       |
-| 20  | `mermaid-extension`          | extension | `true`           | —         | —                                                       |
-| 21  | `openapi-extension`          | extension | `true`           | —         | —                                                       |
-| 22  | `page-constructor-extension` | extension | `true`           | —         | —                                                       |
-| 23  | `quote-link-extension`       | extension | `true`           | —         | —                                                       |
-| 24  | `search-extension`           | extension | `true`           | —         | —                                                       |
-| 25  | `tabs-extension`             | extension | `true`           | —         | —                                                       |
-| 26  | `package-template`           | devops    | `true`           | —         | —                                                       |
-| 27  | `testpack`                   | devops    | `false`          | —         | —                                                       |
+| #   | Repository                   | Category  | `auto_merge`      | `exclude` | CI-gate excludes                                        |
+| --- | ---------------------------- | --------- | ----------------- | --------- | ------------------------------------------------------- |
+| 1   | `cli`                        | package   | `false` (default) | —         | —                                                       |
+| 2   | `client`                     | package   | `false`           | —         | —                                                       |
+| 3   | `components`                 | package   | `false`           | —         | `Create GitHub Comment`, `deploy`, `update-screenshots` |
+| 4   | `directive`                  | package   | `false`           | —         | —                                                       |
+| 5   | `liquid`                     | package   | `false`           | —         | —                                                       |
+| 6   | `sentenizer`                 | package   | `false`           | —         | —                                                       |
+| 7   | `transform`                  | package   | `false`           | —         | —                                                       |
+| 8   | `translation`                | package   | `false`           | —         | —                                                       |
+| 9   | `utils`                      | package   | `false`           | —         | —                                                       |
+| 10  | `yfmlint`                    | package   | `false`           | —         | —                                                       |
+| 11  | `vsc`                        | package   | `false`           | —         | —                                                       |
+| 12  | `ajv`                        | package   | `false`           | —         | —                                                       |
+| 13  | `algolia-extension`          | extension | `false`           | —         | —                                                       |
+| 14  | `color-extension`            | extension | `false`           | —         | —                                                       |
+| 15  | `cut-extension`              | extension | `false`           | —         | —                                                       |
+| 16  | `file-extension`             | extension | `false`           | —         | —                                                       |
+| 17  | `folding-headings-extension` | extension | `false`           | —         | —                                                       |
+| 18  | `html-extension`             | extension | `false`           | —         | —                                                       |
+| 19  | `latex-extension`            | extension | `false`           | —         | —                                                       |
+| 20  | `mermaid-extension`          | extension | `false`           | —         | —                                                       |
+| 21  | `openapi-extension`          | extension | `false`           | —         | —                                                       |
+| 22  | `page-constructor-extension` | extension | `false`           | —         | —                                                       |
+| 23  | `quote-link-extension`       | extension | `false`           | —         | —                                                       |
+| 24  | `search-extension`           | extension | `false`           | —         | —                                                       |
+| 25  | `tabs-extension`             | extension | `false`           | —         | —                                                       |
+| 26  | `package-template`           | devops    | `false`           | —         | —                                                       |
+| 27  | `testpack`                   | devops    | `false`           | —         | —                                                       |
 
 ### 5.2. Source Repository (1)
 
@@ -262,9 +262,9 @@ No repository has any path-level `exclude` entries in `distribution.yml`.
 All 27 consumer repos will receive the full scaffolding set, including the
 new `dependency-review.yml` workflow.
 
-The `testpack` repo has `auto_merge: false`, meaning its distribution PR will
-be created but **not** auto-approved or auto-merged — a human must review and
-merge it manually.
+All distribution targets use `auto_merge: false`. Their PRs are created but
+**not** auto-approved or auto-merged — a human must review and merge each one
+while testpack and the downstream checks are being stabilized.
 
 ### 5.4. CI Gate Contexts
 

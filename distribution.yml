@@ -15,7 +15,9 @@
 #     until: "2026-07-01"                  # auto-expires after this date
 
 defaults:
-  auto_merge: true
+  # Keep distribution PRs review-only during stabilization. Enabling this is a
+  # separate rollout decision after testpack and downstream checks are proven.
+  auto_merge: false
   exclude: []
 
 # CI gate configuration (Ruleset A "master CI gate", see ADR-002).

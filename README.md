@@ -64,7 +64,7 @@ Infrastructure updates follow a **push model**:
 1. Changes are made to scaffolding files in this repo
 2. `integration-test.yml` tests changes against 3 reference packages before merge
 3. On release, `distribute-infra.yml` creates PRs in all target repositories
-4. PRs are auto-merged when CI passes (unless disabled for the repo)
+4. PRs stay open for manual review; auto-merge is disabled during stabilization
 
 ```
 @diplodoc/infra release
@@ -74,8 +74,8 @@ distribute-infra.yml
         │
         ├─→ cli (PR, manual review)
         ├─→ transform (PR, manual review)
-        ├─→ cut-extension (PR, auto-merge)
-        ├─→ tabs-extension (PR, auto-merge)
+        ├─→ cut-extension (PR, manual review)
+        ├─→ tabs-extension (PR, manual review)
         └─→ ... 26 more repos
 ```
 
@@ -295,7 +295,7 @@ build({
 
 ```yaml
 defaults:
-  auto_merge: true # PRs auto-merge when CI passes
+  auto_merge: false # Manual review during stabilization
   exclude: [] # Global exclusions (applied to all repos)
 
 repos:

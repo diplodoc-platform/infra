@@ -36,7 +36,7 @@ Replaces the deprecated `@diplodoc/eslint-config`, `@diplodoc/prettier-config`, 
 The package supports two ways of distributing infrastructure to consumer packages:
 
 **Push model (primary, automated)**:
-When a new version of `@diplodoc/infra` is released, the `distribute-infra.yml` workflow automatically creates PRs in all target repositories with updated scaffolding files. PRs for non-critical packages are auto-merged when CI passes.
+When a new version of `@diplodoc/infra` is released, the `distribute-infra.yml` workflow automatically creates PRs in all target repositories with updated scaffolding files. During stabilization, all distribution PRs remain open for manual review.
 
 **Manual model (for development/debugging)**:
 Developers can run `infra update` locally to apply scaffolding to their current package. This is useful for testing changes before release.
@@ -305,7 +305,7 @@ Centralized configuration file that lives in this repository. Defines:
 
 ```yaml
 defaults:
-  auto_merge: true
+  auto_merge: false # stabilization default — manual review
   exclude: []
 
 repos:
@@ -519,7 +519,7 @@ npx @diplodoc/infra blacklist audit
 
 3. **Blacklist merge**: Central (`distribution.yml`) and local (`.infrarc.yml`) exclusions are merged. Expired entries (past `until` date) are automatically ignored.
 
-4. **Auto-merge**: Controlled per-repo in `distribution.yml`. Critical packages (cli, transform, components) default to `auto_merge: false`.
+4. **Auto-merge**: Controlled per-repo in `distribution.yml`. During stabilization the global default is `auto_merge: false`; enabling it is a separate rollout decision after manual testpack and downstream-check validation.
 
 5. **Pre-release safety**: The `integration-test.yml` workflow blocks merging if scaffolding changes break any of the 3 reference packages.
 
