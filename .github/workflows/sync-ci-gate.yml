@@ -2,18 +2,21 @@ name: Sync CI Gate
 
 # Points each target repo's "master CI gate" ruleset (Ruleset A, see ADR-002)
 # at the set of CI status-check contexts derived from its workflow files.
-# Runs weekly (new workflows appear rarely) and on manual dispatch.
+# Stabilization mode is manual and dry-run by default. Applying rulesets and
+# restoring a schedule require the gates in
+# docs/dependency-automation-stabilization.md.
 
 on:
-  schedule:
-    # Weekly on Monday at 06:00 UTC.
-    - cron: '0 6 * * 1'
   workflow_dispatch:
     inputs:
       target:
         description: 'Target repo name (or "all" for all repos)'
         default: 'all'
         type: string
+      dry_run:
+        description: 'Discover and report contexts without changing rulesets'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -99,18 +102,24 @@ jobs:
           node-version: ${{ vars.NODE_VERSION || '24' }}
           cache: ''
 
-      - name: Sync CI gate ruleset
+      - name: Plan or sync CI gate ruleset
         env:
+          DRY_RUN: ${{ inputs.dry_run }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           # App id is used as the Integration bypass actor on the protection gate
           # (Ruleset B) when the script has to create it on a repo that lacks one.
           INFRA_APP_ID: ${{ secrets.INFRA_APP_ID }}
         run: |
           mkdir -p .status
+          DRY_RUN_FLAG=""
+          if [ "${DRY_RUN}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
           node scripts/sync-ci-gate.js \
             --repo "${REPO_NAME}" \
             --config ./distribution.yml \
-            --output ".status/status-${REPO_NAME}.json"
+            --output ".status/status-${REPO_NAME}.json" \
+            $DRY_RUN_FLAG
 
       - name: Upload status artifact
         if: always()
@@ -269,7 +278,7 @@ jobs:
             const lines = [
               '## CI gate sync summary',
               '',
-              `Total: **${rows.length}** · ✅ Created: **${counts.created || 0}** · ✅ Updated: **${counts.updated || 0}** · ✓ Unchanged: **${counts.unchanged || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
+              `Total: **${rows.length}** · 🔎 Dry-run: **${counts['dry-run'] || 0}** · ✅ Created: **${counts.created || 0}** · ✅ Updated: **${counts.updated || 0}** · ✓ Unchanged: **${counts.unchanged || 0}** · ⊘ Skipped: **${counts.skipped || 0}** · ❌ Failed: **${counts.failed || 0}**`,
               '',
               '| Repo | Job | Status | CI gate | Protection | Required contexts | Note |',
               '| --- | --- | --- | --- | --- | --- | --- |',

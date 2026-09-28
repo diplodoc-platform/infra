@@ -268,9 +268,12 @@ while testpack and the downstream checks are being stabilized.
 
 ### 5.4. CI Gate Contexts
 
-The `sync-ci-gate.js` script auto-discovers required status checks from
-workflow YAML files. Every job in a workflow that triggers on `pull_request`
-becomes a required check unless matched by `exclude_checks`.
+The `sync-ci-gate.js` script discovers candidate required status checks from
+workflow YAML files. During stabilization the workflow is manual and defaults
+to dry-run: it reports proposed contexts without changing rulesets. Every job
+in a workflow that triggers on `pull_request` is currently discovered unless
+matched by `exclude_checks`; therefore path-filtered and conditional jobs must
+be validated before live application.
 
 Global `exclude_checks` (applied to all repos):
 
@@ -285,8 +288,10 @@ Global `exclude_checks` (applied to all repos):
 | `auto-approve*`        | `auto-approve.yml`     | Infra meta-workflow                   |
 
 The new `Dependency Review` job (from `dependency-review.yml`) is **not** in
-`exclude_checks`, so it will automatically become a required check on all 27
-consumer repos after distribution.
+`exclude_checks`, so dry-run will propose it as a required check. Do not apply
+the proposed ruleset until the conditional-context review described in
+[`dependency-automation-stabilization.md`](dependency-automation-stabilization.md)
+is complete.
 
 ---
 

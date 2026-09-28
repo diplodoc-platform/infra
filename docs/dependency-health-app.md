@@ -2,9 +2,10 @@
 
 > Companion doc for the `Dependency Health Audit` workflow (T8.1).
 
-The central Dependency Health workflow runs **daily** in the `infra` repository
-and audits all 28 Diplodoc platform repositories for open Dependabot PRs against
-the platform SLA. Because the workflow must read PRs and check statuses across
+The central Dependency Health workflow audits all 28 Diplodoc platform
+repositories for open Dependabot PRs against the platform SLA. During
+stabilization it is **manual and dry-run by default**; the proposed weekday
+schedule is recorded for later activation. Because the workflow must read PRs and check statuses across
 **every** repository, it cannot use the default `GITHUB_TOKEN` (scoped to a
 single repo). It uses a **GitHub App** installation token, the same App already
 provisioned for `distribute-infra.yml`, `sync-ci-gate.yml`, and
@@ -114,13 +115,15 @@ the past, and **expiring** when within 14 days of `review-after`.
 
 ## Workflow behaviour
 
-- **Schedule**: `0 7 * * 1-5` (07:00 UTC, weekdays only). Weekends are skipped
-  because business-day SLAs do not accrue and calendar-day breaches are caught
-  on Monday.
-- **Manual trigger**: `workflow_dispatch` with an optional `skip_checks`
-  input for faster re-runs (skips the per-PR check-status lookup).
+- **Current schedule**: none during stabilization.
+- **Proposed schedule after activation**: `0 7 * * 1-5` (07:00 UTC,
+  weekdays only). Restore it only after completing
+  [`dependency-automation-stabilization.md`](dependency-automation-stabilization.md).
+- **Manual trigger**: `workflow_dispatch` with `dry_run: true` by default and
+  an optional `skip_checks` input for faster re-runs. Dry-run still uploads the
+  assignment plan but does not create issues or assign owners.
 - **Exit code**: the script exits non-zero when any PR breaches SLA or any
-  registry exception is overdue, so the daily run appears as a **failing**
+  registry exception is overdue, so the audit appears as a **failing**
   workflow run in the infra repo. The workflow captures the exit code and
   uploads the report artifact **before** failing, so the report is always
   available for inspection.
@@ -130,7 +133,7 @@ the past, and **expiring** when within 14 days of `review-after`.
 
 ## Verification
 
-After the first run, verify:
+After the first manual dry-run, verify:
 
 1. The workflow run appears under the `infra` repo's **Actions** tab
    (`Dependency Health Audit`).
@@ -140,6 +143,7 @@ After the first run, verify:
    exist) and the expected repo count (up to 28).
 4. If any PR is breaching, the run is marked **failed** and the job summary
    lists the breach counts.
+5. No tracking issue or owner assignment was created while `dry_run: true`.
 
 ## Manual run
 

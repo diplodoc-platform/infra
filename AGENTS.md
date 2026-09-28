@@ -192,7 +192,7 @@ When `@diplodoc/infra` is used as a standalone npm package:
 ### GitHub Workflows (in this repo)
 
 - `distribute-infra.yml` — distributes scaffolding to all target repos on release or manual trigger
-- `sync-ci-gate.yml` — derives each repo's CI checks from workflow YAML and updates its `master CI gate` ruleset; runs weekly (`cron`) and on `workflow_dispatch` (ADR-002)
+- `sync-ci-gate.yml` — derives each repo's CI checks from workflow YAML; during stabilization it is manual and `dry_run: true` by default, while the former weekly schedule and live ruleset updates are recorded for later activation (ADR-002)
 - `check-pat-expiry.yml` — two scheduled reminders (~2 weeks and ~3 days before the current `INFRA_APPROVER_PAT` expiry) + `workflow_dispatch`; opens/updates a `pat-rotation` issue assigned to `@diplodoc-platform/team` when rotation is due (ADR-002). Cron dates are expiry-relative and must be updated on rotation.
 - `integration-test.yml` — pre-release smoke tests: applies scaffolding to 3 reference packages, runs their full CI
 - `dependency-risk-assessment.yml` — emits both a human-readable comment and a machine-readable risk/profile decision for actual dependency changes
@@ -520,6 +520,10 @@ npx @diplodoc/infra blacklist audit
 3. **Blacklist merge**: Central (`distribution.yml`) and local (`.infrarc.yml`) exclusions are merged. Expired entries (past `until` date) are automatically ignored.
 
 4. **Auto-merge**: Controlled per-repo in `distribution.yml`. During stabilization the global default is `auto_merge: false`; enabling it is a separate rollout decision after manual testpack and downstream-check validation.
+
+   The complete list of intentionally disabled schedules and mutation gates,
+   plus the evidence and activation order required to restore them, is recorded
+   in [`docs/dependency-automation-stabilization.md`](docs/dependency-automation-stabilization.md).
 
 5. **Pre-release safety**: The `integration-test.yml` workflow blocks merging if scaffolding changes break any of the 3 reference packages.
 

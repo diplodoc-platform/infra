@@ -1,16 +1,18 @@
 # Auto-Assign Owner on SLA Breach
 
-> Companion doc for the `Auto-assign owners to SLA-breaching PRs` workflow step (T8.3).
+> Companion doc for the `Plan or apply owner assignments` workflow step (T8.3).
 
-When a Dependabot PR exceeds its SLA deadline, the Dependency Health workflow
-automatically assigns an **owner** to the PR and maintains a single tracking
-issue in the `infra` repository. A known breakage must not remain just a red
-PR: either it gets **fixed**, or a **policy exception** is filed.
+When enabled with `dry_run: false`, the Dependency Health workflow assigns an
+**owner** to Dependabot PRs that exceed their SLA and maintains a tracking issue
+in the `infra` repository. During stabilization `dry_run: true` is the default,
+so the workflow only reports the assignment plan. A known breakage must not
+remain just a red PR: either it gets **fixed**, or a **policy exception** is
+filed.
 
 ## Overview
 
-The T8.3 step runs **after** the T8.1 health audit and T8.2 daily summary
-within the same `Dependency Health Audit` workflow run. It:
+The T8.3 step runs **after** the T8.1 health audit and T8.2 summary within the
+same `Dependency Health Audit` workflow run. In live mode it:
 
 1. Detects SLA breaches (reuses the T8.1 `computeHealth` output).
 2. Resolves an owner for each breaching PR:
@@ -26,7 +28,7 @@ within the same `Dependency Health Audit` workflow run. It:
    idempotent.
 4. Creates or updates a **single** tracking issue in the `infra` repo titled
    `SLA Breach Tracking` (stable, date-free title so the same issue is updated
-   across daily runs). The issue body groups breaching PRs by owner and
+   across live runs). The issue body groups breaching PRs by owner and
    carries the "fix or file exception" reminder.
 
 ## Owner resolution
@@ -93,24 +95,29 @@ definition.
 ## Workflow step
 
 ```yaml
-- name: Auto-assign owners to SLA-breaching PRs
+- name: Plan or apply owner assignments
   id: assign
   if: always()
   env:
     GH_TOKEN: ${{ steps.app-token.outputs.token }}
+    DRY_RUN: ${{ inputs.dry_run }}
   run: |
+    DRY_RUN_FLAG=""
+    if [ "${DRY_RUN}" = "true" ]; then DRY_RUN_FLAG="--dry-run"; fi
     set +e
     node scripts/dependency-assign.js \
       --all \
       --output .status/dependency-assign.json \
-      --markdown .status/dependency-assign.md
+      --markdown .status/dependency-assign.md \
+      $DRY_RUN_FLAG
     echo "exit-code=$?" >> "$GITHUB_OUTPUT"
 ```
 
-The step runs with `if: always()` so assignments happen even when the audit
-or summary steps exited non-zero (SLA breaches are exactly the trigger for
-assignment). The assign script itself exits non-zero when breaches are found,
-which contributes to the workflow's final "Fail on SLA breach" step.
+The step runs with `if: always()` so the assignment plan is produced even when
+the audit or summary steps exited non-zero. Mutations happen only when the
+operator explicitly dispatches with `dry_run: false`. The assign script exits
+non-zero when breaches are found, which contributes to the workflow's final
+"Fail on SLA breach" step.
 
 ## CLI usage
 

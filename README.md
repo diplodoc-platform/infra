@@ -66,6 +66,11 @@ Infrastructure updates follow a **push model**:
 3. On release, `distribute-infra.yml` creates PRs in all target repositories
 4. PRs stay open for manual review; auto-merge is disabled during stabilization
 
+Scheduled dependency health, live auto-merge, mutating CI-gate synchronization,
+and tracking-issue publication are also disabled or dry-run by default during
+stabilization. See [Dependency Automation Stabilization](docs/dependency-automation-stabilization.md)
+for the evidence and activation order required to enable them.
+
 ```
 @diplodoc/infra release
         │

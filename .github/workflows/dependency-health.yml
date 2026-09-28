@@ -1,6 +1,6 @@
 name: Dependency Health Audit
 
-# Central daily audit of all Diplodoc platform repositories for Dependabot
+# Central audit of all Diplodoc platform repositories for Dependabot
 # PR SLA compliance. This is an infra-only workflow (NOT distributed via
 # scaffolding) — it runs centrally in the infra repo using a GitHub App
 # installation token that has read access to every target repository.
@@ -13,18 +13,18 @@ name: Dependency Health Audit
 #   - Major               — 30 calendar days
 #   - Exception review    — at least every 90 days (registry review-after)
 #
-# The audit exits non-zero when any PR breaches its SLA or any registry
-# exception is overdue, so the daily run surfaces as a failing check in the
-# infra repo. The generated report (JSON + markdown) is uploaded as an
-# artifact for human inspection and consumed by the Daily Summary (T8.2).
+# Stabilization mode is manual and dry-run by default. It uploads reports but
+# does not create tracking issues or assign owners. A schedule and mutating
+# mode may be enabled only after the gates in docs/dependency-automation-
+# stabilization.md are satisfied.
 
 on:
-  schedule:
-    # 07:00 UTC daily (weekdays). GitHub Actions cron only triggers on the
-    # default branch. Sunday runs are a no-cost "weekend catch-up".
-    - cron: '0 7 * * 1-5'
   workflow_dispatch:
     inputs:
+      dry_run:
+        description: 'Report only; do not create issues or assign owners'
+        type: boolean
+        default: true
       skip_checks:
         description: 'Skip per-PR check-status lookup (faster)'
         type: boolean
@@ -111,7 +111,7 @@ jobs:
           retention-days: 30
 
       - name: Post daily summary as tracking issue
-        if: always()
+        if: always() && inputs.dry_run == false
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -146,26 +146,32 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Auto-assign owners to SLA-breaching PRs
+      - name: Plan or apply owner assignments
         id: assign
         if: always()
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
           SKIP_CHECKS: ${{ inputs.skip_checks }}
         run: |
           SKIP_FLAG=""
+          DRY_RUN_FLAG=""
           if [ "${SKIP_CHECKS}" = "true" ]; then
             SKIP_FLAG="--skip-checks"
           fi
+          if [ "${DRY_RUN}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
           # The assign script exits non-zero when SLA breaches are found
-          # (so the daily run surfaces as failing). Capture the exit code so
+          # (so the audit surfaces as failing). Capture the exit code so
           # the report is still uploaded above and the job summary is written.
           set +e
           node scripts/dependency-assign.js \
             --all \
             --output .status/dependency-assign.json \
             --markdown .status/dependency-assign.md \
-            $SKIP_FLAG
+            $SKIP_FLAG \
+            $DRY_RUN_FLAG
           echo "exit-code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Upload assign report
@@ -229,8 +235,8 @@ jobs:
             }
             if (assign) {
                 parts.push(
-                    `## Auto-Assign (T8.3)\n\n` +
-                    `- SLA-breaching PRs assigned: **${(assign.actions || []).length}**\n` +
+                    `## Assignment Plan (T8.3)\n\n` +
+                    `- SLA-breaching PR assignment actions: **${(assign.actions || []).length}**\n` +
                     (assign.issue ? `- Tracking issue: #${assign.issue.number} (${assign.issue.created ? 'created' : 'updated'})\n` : ''),
                 );
             }
@@ -241,5 +247,5 @@ jobs:
       - name: Fail on SLA breach / overdue exception / actionable items
         if: steps.audit.outputs.exit-code != '0' || steps.summary.outputs.exit-code != '0' || steps.assign.outputs.exit-code != '0'
         run: |
-          echo "::error::Dependency health audit found SLA breaches, overdue exceptions, actionable summary items, or unassigned SLA-breaching PRs. See uploaded reports and tracking issue."
+          echo "::error::Dependency health audit found SLA breaches, overdue exceptions, actionable summary items, or assignment actions. See uploaded reports and the job summary."
           exit 1
