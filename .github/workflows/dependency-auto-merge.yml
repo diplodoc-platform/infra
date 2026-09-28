@@ -15,6 +15,11 @@ name: Dependency Auto-merge Audit
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_issue:
+        description: 'Create or update the audit tracking issue'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -70,7 +75,7 @@ jobs:
           retention-days: 90
 
       - name: Post audit log as tracking issue
-        if: always()
+        if: always() && inputs.publish_issue == true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -127,5 +132,5 @@ jobs:
       - name: Fail on merge errors
         if: steps.automerge.outputs.exit-code != '0'
         run: |
-          echo "::error::Auto-merge audit encountered errors. See audit log artifact and tracking issue."
+          echo "::error::Auto-merge audit encountered errors. See the audit log artifact and job summary."
           exit 1
