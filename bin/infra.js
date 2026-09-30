@@ -1,9 +1,18 @@
 #!/usr/bin/env node
 
 const {execSync, execFileSync} = require('node:child_process');
-const {realpathSync, readFileSync, existsSync, writeFileSync, mkdirSync} = require('node:fs');
+const {
+    realpathSync,
+    readFileSync,
+    existsSync,
+    writeFileSync,
+    mkdtempSync,
+    rmSync,
+} = require('node:fs');
+const {tmpdir} = require('node:os');
 const {dirname, join, resolve} = require('node:path');
 const yaml = require('js-yaml');
+const {previewLocalSync} = require('../scripts/preview-sync');
 
 const scriptPath = realpathSync(__filename);
 const srcDir = dirname(dirname(scriptPath));
@@ -247,22 +256,15 @@ function runSync() {
         const repoName = repoFilter || 'unknown';
         const blacklist = loadBlacklist(repoName, absTarget, configPath);
         if (dryRun) {
-            applySyncToTarget(absTarget, repoName, blacklist, false);
-            const report = generateDiffReport(absTarget, repoName, blacklist);
+            const report = previewLocalSync(
+                absTarget,
+                (copy) => applySyncToTarget(copy, repoName, blacklist, false),
+                (copy) => generateDiffReport(copy, repoName, blacklist),
+            );
             const formatted = formatDiffReports([report]);
             console.log(formatted);
             if (outputFile) {
                 writeFileSync(outputFile, formatted, 'utf8');
-            }
-            // Revert changes in target directory
-            try {
-                execSync('git checkout -- . && git clean -fd', {
-                    cwd: absTarget,
-                    stdio: 'pipe',
-                    shell,
-                });
-            } catch {
-                // Not a git repo or no changes to revert
             }
         } else {
             applySyncToTarget(absTarget, repoName, blacklist, false);
@@ -282,21 +284,22 @@ function runSync() {
     }
 
     const reports = [];
+    const temporaryRoots = [];
 
     for (const repo of repos) {
         console.log(`\n--- Processing ${repo} ---`);
         const repoConfig = getRepoConfig(repo, configPath);
         const ghRepo = repoConfig.github || `diplodoc-platform/${repo}`;
-
-        const tmpDir = join(process.cwd(), '.infra-sync-tmp', repo);
-        if (!existsSync(tmpDir)) {
-            mkdirSync(tmpDir, {recursive: true});
+        if (!/^[a-z0-9-]+$/i.test(repo) || !/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(ghRepo)) {
+            throw new Error('Invalid repository identifier');
         }
+        const temporaryRoot = mkdtempSync(join(tmpdir(), 'infra-sync-'));
+        temporaryRoots.push(temporaryRoot);
+        const tmpDir = join(temporaryRoot, 'repository');
 
         try {
-            execSync(`gh repo clone ${ghRepo} "${tmpDir}" -- --depth 1`, {
+            execFileSync('gh', ['repo', 'clone', ghRepo, tmpDir, '--', '--depth', '1'], {
                 stdio: 'pipe',
-                shell,
             });
         } catch (error) {
             console.error(`Failed to clone ${ghRepo}: ${error.message}`);
@@ -318,6 +321,7 @@ function runSync() {
             applySyncToTarget(tmpDir, repo, blacklist, false);
 
             const version = flags.version || 'latest';
+            if (!/^[a-z0-9.-]+$/i.test(version)) throw new Error('Invalid infra version');
             const branchName = `infra/update-v${version}`;
 
             try {
@@ -355,14 +359,8 @@ function runSync() {
     }
 
     // Cleanup
-    const tmpBase = join(process.cwd(), '.infra-sync-tmp');
-    if (existsSync(tmpBase)) {
-        try {
-            execSync(`rm -rf "${tmpBase}"`, {shell, stdio: 'pipe'});
-        } catch {
-            // ignore cleanup errors
-        }
-    }
+    for (const temporaryRoot of temporaryRoots)
+        rmSync(temporaryRoot, {recursive: true, force: true});
 }
 
 function runGate() {

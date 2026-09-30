@@ -242,6 +242,7 @@ function buildInventoryEntry(pr, repoName, checkStatus, scopedEntries, now = new
         title: pr.title || '',
         url: pr.html_url || '',
         headSha: (pr.head && pr.head.sha) || '',
+        baseSha: (pr.base && pr.base.sha) || '',
         baseRef: (pr.base && pr.base.ref) || 'master',
         author: (pr.user && pr.user.login) || '',
         assignees: Array.isArray(pr.assignees)

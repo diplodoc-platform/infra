@@ -243,7 +243,12 @@ function buildRulesetPayload({rulesetName, contexts}) {
                 type: 'required_status_checks',
                 parameters: {
                     strict_required_status_checks_policy: false,
-                    required_status_checks: contexts.map((context) => ({context})),
+                    // Native workflow checks must come from GitHub Actions, not
+                    // merely another publisher using the same context name.
+                    required_status_checks: contexts.map((context) => ({
+                        context,
+                        integration_id: 15368,
+                    })),
                 },
             },
         ],
@@ -653,6 +658,7 @@ async function syncCiGate({token, owner, name, gate, protection, appId, dryRun})
         // }
     }
     result.contexts = contexts;
+    result.required_checks = contexts.map((context) => ({context, integration_id: 15368}));
 
     const protectionEnabled = protection && protection.enabled;
 
@@ -700,12 +706,41 @@ async function syncCiGate({token, owner, name, gate, protection, appId, dryRun})
     if (method === 'PUT') {
         const current = await getRuleset(token, owner, name, id);
         const existingContexts = extractRequiredContextsFromRuleset(current);
-        if (contextsEqual(contexts, existingContexts)) {
+        const checksBound = (current.rules || [])
+            .filter((rule) => rule.type === 'required_status_checks')
+            .every((rule) =>
+                (rule.parameters?.required_status_checks || []).every(
+                    (check) => check.integration_id === 15368,
+                ),
+            );
+        if (contextsEqual(contexts, existingContexts) && checksBound) {
             result.status = 'unchanged';
             result.action = 'unchanged';
             return result;
         }
-        await ghRequest(token, 'PUT', `/repos/${owner}/${name}/rulesets/${id}`, payload);
+        // Preserve manually tuned conditions, bypass actors and unrelated rules.
+        const updated = {
+            name: current.name,
+            target: current.target,
+            enforcement: current.enforcement,
+            conditions: current.conditions,
+            bypass_actors: current.bypass_actors,
+            rules: (current.rules || []).map((rule) =>
+                rule.type === 'required_status_checks'
+                    ? {
+                          ...rule,
+                          parameters: {
+                              ...rule.parameters,
+                              required_status_checks:
+                                  payload.rules[0].parameters.required_status_checks,
+                          },
+                      }
+                    : rule,
+            ),
+        };
+        if (!updated.rules.some((rule) => rule.type === 'required_status_checks'))
+            updated.rules.push(payload.rules[0]);
+        await ghRequest(token, 'PUT', `/repos/${owner}/${name}/rulesets/${id}`, updated);
         result.status = 'updated';
         result.action = 'updated';
         return result;

@@ -36,9 +36,9 @@ test('does not select deep verification from the repository name', () => {
 
 test('passes the repository exact SHA and selected profile to testpack', () => {
     const deep = workflow.jobs['deep-verification'];
-    assert.strictEqual(
+    assert.match(
         deep.uses,
-        'diplodoc-platform/testpack/.github/workflows/downstream-check.yml@master',
+        /^diplodoc-platform\/testpack\/\.github\/workflows\/downstream-check\.yml@[a-f0-9]{40}$/,
     );
     assert.strictEqual(deep.with.package, '${{ github.event.repository.name }}');
     assert.strictEqual(deep.with['pr-sha'], '${{ github.event.pull_request.head.sha }}');
