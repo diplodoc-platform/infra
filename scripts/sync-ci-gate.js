@@ -376,10 +376,31 @@ function contextsFromWorkflowDoc(doc = {}) {
     // Under YAML 1.1, js-yaml can turn the `on:` key into the boolean `true`.
     const onField = doc.on !== undefined ? doc.on : doc[true];
     if (!workflowTriggersPr(onField)) return [];
+    const prTrigger =
+        typeof onField === 'object' && !Array.isArray(onField) ? onField.pull_request : null;
+    // A skipped workflow may never publish its contexts. Do not turn optional
+    // path/activity checks into permanent default-branch merge requirements.
+    if (prTrigger && ['paths', 'paths-ignore', 'types'].some((key) => key in prTrigger)) {
+        return [];
+    }
 
     const jobs = doc.jobs || {};
     const out = [];
     for (const [jobId, job] of Object.entries(jobs)) {
+        if (job && job.if !== undefined) continue;
+        // A downstream job inherits the optional nature of its prerequisites.
+        const seen = new Set();
+        const isConditional = (id) => {
+            if (seen.has(id)) return true;
+            seen.add(id);
+            const dependency = jobs[id];
+            if (!dependency || dependency.if !== undefined) return true;
+            const needs = dependency.needs || [];
+            const conditional = (Array.isArray(needs) ? needs : [needs]).some(isConditional);
+            seen.delete(id);
+            return conditional;
+        };
+        if (isConditional(jobId)) continue;
         for (const ctx of expandJobContexts(jobId, job || {})) out.push(ctx);
     }
     return out;

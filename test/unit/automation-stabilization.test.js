@@ -48,6 +48,21 @@ test('keeps CI gate synchronization manual and dry-run by default', () => {
     assert.match(syncCiGateWorkflowSource, /DRY_RUN_FLAG="--dry-run"/);
 });
 
+test('publishes required audit reports from the hidden status directory', () => {
+    const health = yaml.load(healthWorkflowSource);
+    const autoMerge = yaml.load(workflowSource);
+    const uploads = [...health.jobs.audit.steps, ...autoMerge.jobs['auto-merge'].steps].filter(
+        (step) => step.uses && step.uses.startsWith('actions/upload-artifact@'),
+    );
+    assert.strictEqual(uploads.length, 4);
+    for (const step of uploads) {
+        assert.match(step.with.path, /^\.status\/dependency-|^\.status\/auto-merge-/);
+        assert.strictEqual(step.with['include-hidden-files'], true, step.name);
+        assert.strictEqual(step.with['if-no-files-found'], 'error', step.name);
+        assert.strictEqual(step.if, 'always()', step.name);
+    }
+});
+
 test('keeps every distribution target review-only by default', () => {
     assert.strictEqual(distribution.defaults.auto_merge, false);
 
