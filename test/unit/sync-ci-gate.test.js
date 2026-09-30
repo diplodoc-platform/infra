@@ -116,8 +116,8 @@ test('buildRulesetPayload: shape and contexts', () => {
     assert.strictEqual(rule.type, 'required_status_checks');
     assert.strictEqual(rule.parameters.strict_required_status_checks_policy, false);
     assert.deepStrictEqual(rule.parameters.required_status_checks, [
-        {context: 'build'},
-        {context: 'lint'},
+        {context: 'build', integration_id: 15368},
+        {context: 'lint', integration_id: 15368},
     ]);
 });
 

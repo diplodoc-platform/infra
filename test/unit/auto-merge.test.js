@@ -152,46 +152,131 @@ test('deriveCiCompletedAt: handles single completed run', () => {
 test('deriveChecksGreen: true when all runs completed + success', () => {
     const response = {
         check_runs: [
-            {id: 1, name: 'lint', status: 'completed', conclusion: 'success'},
-            {id: 2, name: 'test', status: 'completed', conclusion: 'success'},
+            {
+                id: 1,
+                name: 'lint',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'completed',
+                conclusion: 'success',
+            },
+            {
+                id: 2,
+                name: 'test',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'completed',
+                conclusion: 'success',
+            },
         ],
     };
-    assert.ok(deriveChecksGreen(response, ['lint', 'test']));
+    assert.ok(
+        deriveChecksGreen(
+            response,
+            [
+                {context: 'lint', appId: 15368},
+                {context: 'test', appId: 15368},
+            ],
+            'a'.repeat(40),
+        ),
+    );
 });
 
 test('deriveChecksGreen: false when one run failed', () => {
     const response = {
         check_runs: [
-            {id: 1, name: 'lint', status: 'completed', conclusion: 'success'},
-            {id: 2, name: 'test', status: 'completed', conclusion: 'failure'},
+            {
+                id: 1,
+                name: 'lint',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'completed',
+                conclusion: 'success',
+            },
+            {
+                id: 2,
+                name: 'test',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'completed',
+                conclusion: 'failure',
+            },
         ],
     };
-    assert.ok(!deriveChecksGreen(response, ['lint', 'test']));
+    assert.ok(
+        !deriveChecksGreen(
+            response,
+            [
+                {context: 'lint', appId: 15368},
+                {context: 'test', appId: 15368},
+            ],
+            'a'.repeat(40),
+        ),
+    );
 });
 
 test('deriveChecksGreen: false when one run is pending', () => {
     const response = {
         check_runs: [
-            {id: 1, name: 'lint', status: 'completed', conclusion: 'success'},
-            {id: 2, name: 'test', status: 'in_progress', conclusion: null},
+            {
+                id: 1,
+                name: 'lint',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'completed',
+                conclusion: 'success',
+            },
+            {
+                id: 2,
+                name: 'test',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'in_progress',
+                conclusion: null,
+            },
         ],
     };
-    assert.ok(!deriveChecksGreen(response, ['lint', 'test']));
+    assert.ok(
+        !deriveChecksGreen(
+            response,
+            [
+                {context: 'lint', appId: 15368},
+                {context: 'test', appId: 15368},
+            ],
+            'a'.repeat(40),
+        ),
+    );
 });
 
-test('deriveChecksGreen: ignores non-required failures and accepts neutral required checks', () => {
+test('deriveChecksGreen: rejects neutral required checks', () => {
     const response = {
         check_runs: [
-            {id: 1, name: 'lint', status: 'completed', conclusion: 'neutral'},
+            {
+                id: 1,
+                name: 'lint',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'completed',
+                conclusion: 'neutral',
+            },
             {id: 2, name: 'optional', status: 'completed', conclusion: 'failure'},
         ],
     };
-    assert.ok(deriveChecksGreen(response, ['lint']));
+    assert.ok(!deriveChecksGreen(response, [{context: 'lint', appId: 15368}], 'a'.repeat(40)));
 });
 
 test('deriveChecksGreen: fails closed when required contexts are unknown', () => {
     const response = {
-        check_runs: [{id: 1, name: 'lint', status: 'completed', conclusion: 'success'}],
+        check_runs: [
+            {
+                id: 1,
+                name: 'lint',
+                app: {id: 15368},
+                head_sha: 'a'.repeat(40),
+                status: 'completed',
+                conclusion: 'success',
+            },
+        ],
     };
     assert.ok(!deriveChecksGreen(response));
 });
@@ -276,7 +361,28 @@ test('deriveNewTransitiveCount: ignores +++ header line', () => {
 
 // --- buildEvaluationInput --------------------------------------------------
 
+const HEAD_SHA = 'a'.repeat(40);
+const SAMPLE_EVIDENCE = {
+    beforePackage: {devDependencies: {eslint: '8.0.0'}},
+    afterPackage: {devDependencies: {eslint: '8.0.1'}},
+    beforeLock: {
+        lockfileVersion: 3,
+        packages: {
+            '': {devDependencies: {eslint: '8.0.0'}},
+            'node_modules/eslint': {version: '8.0.0'},
+        },
+    },
+    afterLock: {
+        lockfileVersion: 3,
+        packages: {
+            '': {devDependencies: {eslint: '8.0.1'}},
+            'node_modules/eslint': {version: '8.0.1'},
+        },
+    },
+};
+
 const SAMPLE_ENTRY = {
+    headSha: HEAD_SHA,
     repo: 'cli',
     number: 42,
     title: 'Bump eslint from 8.0.0 to 8.0.1',
@@ -308,13 +414,16 @@ test('buildEvaluationInput: builds correct input from entry + files', () => {
                 {
                     id: 1,
                     name: 'test',
+                    app: {id: 15368},
+                    head_sha: 'a'.repeat(40),
                     status: 'completed',
                     conclusion: 'success',
                     completed_at: '2026-08-22T10:00:00Z',
                 },
             ],
         },
-        requiredChecks: ['test'],
+        ...SAMPLE_EVIDENCE,
+        requiredChecks: [{context: 'test', appId: 15368}],
         scopedEntries: [],
         now: new Date('2026-08-24T10:00:00Z'),
     });
@@ -329,13 +438,13 @@ test('buildEvaluationInput: builds correct input from entry + files', () => {
     assert.strictEqual(input.ciCompletedAt, '2026-08-22T10:00:00Z');
 });
 
-test('buildEvaluationInput: section from entry when no patch', () => {
+test('buildEvaluationInput: refuses title-only section without full evidence', () => {
     const input = buildEvaluationInput(
         {...SAMPLE_ENTRY, section: 'devDependencies'},
         SAMPLE_PR_FILES,
         {},
     );
-    assert.strictEqual(input.section, 'devDependencies');
+    assert.strictEqual(input.section, null);
 });
 
 test('buildEvaluationInput: section null when no patch in files', () => {
@@ -352,7 +461,7 @@ test('buildEvaluationInput: hasException true with matching registry entry', () 
     assert.strictEqual(input.hasException, true);
 });
 
-test('buildEvaluationInput: newTransitiveDependencies from lock patch', () => {
+test('buildEvaluationInput: truncated patch alone is insufficient', () => {
     const lockPatch =
         '+    "node_modules/new-transitive-1": {\n+    "node_modules/new-transitive-2": {';
     const input = buildEvaluationInput(
@@ -360,19 +469,19 @@ test('buildEvaluationInput: newTransitiveDependencies from lock patch', () => {
         [{filename: 'package-lock.json', patch: lockPatch}],
         {},
     );
-    assert.strictEqual(input.newTransitiveDependencies, 2);
+    assert.strictEqual(input.newTransitiveDependencies, null);
 });
 
-test('buildEvaluationInput: newTransitiveDependencies from explicit count', () => {
+test('buildEvaluationInput: explicit count does not bypass manifest verification', () => {
     const input = buildEvaluationInput(SAMPLE_ENTRY, [{filename: 'package.json'}], {
         newTransitiveCount: 3,
     });
-    assert.strictEqual(input.newTransitiveDependencies, 3);
+    assert.strictEqual(input.newTransitiveDependencies, null);
 });
 
-test('buildEvaluationInput: newTransitiveDependencies 0 when no lock patch', () => {
+test('buildEvaluationInput: missing lock data is unknown, not zero', () => {
     const input = buildEvaluationInput(SAMPLE_ENTRY, [{filename: 'package.json'}], {});
-    assert.strictEqual(input.newTransitiveDependencies, 0);
+    assert.strictEqual(input.newTransitiveDependencies, null);
 });
 
 // --- classifyPrForAutoMerge -----------------------------------------------
@@ -384,13 +493,16 @@ test('classifyPrForAutoMerge: returns entry + evaluation + input', () => {
                 {
                     id: 1,
                     name: 'test',
+                    app: {id: 15368},
+                    head_sha: 'a'.repeat(40),
                     status: 'completed',
                     conclusion: 'success',
                     completed_at: '2026-08-22T10:00:00Z',
                 },
             ],
         },
-        requiredChecks: ['test'],
+        ...SAMPLE_EVIDENCE,
+        requiredChecks: [{context: 'test', appId: 15368}],
         scopedEntries: [],
         now: new Date('2026-08-24T10:00:00Z'),
     });
@@ -408,13 +520,16 @@ test('classifyPrForAutoMerge: excluded PR is not allowed', () => {
             check_runs: [
                 {
                     name: 'test',
+                    app: {id: 15368},
+                    head_sha: 'a'.repeat(40),
                     status: 'completed',
                     conclusion: 'success',
                     completed_at: '2026-08-22T10:00:00Z',
                 },
             ],
         },
-        requiredChecks: ['test'],
+        ...SAMPLE_EVIDENCE,
+        requiredChecks: [{context: 'test', appId: 15368}],
         scopedEntries: [],
         now: new Date('2026-08-24T10:00:00Z'),
     });
@@ -430,13 +545,16 @@ test('formatAuditEntry: produces structured audit entry', () => {
             check_runs: [
                 {
                     name: 'test',
+                    app: {id: 15368},
+                    head_sha: 'a'.repeat(40),
                     status: 'completed',
                     conclusion: 'success',
                     completed_at: '2026-08-22T10:00:00Z',
                 },
             ],
         },
-        requiredChecks: ['test'],
+        ...SAMPLE_EVIDENCE,
+        requiredChecks: [{context: 'test', appId: 15368}],
         scopedEntries: [],
         now: new Date('2026-08-24T10:00:00Z'),
     });
@@ -461,7 +579,7 @@ test('formatAuditEntry: records blocked conditions', () => {
     );
     const audit = formatAuditEntry(classification, {});
     assert.strictEqual(audit.allowed, false);
-    assert.ok(audit.exclusions.includes('minor-update'));
+    assert.ok(audit.exclusions.includes('production-dep'));
     assert.ok(audit.blockingReasons.length > 0);
     assert.strictEqual(audit.merged, false);
 });
@@ -684,9 +802,9 @@ test('extractRequiredCheckContexts: combines legacy protection and active rulese
     ];
 
     assert.deepStrictEqual(extractRequiredCheckContexts(protection, rules), [
-        'lint',
-        'test',
-        'build',
+        {context: 'lint', appId: null},
+        {context: 'test', appId: null},
+        {context: 'build', appId: null},
     ]);
 });
 
@@ -699,7 +817,9 @@ test('extractRequiredCheckContexts: reads organization rules without legacy prot
         },
     ];
 
-    assert.deepStrictEqual(extractRequiredCheckContexts(null, rules), ['ci / required']);
+    assert.deepStrictEqual(extractRequiredCheckContexts(null, rules), [
+        {context: 'ci / required', appId: null},
+    ]);
 });
 
 test('extractRequiredCheckContexts: fails closed with malformed or absent responses', () => {

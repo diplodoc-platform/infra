@@ -1,46 +1,89 @@
 name: Dependency Risk Comment
-
-# This privileged workflow runs only trusted code from the default branch. It
-# consumes text produced by the unprivileged pull_request workflow and never
-# checks out or executes pull-request code.
-on:
+'on':
   workflow_run:
-    workflows: ['Dependency Risk Assessment']
-    types: [completed]
-
+    workflows:
+      - Dependency Risk Assessment
+    types:
+      - completed
 permissions:
   actions: read
   contents: read
   pull-requests: write
-
 jobs:
   comment:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.pull_requests[0].number != null
+    if: >-
+      github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion !=
+      'cancelled' && github.event.workflow_run.pull_requests[0].number != null
     runs-on: ubuntu-24.04
     steps:
       - name: Download assessment artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: dependency-risk-${{ github.event.workflow_run.pull_requests[0].number }}
           path: artifacts/dependency-risk
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate artifact binding
+      - name: Post only current assessment to its own marked comment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           EXPECTED_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync('artifacts/dependency-risk/metadata.json')); if(String(m.pr)!==process.env.EXPECTED_PR || m.headSha!==process.env.EXPECTED_SHA) throw new Error('Assessment artifact does not match workflow run'); const size=fs.statSync('artifacts/dependency-risk/comment.md').size; if(size<1 || size>65536) throw new Error('Invalid assessment comment size');"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: >-
+            const fs = require('node:fs');
 
-      - name: Post structured risk comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
-        run: |
-          gh pr comment "$PR_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --edit-last \
-            --create-if-none \
-            --body-file artifacts/dependency-risk/comment.md
+            const file = 'artifacts/dependency-risk/comment.md';
+
+            const metadataFile = 'artifacts/dependency-risk/metadata.json';
+
+            for (const [name, limit] of [[file, 65536], [metadataFile, 4096]]) {
+                const stat = fs.lstatSync(name);
+                if (!stat.isFile() || stat.size < 1 || stat.size > limit) throw new Error('Invalid assessment artifact');
+            }
+
+            const metadata = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+
+            const expectedPr = process.env.EXPECTED_PR;
+
+            const expectedSha = process.env.EXPECTED_SHA;
+
+            if (!/^[1-9][0-9]*$/.test(expectedPr) || !/^[a-f0-9]{40}$/i.test(expectedSha) ||
+                String(metadata.pr) !== expectedPr || metadata.headSha !== expectedSha) {
+                throw new Error('Assessment artifact does not match workflow run');
+            }
+
+            const request = {...context.repo, pull_number: Number(expectedPr)};
+
+            const current = await github.rest.pulls.get(request);
+
+            if (current.data.state !== 'open' || current.data.head.sha !== expectedSha) {
+                core.info('Skipping obsolete dependency assessment');
+                return;
+            }
+
+            const marker = '<!-- diplodoc:dependency-risk-assessment -->';
+
+            const body = marker + '\nAssessment for commit \`' + expectedSha + '\`\n\n' +
+            fs.readFileSync(file, 'utf8');
+
+            const comments = await github.paginate(github.rest.issues.listComments,
+            {...context.repo, issue_number: Number(expectedPr), per_page: 100});
+
+            const own = comments.find((comment) => comment.user?.login === 'github-actions[bot]' &&
+            comment.body?.startsWith(marker));
+
+            const latest = await github.rest.pulls.get(request);
+
+            if (latest.data.state !== 'open' || latest.data.head.sha !== expectedSha) return;
+
+            if (own) {
+                await github.rest.issues.updateComment({...context.repo, comment_id: own.id, body});
+            } else {
+                await github.rest.issues.createComment({...context.repo, issue_number: Number(expectedPr), body});
+            }
+    timeout-minutes: 10
+concurrency:
+  group: dependency-risk-comment-${{ github.event.workflow_run.pull_requests[0].number }}
+  cancel-in-progress: false

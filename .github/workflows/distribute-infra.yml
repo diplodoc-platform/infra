@@ -50,13 +50,23 @@ jobs:
       repos: ${{ steps.repos.outputs.list }}
       version: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node.js and install dependencies
-        uses: diplodoc-platform/setup-node-action@v1
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
+
+      - name: Ensure supported npm and install trusted infra dependencies
+        shell: bash
+        run: |
+          REQUIRED_NPM=11.5.1
+          if [ "$(printf '%s\n' "$REQUIRED_NPM" "$(npm -v)" | sort -V | head -n1)" != "$REQUIRED_NPM" ]; then
+            npm install --prefix "$RUNNER_TEMP/npm-global" -g "npm@$REQUIRED_NPM"
+            echo "$RUNNER_TEMP/npm-global/bin" >> "$GITHUB_PATH"
+            export PATH="$RUNNER_TEMP/npm-global/bin:$PATH"
+          fi
+          npm ci --ignore-scripts
 
       - name: Determine version
         id: version
@@ -172,11 +182,11 @@ jobs:
         run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout infra repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Generate App token for target repo
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
@@ -186,10 +196,20 @@ jobs:
           repositories: ${{ matrix.repo }}
 
       - name: Setup Node.js and install dependencies
-        uses: diplodoc-platform/setup-node-action@v1
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
+
+      - name: Ensure supported npm and install trusted infra dependencies
+        shell: bash
+        run: |
+          REQUIRED_NPM=11.5.1
+          if [ "$(printf '%s\n' "$REQUIRED_NPM" "$(npm -v)" | sort -V | head -n1)" != "$REQUIRED_NPM" ]; then
+            npm install --prefix "$RUNNER_TEMP/npm-global" -g "npm@$REQUIRED_NPM"
+            echo "$RUNNER_TEMP/npm-global/bin" >> "$GITHUB_PATH"
+            export PATH="$RUNNER_TEMP/npm-global/bin:$PATH"
+          fi
+          npm ci --ignore-scripts
 
       - name: Clone target repository
         env:
@@ -523,7 +543,7 @@ jobs:
 
       - name: Upload status artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: status-${{ matrix.repo }}
           path: .status/status-${{ matrix.repo }}.json
@@ -548,7 +568,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all status artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           path: .status
           pattern: status-*
@@ -562,7 +582,7 @@ jobs:
       # every successful run and hide real failures behind a green tick.
       - name: Generate App token for PR status polling
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
@@ -631,7 +651,7 @@ jobs:
           done
 
       - name: Render summary table
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           REPOS_JSON: ${{ needs.prepare.outputs.repos }}

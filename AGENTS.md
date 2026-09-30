@@ -1,5 +1,13 @@
 # AGENTS.md
 
+Dependency automation security contract: see
+`docs/dependency-automation-stabilization.md`. Keep policy tooling pinned and
+separate from PR dependencies, reject incomplete manifest/check evidence,
+preserve user files in previews, and keep all activation switches disabled unless
+the owner separately approves them. Broad App installation-token permissions
+were explicitly accepted on 2026-09-30; do not silently change those permissions
+or describe this accepted residual risk as fixed.
+
 This file contains instructions for AI agents working with the `@diplodoc/infra` project.
 
 ## Common Rules and Standards

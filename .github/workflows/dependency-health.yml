@@ -40,21 +40,27 @@ jobs:
     name: Dependency Health Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node.js and install dependencies
-        uses: diplodoc-platform/setup-node-action@v1
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
 
-      # Org-wide GitHub App token. The App must be installed on every target
-      # repository (or org-wide) with "Contents: read" + "Metadata: read"
-      # permissions so it can list PRs and commit statuses across all 28
-      # repos. See docs/dependency-health-app.md for setup.
+      - name: Ensure supported npm and install trusted infra dependencies
+        shell: bash
+        run: |
+          REQUIRED_NPM=11.5.1
+          if [ "$(printf '%s\n' "$REQUIRED_NPM" "$(npm -v)" | sort -V | head -n1)" != "$REQUIRED_NPM" ]; then
+            npm install --prefix "$RUNNER_TEMP/npm-global" -g "npm@$REQUIRED_NPM"
+            echo "$RUNNER_TEMP/npm-global/bin" >> "$GITHUB_PATH"
+            export PATH="$RUNNER_TEMP/npm-global/bin:$PATH"
+          fi
+          npm ci --ignore-scripts
+
       - name: Generate App token (org-wide audit access)
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
@@ -103,7 +109,7 @@ jobs:
 
       - name: Upload summary report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dependency-summary-report
           path: .status/dependency-summary.*
@@ -140,7 +146,7 @@ jobs:
 
       - name: Upload health report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dependency-health-report
           path: .status/dependency-health.*
@@ -178,7 +184,7 @@ jobs:
 
       - name: Upload assign report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dependency-assign-report
           path: .status/dependency-assign.*
@@ -187,7 +193,7 @@ jobs:
           retention-days: 30
       - name: Write job summary
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
