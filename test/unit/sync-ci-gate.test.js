@@ -390,6 +390,36 @@ test('contextsFromWorkflowDoc: non-PR workflow yields nothing', () => {
     assert.deepStrictEqual(contextsFromWorkflowDoc(doc), []);
 });
 
+for (const filter of ['paths', 'paths-ignore', 'types']) {
+    test(`contextsFromWorkflowDoc: ignores workflows filtered by ${filter}`, () => {
+        const doc = {on: {pull_request: {[filter]: ['src/**']}}, jobs: {test: {}}};
+        assert.deepStrictEqual(contextsFromWorkflowDoc(doc), []);
+    });
+}
+
+test('contextsFromWorkflowDoc: excludes conditional jobs and dependent jobs', () => {
+    const doc = {
+        on: 'pull_request',
+        jobs: {
+            lint: {},
+            optional: {if: 'github.actor == "dependabot[bot]"'},
+            dependent: {needs: 'optional'},
+            transitive: {needs: ['lint', 'dependent']},
+            always: {if: '${{ always() }}', needs: 'optional'},
+            standard: {needs: 'lint'},
+        },
+    };
+    assert.deepStrictEqual(contextsFromWorkflowDoc(doc), ['lint', 'standard']);
+});
+
+test('contextsFromWorkflowDoc: fails closed on missing or cyclic prerequisites', () => {
+    const doc = {
+        on: 'pull_request',
+        jobs: {lint: {}, missing: {needs: 'unknown'}, a: {needs: 'b'}, b: {needs: 'a'}},
+    };
+    assert.deepStrictEqual(contextsFromWorkflowDoc(doc), ['lint']);
+});
+
 test('contextsFromWorkflowDoc: handles YAML 1.1 boolean on-key', () => {
     // js-yaml may parse `on:` as the boolean true.
     const doc = {true: ['pull_request'], jobs: {lint: {}}};

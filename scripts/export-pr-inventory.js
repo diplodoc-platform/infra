@@ -460,8 +460,42 @@ async function listDependabotPrs(token, owner, repo) {
 }
 
 /**
- * Determine the summary check status for a PR by inspecting the combined
- * status of its head SHA. Returns one of: passing, failing, pending, unknown.
+ * Combine legacy commit statuses with GitHub Actions check runs. Empty
+ * legacy status sets are not pending when completed Actions provide evidence.
+ */
+function summarizePrChecks(status, checks) {
+    const legacy = status && (status.total_count > 0 || (status.statuses || []).length > 0);
+    const failures = new Set([
+        'failure',
+        'timed_out',
+        'cancelled',
+        'action_required',
+        'startup_failure',
+        'stale',
+    ]);
+    if (
+        (legacy && ['failure', 'error'].includes(status.state)) ||
+        checks.some((check) => failures.has(check.conclusion))
+    )
+        return 'failing';
+    if (
+        (legacy && status.state === 'pending') ||
+        checks.some((check) => check.status !== 'completed')
+    )
+        return 'pending';
+    if (!legacy && checks.length === 0) return 'unknown';
+    if (
+        (legacy && status.state !== 'success') ||
+        checks.some((check) => !['success', 'neutral', 'skipped'].includes(check.conclusion))
+    ) {
+        return 'unknown';
+    }
+    return 'passing';
+}
+
+/**
+ * Determine the summary check status for a PR using both GitHub CI APIs.
+ * Returns one of: passing, failing, pending, unknown. API failures stay unknown.
  *
  * @param {string} token
  * @param {string} owner
@@ -476,11 +510,17 @@ async function getPrCheckStatus(token, owner, repo, sha) {
             token,
             `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/status`,
         );
-        const state = data && data.state;
-        if (state === 'success') return 'passing';
-        if (state === 'failure' || state === 'error') return 'failing';
-        if (state === 'pending') return 'pending';
-        return 'unknown';
+        const checks = [];
+        for (let page = 1; ; page++) {
+            const response = await ghRequest(
+                token,
+                `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100&page=${page}`,
+            );
+            if (!response || !Array.isArray(response.check_runs)) return 'unknown';
+            checks.push(...response.check_runs);
+            if (response.check_runs.length < 100) break;
+        }
+        return summarizePrChecks(data, checks);
     } catch {
         return 'unknown';
     }
@@ -672,6 +712,8 @@ module.exports = {
     summarizeByRepo,
     summarizeInventory,
     renderMarkdown,
+    summarizePrChecks,
+    getPrCheckStatus,
     exportInventory,
     loadConfig,
     loadRegistry,

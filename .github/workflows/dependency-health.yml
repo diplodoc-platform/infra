@@ -107,7 +107,8 @@ jobs:
         with:
           name: dependency-summary-report
           path: .status/dependency-summary.*
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 30
 
       - name: Post daily summary as tracking issue
@@ -143,6 +144,7 @@ jobs:
         with:
           name: dependency-health-report
           path: .status/dependency-health.*
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
 
@@ -180,7 +182,8 @@ jobs:
         with:
           name: dependency-assign-report
           path: .status/dependency-assign.*
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 30
       - name: Write job summary
         if: always()

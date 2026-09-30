@@ -71,7 +71,8 @@ jobs:
         with:
           name: auto-merge-audit
           path: .status/auto-merge-audit.*
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 90
 
       - name: Post audit log as tracking issue

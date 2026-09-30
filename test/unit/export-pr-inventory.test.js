@@ -16,12 +16,102 @@ const {
     summarizeByRepo,
     summarizeInventory,
     renderMarkdown,
+    summarizePrChecks,
+    getPrCheckStatus,
 } = require('../../scripts/export-pr-inventory');
 
 const tests = [];
 function test(name, fn) {
     tests.push({name, fn});
 }
+
+test('summarizePrChecks: detects failed Actions without legacy statuses', () => {
+    assert.strictEqual(
+        summarizePrChecks({state: 'pending', total_count: 0}, [
+            {status: 'completed', conclusion: 'failure'},
+        ]),
+        'failing',
+    );
+});
+
+test('summarizePrChecks: accepts completed Actions without legacy statuses', () => {
+    assert.strictEqual(
+        summarizePrChecks({state: 'pending', total_count: 0}, [
+            {status: 'completed', conclusion: 'success'},
+            {status: 'completed', conclusion: 'skipped'},
+            {status: 'completed', conclusion: 'neutral'},
+        ]),
+        'passing',
+    );
+});
+
+test('summarizePrChecks: combines legacy statuses and incomplete checks', () => {
+    assert.strictEqual(
+        summarizePrChecks({state: 'failure', total_count: 1}, [
+            {status: 'in_progress', conclusion: null},
+        ]),
+        'failing',
+    );
+    assert.strictEqual(
+        summarizePrChecks({state: 'success', total_count: 1}, [
+            {status: 'in_progress', conclusion: null},
+        ]),
+        'pending',
+    );
+    assert.strictEqual(
+        summarizePrChecks({state: 'pending', total_count: 1}, [
+            {status: 'completed', conclusion: 'success'},
+        ]),
+        'pending',
+    );
+});
+
+test('summarizePrChecks: does not claim success without CI evidence', () => {
+    assert.strictEqual(summarizePrChecks({state: 'pending', total_count: 0}, []), 'unknown');
+    assert.strictEqual(
+        summarizePrChecks(null, [{status: 'completed', conclusion: null}]),
+        'unknown',
+    );
+});
+
+test('getPrCheckStatus: reads all Actions pages and finds later failures', async () => {
+    const originalFetch = global.fetch;
+    const requests = [];
+    global.fetch = async (url) => {
+        requests.push(url);
+        const json = url.endsWith('/status')
+            ? {state: 'pending', total_count: 0}
+            : url.endsWith('page=1')
+              ? {
+                    check_runs: Array.from({length: 100}, () => ({
+                        status: 'completed',
+                        conclusion: 'success',
+                    })),
+                }
+              : {check_runs: [{status: 'completed', conclusion: 'failure'}]};
+        return {ok: true, text: async () => JSON.stringify(json)};
+    };
+    try {
+        assert.strictEqual(await getPrCheckStatus('test-token', 'org', 'repo', 'sha'), 'failing');
+        assert.strictEqual(requests.length, 3);
+        assert.match(requests[2], /check-runs\?per_page=100&page=2$/);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('getPrCheckStatus: API errors remain unknown rather than passing', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async (url) => {
+        if (!url.endsWith('/status')) throw new Error('Checks permission denied');
+        return {ok: true, text: async () => JSON.stringify({state: 'success', total_count: 1})};
+    };
+    try {
+        assert.strictEqual(await getPrCheckStatus('test-token', 'org', 'repo', 'sha'), 'unknown');
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
 
 // --- parseRepoList --------------------------------------------------------
 
