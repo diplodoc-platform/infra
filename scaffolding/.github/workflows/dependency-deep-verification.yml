@@ -19,19 +19,19 @@ jobs:
       run-deep: ${{ steps.decision.outputs.run-deep }}
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
       - name: Checkout trusted dependency policy tooling
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        uses: actions/checkout@v5
         with:
           repository: diplodoc-platform/infra
-          ref: 19a224ad8f1b6d2c3b50f5db8eba46fa6a4efd4f
+          ref: 73f63f0107b70917238f8a3b92efa98fb9a449fe
           path: trusted-infra
           persist-credentials: false
       - name: Install locked dependencies safely
@@ -70,41 +70,12 @@ jobs:
             --quiet
       - name: Export verification decision
         id: decision
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const assessment = JSON.parse(
-              fs.readFileSync('artifacts/dependency-deep-verification/assessment.json', 'utf8'),
-          );
-          const deepProfiles = new Set(['document-transform', 'document-rendering', 'ecosystem']);
-          const summary = assessment.summary;
-          if (typeof assessment.hasDependencyChanges !== 'boolean' ||
-              !summary || !Number.isSafeInteger(summary.total) || summary.total < 0 ||
-              !Array.isArray(assessment.direct) || !Array.isArray(assessment.transitive) ||
-              summary.total !== assessment.direct.length + assessment.transitive.length ||
-              assessment.hasDependencyChanges !== (summary.total > 0) ||
-              !['low', 'medium', 'high', 'critical'].includes(assessment.maxRisk) ||
-              !['standard-ci', ...deepProfiles].includes(assessment.verificationProfile) ||
-              assessment.headSha !== process.env.EXPECTED_SHA) {
-              throw new Error('Invalid or inconsistent dependency assessment');
-          }
-          const output = [
-              `has-dependency-changes=${assessment.hasDependencyChanges}`,
-              `profile=${assessment.verificationProfile}`,
-              `risk=${assessment.maxRisk}`,
-              `run-deep=${assessment.hasDependencyChanges && deepProfiles.has(assessment.verificationProfile)}`,
-          ];
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, output.join('\n') + '\n');
-          fs.appendFileSync(
-              process.env.GITHUB_STEP_SUMMARY,
-              `Dependency changes: \`${assessment.summary.total}\`\n\nRisk: \`${assessment.maxRisk}\`\n\nProfile: \`${assessment.verificationProfile}\`\n\n`,
-          );
-          NODE
+        run: node trusted-infra/scripts/dependency-verification-decision.js artifacts/dependency-deep-verification/assessment.json
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
       - name: Upload verification decision
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
           name: dependency-deep-decision-${{ github.event.pull_request.number }}
           path: artifacts/dependency-deep-verification/
@@ -115,7 +86,7 @@ jobs:
     name: Run Selected Deep Profile
     needs: classify-dependency-diff
     if: needs.classify-dependency-diff.outputs.run-deep == 'true'
-    uses: diplodoc-platform/testpack/.github/workflows/downstream-check.yml@fd46ab34f47927f0bacbd25165aa8e9b4099d06b
+    uses: diplodoc-platform/testpack/.github/workflows/downstream-check.yml@master
     with:
       package: ${{ github.event.repository.name }}
       pr-sha: ${{ github.event.pull_request.head.sha }}

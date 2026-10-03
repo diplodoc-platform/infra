@@ -28,7 +28,11 @@ test('keeps dependency auto-merge manual during stabilization', () => {
     assert.doesNotMatch(workflowSource, /vars\.AUTOMERGE_ENABLED/);
     assert.doesNotMatch(workflowSource, /inputs\.enabled/);
     assert.doesNotMatch(workflowSource, /--enabled/);
-    assert.match(workflowSource, /DRY-RUN \(audit only\)/);
+    const summaryHelper = readFileSync(
+        join(__dirname, '../../scripts/workflows/dependency-auto-merge-summary.js'),
+        'utf8',
+    );
+    assert.match(summaryHelper, /DRY-RUN \(audit only\)/);
     assert.match(workflowSource, /publish_issue:[\s\S]*?default:\s*false/);
     assert.match(workflowSource, /if: always\(\) && inputs\.publish_issue == true/);
 });

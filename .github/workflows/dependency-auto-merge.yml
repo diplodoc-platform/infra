@@ -31,10 +31,10 @@ jobs:
     name: Audit Dependabot PRs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js and install dependencies
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: Generate App token (org-wide)
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: Upload audit log
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v4
         with:
           name: auto-merge-audit
           path: .status/auto-merge-audit.*
@@ -108,32 +108,11 @@ jobs:
 
       - name: Write job summary
         if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let audit;
-            try {
-              audit = JSON.parse(fs.readFileSync('.status/auto-merge-audit.json', 'utf8'));
-            } catch (err) {
-              core.warning(`Could not read audit log: ${err.message}`);
-              return;
-            }
-            if (!Array.isArray(audit)) return;
-            const total = audit.length;
-            const allowed = audit.filter((e) => e.allowed).length;
-            const merged = audit.filter((e) => e.merged).length;
-            const errors = audit.filter((e) => e.mergeError).length;
-            const skipped = audit.filter((e) => e.skipped).length;
-            const mode = 'DRY-RUN (audit only)';
-            await core.summary.addRaw(
-              `## Dependency Auto-merge (${mode})\n\n` +
-              `- Total evaluated: **${total}**\n` +
-              `- Allowed: **${allowed}**\n` +
-              `- Merged: **${merged}**\n` +
-              `- Merge errors: **${errors}**\n` +
-              `- Skipped (dry-run): **${skipped}**\n`,
-            ).write();
+            const run = require('./scripts/workflows/dependency-auto-merge-summary.js');
+            await run({github, context, core});
 
       - name: Fail on merge errors
         if: steps.automerge.outputs.exit-code != '0'

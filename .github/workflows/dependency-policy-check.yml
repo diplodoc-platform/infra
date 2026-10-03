@@ -17,19 +17,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
       - name: Checkout trusted dependency policy tooling
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        uses: actions/checkout@v5
         with:
           repository: diplodoc-platform/infra
-          ref: 19a224ad8f1b6d2c3b50f5db8eba46fa6a4efd4f
+          ref: 73f63f0107b70917238f8a3b92efa98fb9a449fe
           path: trusted-infra
           persist-credentials: false
       - name: Install locked dependencies safely

@@ -2,8 +2,9 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const vm = require('node:vm');
 const yaml = require('js-yaml');
+const {verificationDecision} = require('../../scripts/dependency-verification-decision');
+const publishDependencyRiskComment = require('../../scripts/publish-dependency-risk-comment');
 
 const {deriveManifestEvidence} = require('../../scripts/manifest-evidence');
 const {
@@ -195,6 +196,60 @@ const readWorkflow = (name, scaffolding = true) =>
     yaml.load(fs.readFileSync(workflowPath(name, scaffolding), 'utf8'));
 const deep = readWorkflow('dependency-deep-verification.yml');
 
+test('extracted workflow helpers are loaded from trusted infra, never from PR or artifact code', () => {
+    const decisionStep = deep.jobs['classify-dependency-diff'].steps.find(
+        (step) => step.id === 'decision',
+    );
+    assert.ok(
+        decisionStep.run.startsWith(
+            'node trusted-infra/scripts/dependency-verification-decision.js ',
+        ),
+    );
+    assert.ok(!decisionStep.run.includes('node <<'));
+    for (const scaffolding of [false, true]) {
+        const steps = readWorkflow('dependency-risk-comment.yml', scaffolding).jobs.comment.steps;
+        const checkout = steps[0];
+        assert.strictEqual(checkout.with.repository, 'diplodoc-platform/infra');
+        assert.match(checkout.with.ref, /^[a-f0-9]{40}$/);
+        assert.strictEqual(checkout.with.path, 'trusted-infra');
+        assert.strictEqual(checkout.with['persist-credentials'], false);
+        const script = steps.find((step) => step.with?.script).with.script;
+        assert.ok(
+            script.includes(
+                "require('./trusted-infra/scripts/publish-dependency-risk-comment.js')",
+            ),
+        );
+        assert.strictEqual(script.trim().split('\n').length, 2);
+    }
+});
+
+test('risk publisher rejects malformed artifact files and bindings before making API calls', async () => {
+    const clients = {github: {}, context: {}, core: {}};
+    const valid = {EXPECTED_PR: '42', EXPECTED_SHA: SHA};
+    const files = {
+        lstatSync: () => ({isFile: () => true, size: 100}),
+        readFileSync: () => JSON.stringify({pr: 42, headSha: SHA}),
+    };
+    for (const stat of [
+        {isFile: () => false, size: 100},
+        {isFile: () => true, size: 0},
+        {isFile: () => true, size: 100000},
+    ]) {
+        await assert.rejects(
+            () => publishDependencyRiskComment(clients, valid, {...files, lstatSync: () => stat}),
+            /Invalid assessment artifact/,
+        );
+    }
+    await assert.rejects(
+        () => publishDependencyRiskComment(clients, {...valid, EXPECTED_PR: '7'}, files),
+        /does not match workflow run/,
+    );
+    await assert.rejects(
+        () => publishDependencyRiskComment(clients, {...valid, EXPECTED_SHA: 'invalid'}, files),
+        /does not match workflow run/,
+    );
+});
+
 test('all policy workflows install only trusted infra and leave PR dependency code unexecuted', () => {
     for (const [name, scaffolding] of [
         ['dependency-deep-verification.yml', true],
@@ -219,19 +274,8 @@ test('all policy workflows install only trusted infra and leave PR dependency co
 });
 
 function decision(assessment) {
-    const outputs = [];
-    const step = deep.jobs['classify-dependency-diff'].steps.find(
-        (entry) => entry.id === 'decision',
-    );
-    const source = step.run.split("node <<'NODE'\n")[1].replace(/\nNODE\s*$/, '');
-    vm.runInNewContext(source, {
-        require: () => ({
-            readFileSync: () => JSON.stringify(assessment),
-            appendFileSync: (_file, text) => outputs.push(text),
-        }),
-        process: {env: {EXPECTED_SHA: SHA}},
-    });
-    return outputs;
+    const result = verificationDecision(assessment, SHA);
+    return [result.outputs, result.summary];
 }
 
 test('decision schema rejects unknown profile, string booleans, output injection and wrong head', () => {
@@ -268,18 +312,15 @@ test('decision schema rejects unknown profile, string booleans, output injection
 
 async function commentScenario(heads, comments = []) {
     const writes = [];
-    const workflow = readWorkflow('dependency-risk-comment.yml');
-    const source = workflow.jobs.comment.steps.find((entry) => entry.with?.script)?.with.script;
     let read = 0;
-    const sandbox = {
-        require: () => ({
-            lstatSync: () => ({isFile: () => true, size: 100}),
-            readFileSync: (file) =>
-                file.endsWith('metadata.json')
-                    ? JSON.stringify({pr: 42, headSha: SHA})
-                    : 'Risk assessment',
-        }),
-        process: {env: {EXPECTED_PR: '42', EXPECTED_SHA: SHA}},
+    const files = {
+        lstatSync: () => ({isFile: () => true, size: 100}),
+        readFileSync: (file) =>
+            file.endsWith('metadata.json')
+                ? JSON.stringify({pr: 42, headSha: SHA})
+                : 'Risk assessment',
+    };
+    const clients = {
         context: {repo: {owner: 'owner', repo: 'repo'}},
         core: {info: () => {}},
         github: {
@@ -301,7 +342,7 @@ async function commentScenario(heads, comments = []) {
             paginate: async () => comments,
         },
     };
-    await vm.runInNewContext(`(async () => {${source}})()`, sandbox);
+    await publishDependencyRiskComment(clients, {EXPECTED_PR: '42', EXPECTED_SHA: SHA}, files);
     return writes;
 }
 
@@ -434,7 +475,7 @@ test('CI gate publisher updates preserve manual bypass, conditions and other rul
     }
 });
 
-test('privileged automation action references are pinned and App permission breadth stays accepted', () => {
+test('privileged automation uses version tags and App permission breadth stays accepted', () => {
     for (const name of [
         'dependency-health.yml',
         'dependency-auto-merge.yml',
@@ -445,7 +486,7 @@ test('privileged automation action references are pinned and App permission brea
         const workflow = readWorkflow(name, false);
         for (const job of Object.values(workflow.jobs)) {
             for (const step of job.steps || []) {
-                if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
+                if (step.uses) assert.match(step.uses, /@v\d+(?:\.\d+)*$/);
                 if (step.uses?.startsWith('actions/create-github-app-token@')) {
                     assert.strictEqual(step.with.owner, 'diplodoc-platform');
                     assert.ok(!Object.keys(step.with).some((key) => key.startsWith('permission-')));
