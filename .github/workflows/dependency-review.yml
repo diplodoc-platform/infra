@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v4.9.0
         with:
           # Fail the check for high and critical vulnerabilities.
           # Moderate and low are reported but do not block the PR.

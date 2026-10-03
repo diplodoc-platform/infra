@@ -43,15 +43,21 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Setup Node.js and install dependencies
-        uses: diplodoc-platform/setup-node-action@v1
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
 
-      # Org-wide GitHub App token. The App must be installed on every target
-      # repository (or org-wide) with "Contents: read" + "Metadata: read"
-      # permissions so it can list PRs and commit statuses across all 28
-      # repos. See docs/dependency-health-app.md for setup.
+      - name: Ensure supported npm and install trusted infra dependencies
+        shell: bash
+        run: |
+          REQUIRED_NPM=11.5.1
+          if [ "$(printf '%s\n' "$REQUIRED_NPM" "$(npm -v)" | sort -V | head -n1)" != "$REQUIRED_NPM" ]; then
+            npm install --prefix "$RUNNER_TEMP/npm-global" -g "npm@$REQUIRED_NPM"
+            echo "$RUNNER_TEMP/npm-global/bin" >> "$GITHUB_PATH"
+            export PATH="$RUNNER_TEMP/npm-global/bin:$PATH"
+          fi
+          npm ci --ignore-scripts
+
       - name: Generate App token (org-wide audit access)
         id: app-token
         uses: actions/create-github-app-token@v3
@@ -190,62 +196,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let health;
-            try {
-              health = JSON.parse(fs.readFileSync('.status/dependency-health.json', 'utf8'));
-            } catch (err) {
-              core.warning(`Could not read health report: ${err.message}`);
-            }
-            let summary;
-            try {
-              summary = JSON.parse(fs.readFileSync('.status/dependency-summary.json', 'utf8'));
-            } catch (err) {
-              core.warning(`Could not read summary report: ${err.message}`);
-            }
-            const parts = [];
-            if (health) {
-              const s = health.summary || {};
-              parts.push(
-                `## Dependency Health Audit\n\n` +
-                `- Total PRs: **${s.totalPrs ?? 0}**\n` +
-                `- Breaching SLA: **${s.breachingPrs ?? 0}**\n` +
-                `- Security PRs (breaching): **${s.securityPrs ?? 0}** (**${s.securityBreaching ?? 0}**)\n` +
-                `- Critical-risk PRs (breaching): **${s.criticalPrs ?? 0}** (**${s.criticalBreaching ?? 0}**)\n` +
-                `- Failing checks: **${s.failingPrs ?? 0}**\n` +
-                `- Registry exceptions: **${s.totalExceptions ?? 0}** (expiring: ${s.expiringExceptions ?? 0}, overdue: ${s.overdueExceptions ?? 0})\n`,
-              );
-            }
-            if (summary) {
-                const t = summary.totals || {};
-                parts.push(
-                    `## Daily Summary\n\n` +
-                    `- Actionable items: **${t.actionableItems ?? 0}**\n` +
-                    `- PRs without owner: **${t.prsWithoutOwner ?? 0}**\n` +
-                    `- Failing checks: **${t.failedChecks ?? 0}**\n` +
-                    `- SLA breaches: **${t.slaBreaches ?? 0}**\n` +
-                    `- Expiring exceptions: **${t.expiringExceptions ?? 0}**\n` +
-                    `- Unpinned versions: **${t.unpinnedVersions ?? 0}**\n` +
-                    `- Stale policy entries: **${t.stalePolicyEntries ?? 0}**\n` +
-                    `- Repos at PR limit: **${t.reposAtPrLimit ?? 0}**\n`,
-                );
-            }
-            let assign;
-            try {
-                assign = JSON.parse(fs.readFileSync('.status/dependency-assign.json', 'utf8'));
-            } catch (err) {
-                core.warning(`Could not read assign report: ${err.message}`);
-            }
-            if (assign) {
-                parts.push(
-                    `## Assignment Plan (T8.3)\n\n` +
-                    `- SLA-breaching PR assignment actions: **${(assign.actions || []).length}**\n` +
-                    (assign.issue ? `- Tracking issue: #${assign.issue.number} (${assign.issue.created ? 'created' : 'updated'})\n` : ''),
-                );
-            }
-            if (parts.length > 0) {
-              await core.summary.addRaw(parts.join('\n')).write();
-            }
+            const run = require('./scripts/workflows/dependency-health-summary.js');
+            await run({github, context, core});
 
       - name: Fail on SLA breach / overdue exception / actionable items
         if: steps.audit.outputs.exit-code != '0' || steps.summary.outputs.exit-code != '0' || steps.assign.outputs.exit-code != '0'

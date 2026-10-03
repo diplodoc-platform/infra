@@ -256,10 +256,10 @@ test('newTransitiveCount: boolean', () => {
     assert.strictEqual(newTransitiveCount(false), 0);
 });
 
-test('newTransitiveCount: other types resolve to 0', () => {
-    assert.strictEqual(newTransitiveCount(null), 0);
-    assert.strictEqual(newTransitiveCount(undefined), 0);
-    assert.strictEqual(newTransitiveCount('foo'), 0);
+test('newTransitiveCount: unknown evidence blocks auto-merge', () => {
+    assert.strictEqual(newTransitiveCount(null), Infinity);
+    assert.strictEqual(newTransitiveCount(undefined), Infinity);
+    assert.strictEqual(newTransitiveCount('foo'), Infinity);
 });
 
 // --- checkCondition --------------------------------------------------------

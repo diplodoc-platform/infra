@@ -55,6 +55,7 @@ const {parseRepoList, exportInventory, loadConfig, loadRegistry} = require('./ex
 const {evaluateAutoMerge, AUTO_MERGE_CONDITIONS, SOAK_WINDOW_MS} = require('./auto-merge-rules');
 
 const {filterEntriesForRepo} = require('./generate-dependency-policy');
+const {deriveManifestEvidence} = require('./manifest-evidence');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -173,26 +174,27 @@ function deriveCiCompletedAt(checkRunsResponse) {
  * Check if every required branch-protection context is green.
  *
  * @param {object} checkRunsResponse GitHub check-runs API response.
- * @param {string[]} requiredChecks Required check context names.
+ * @param {Array<{context: string, appId: number|null}>} requiredChecks Required publishers.
+ * @param {string} headSha Immutable PR head SHA.
  * @returns {boolean}
  */
-function deriveChecksGreen(checkRunsResponse, requiredChecks = []) {
+function deriveChecksGreen(checkRunsResponse, requiredChecks = [], headSha) {
     if (!checkRunsResponse || !Array.isArray(checkRunsResponse.check_runs)) {
         return false;
     }
     if (!Array.isArray(requiredChecks) || requiredChecks.length === 0) return false;
-    const latestByName = new Map();
-    for (const run of checkRunsResponse.check_runs) {
-        if (!run || !run.name) continue;
-        const previous = latestByName.get(run.name);
-        if (!previous || Number(run.id || 0) >= Number(previous.id || 0)) {
-            latestByName.set(run.name, run);
-        }
-    }
-    const successfulConclusions = new Set(['success', 'neutral', 'skipped']);
-    return requiredChecks.every((name) => {
-        const run = latestByName.get(name);
-        return run && run.status === 'completed' && successfulConclusions.has(run.conclusion);
+    if (!/^[a-f0-9]{40}$/i.test(headSha || '')) return false;
+    return requiredChecks.every((check) => {
+        if (!check || !Number.isSafeInteger(check.appId) || check.appId <= 0) return false;
+        const runs = checkRunsResponse.check_runs.filter(
+            (run) =>
+                run &&
+                run.name === check.context &&
+                run.app?.id === check.appId &&
+                run.head_sha === headSha,
+        );
+        const run = runs.sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0];
+        return Boolean(run && run.status === 'completed' && run.conclusion === 'success');
     });
 }
 
@@ -250,8 +252,8 @@ function deriveNewTransitiveCount(lockPatch) {
  * @param {object} entry Inventory entry (from export-pr-inventory).
  * @param {Array<object>} prFiles PR files (from GET /pulls/{n}/files).
  * @param {object} [extra] Supplementary data:
- *   - `packageJsonPatch` — patch text for package.json
- *   - `lockPatch` — patch text for package-lock.json
+ *   - `beforePackage`, `afterPackage` — complete base/head package.json
+ *   - `beforeLock`, `afterLock` — complete base/head lockfiles
  *   - `checkRuns` — check-runs API response for head SHA
  *   - `scopedEntries` — registry entries scoped to the repo
  *   - `now` — reference time (for soak window)
@@ -261,21 +263,13 @@ function buildEvaluationInput(entry, prFiles, extra = {}) {
     const files = Array.isArray(prFiles) ? prFiles : [];
     const changedFiles = files.map((f) => (f && f.filename) || '').filter(Boolean);
 
-    // Derive patches from PR files when not explicitly provided in extra.
-    const packageJsonFile = files.find((f) => f && f.filename === 'package.json');
-    const lockFile = files.find(
-        (f) => f && (f.filename === 'package-lock.json' || f.filename === 'npm-shrinkwrap.json'),
+    const evidence = deriveManifestEvidence(
+        extra.beforePackage,
+        extra.afterPackage,
+        extra.beforeLock,
+        extra.afterLock,
     );
-    const packageJsonPatch =
-        extra.packageJsonPatch !== undefined
-            ? extra.packageJsonPatch
-            : packageJsonFile
-              ? packageJsonFile.patch || ''
-              : '';
-    const lockPatch =
-        extra.lockPatch !== undefined ? extra.lockPatch : lockFile ? lockFile.patch || '' : '';
-
-    const section = packageJsonPatch ? deriveSection(packageJsonPatch) : entry.section || null;
+    const section = evidence.dependency === entry.dependency ? evidence.section : null;
 
     const isGrouped = deriveIsGrouped(entry, files);
 
@@ -284,27 +278,29 @@ function buildEvaluationInput(entry, prFiles, extra = {}) {
     const ciCompletedAt =
         extra.ciCompletedAt ||
         deriveCiCompletedAt({
-            check_runs: ((checkRuns && checkRuns.check_runs) || []).filter((run) =>
-                requiredChecks.includes(run.name),
+            check_runs: ((checkRuns && checkRuns.check_runs) || []).filter(
+                (run) =>
+                    run.head_sha === entry.headSha &&
+                    requiredChecks.some(
+                        (check) =>
+                            check.context === run.name &&
+                            check.appId > 0 &&
+                            run.app?.id === check.appId,
+                    ),
             ),
         });
     const checksGreen =
         extra.checksGreen !== undefined
             ? extra.checksGreen
-            : deriveChecksGreen(checkRuns, requiredChecks);
+            : deriveChecksGreen(checkRuns, requiredChecks, entry.headSha);
 
     const scopedEntries = extra.scopedEntries || [];
     const hasException = deriveHasException(entry.dependency, scopedEntries);
 
-    const newTransitiveDependencies =
-        typeof extra.newTransitiveCount === 'number'
-            ? extra.newTransitiveCount
-            : lockPatch
-              ? deriveNewTransitiveCount(lockPatch)
-              : 0;
+    const newTransitiveDependencies = evidence.newTransitiveDependencies;
 
     return {
-        updateType: entry.updateType || 'unknown',
+        updateType: evidence.updateType,
         risk: entry.risk || 'unknown',
         section,
         hasException,
@@ -521,8 +517,38 @@ async function fetchPrFiles(token, owner, repo, number) {
         'GET',
         `/repos/${owner}/${repo}/pulls/${number}/files?per_page=${MAX_PR_FILES}`,
     );
-    if (!ok || !Array.isArray(json)) return [];
+    if (!ok || !Array.isArray(json) || json.length >= MAX_PR_FILES)
+        throw new Error('Incomplete PR file inventory');
     return json;
+}
+
+/** Read full JSON evidence at an immutable SHA; truncated API patches are irrelevant. */
+async function fetchJsonAtSha(token, owner, repo, sha, filename) {
+    if (!/^[a-f0-9]{40}$/i.test(sha || '')) throw new Error('Missing immutable manifest SHA');
+    let response = await ghRequest(
+        token,
+        'GET',
+        `/repos/${owner}/${repo}/contents/${filename}?ref=${sha}`,
+    );
+    if (!response.ok || response.json?.type !== 'file')
+        throw new Error(`Missing ${filename} evidence`);
+    if (response.json.encoding !== 'base64' && /^[a-f0-9]{40}$/i.test(response.json.sha || '')) {
+        response = await ghRequest(
+            token,
+            'GET',
+            `/repos/${owner}/${repo}/git/blobs/${response.json.sha}`,
+        );
+    }
+    const data = response.json;
+    if (
+        !response.ok ||
+        data?.encoding !== 'base64' ||
+        typeof data.content !== 'string' ||
+        data.content.length > 24 * 1024 * 1024
+    ) {
+        throw new Error(`Incomplete or oversized ${filename} evidence`);
+    }
+    return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
 }
 
 /**
@@ -555,19 +581,30 @@ async function fetchCheckRuns(token, owner, repo, sha) {
  *
  * @param {object|null} protection Legacy required-status-check response.
  * @param {Array<object>|null} rules Effective branch rules response.
- * @returns {string[]}
+ * @returns {Array<{context: string, appId: number|null}>}
  */
 function extractRequiredCheckContexts(protection, rules) {
-    const contexts = new Set();
+    const contexts = new Map();
+    const add = (context, appId) => {
+        if (typeof context !== 'string' || !context) return;
+        const publisher = Number.isSafeInteger(appId) && appId > 0 ? appId : null;
+        if (publisher) contexts.delete(`${context}:unknown`);
+        if (
+            !publisher &&
+            [...contexts.values()].some((check) => check.context === context && check.appId)
+        )
+            return;
+        contexts.set(`${context}:${publisher || 'unknown'}`, {context, appId: publisher});
+    };
 
     for (const context of Array.isArray(protection && protection.contexts)
         ? protection.contexts
         : []) {
-        if (typeof context === 'string' && context) contexts.add(context);
+        add(context, null);
     }
     for (const check of Array.isArray(protection && protection.checks) ? protection.checks : []) {
         if (check && typeof check.context === 'string' && check.context) {
-            contexts.add(check.context);
+            add(check.context, check.app_id);
         }
     }
 
@@ -576,12 +613,12 @@ function extractRequiredCheckContexts(protection, rules) {
         const required = rule.parameters && rule.parameters.required_status_checks;
         for (const check of Array.isArray(required) ? required : []) {
             if (check && typeof check.context === 'string' && check.context) {
-                contexts.add(check.context);
+                add(check.context, check.integration_id);
             }
         }
     }
 
-    return [...contexts];
+    return [...contexts.values()];
 }
 
 /**
@@ -726,15 +763,26 @@ async function runAutoMerge({
         }
 
         const scopedEntries = filterEntriesForRepo(registryEntries, entry.repo);
-        const packageJsonFile = prFiles.find((f) => f && f.filename === 'package.json');
         const lockFile = prFiles.find(
             (f) =>
                 f && (f.filename === 'package-lock.json' || f.filename === 'npm-shrinkwrap.json'),
         );
 
+        let manifests = {};
+        try {
+            const lockName = lockFile?.filename || 'package-lock.json';
+            const [beforePackage, afterPackage, beforeLock, afterLock] = await Promise.all([
+                fetchJsonAtSha(token, owner, entry.repo, entry.baseSha, 'package.json'),
+                fetchJsonAtSha(token, owner, entry.repo, entry.headSha, 'package.json'),
+                fetchJsonAtSha(token, owner, entry.repo, entry.baseSha, lockName),
+                fetchJsonAtSha(token, owner, entry.repo, entry.headSha, lockName),
+            ]);
+            manifests = {beforePackage, afterPackage, beforeLock, afterLock};
+        } catch (error) {
+            errors.push({repo: entry.repo, phase: 'manifest-evidence', message: error.message});
+        }
         const extra = {
-            packageJsonPatch: packageJsonFile ? packageJsonFile.patch || '' : '',
-            lockPatch: lockFile ? lockFile.patch || '' : '',
+            ...manifests,
             checkRuns,
             requiredChecks,
             scopedEntries,
@@ -938,6 +986,7 @@ module.exports = {
     summarizeAudit,
     parsePrUrl,
     fetchPrFiles,
+    fetchJsonAtSha,
     fetchCheckRuns,
     extractRequiredCheckContexts,
     fetchRequiredChecks,

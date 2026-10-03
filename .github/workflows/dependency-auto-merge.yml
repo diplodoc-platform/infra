@@ -34,16 +34,21 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Setup Node.js and install dependencies
-        uses: diplodoc-platform/setup-node-action@v1
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
 
-      # Org-wide GitHub App token. Required repository permissions:
-      # Contents: read, Metadata: read, Pull requests: write, Issues: write,
-      # Checks: read and Commit statuses: read across all 28 target repos.
-      # Administration: read is optional and adds legacy branch-protection
-      # discovery; active rulesets are available through Metadata: read.
+      - name: Ensure supported npm and install trusted infra dependencies
+        shell: bash
+        run: |
+          REQUIRED_NPM=11.5.1
+          if [ "$(printf '%s\n' "$REQUIRED_NPM" "$(npm -v)" | sort -V | head -n1)" != "$REQUIRED_NPM" ]; then
+            npm install --prefix "$RUNNER_TEMP/npm-global" -g "npm@$REQUIRED_NPM"
+            echo "$RUNNER_TEMP/npm-global/bin" >> "$GITHUB_PATH"
+            export PATH="$RUNNER_TEMP/npm-global/bin:$PATH"
+          fi
+          npm ci --ignore-scripts
+
       - name: Generate App token (org-wide)
         id: app-token
         uses: actions/create-github-app-token@v3
@@ -106,29 +111,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let audit;
-            try {
-              audit = JSON.parse(fs.readFileSync('.status/auto-merge-audit.json', 'utf8'));
-            } catch (err) {
-              core.warning(`Could not read audit log: ${err.message}`);
-              return;
-            }
-            if (!Array.isArray(audit)) return;
-            const total = audit.length;
-            const allowed = audit.filter((e) => e.allowed).length;
-            const merged = audit.filter((e) => e.merged).length;
-            const errors = audit.filter((e) => e.mergeError).length;
-            const skipped = audit.filter((e) => e.skipped).length;
-            const mode = 'DRY-RUN (audit only)';
-            await core.summary.addRaw(
-              `## Dependency Auto-merge (${mode})\n\n` +
-              `- Total evaluated: **${total}**\n` +
-              `- Allowed: **${allowed}**\n` +
-              `- Merged: **${merged}**\n` +
-              `- Merge errors: **${errors}**\n` +
-              `- Skipped (dry-run): **${skipped}**\n`,
-            ).write();
+            const run = require('./scripts/workflows/dependency-auto-merge-summary.js');
+            await run({github, context, core});
 
       - name: Fail on merge errors
         if: steps.automerge.outputs.exit-code != '0'
