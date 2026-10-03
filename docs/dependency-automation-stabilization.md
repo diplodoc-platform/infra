@@ -137,6 +137,12 @@ Removing the npm cache remains intentional: baseline and candidate must not
 share a cache populated by candidate lifecycle scripts. The cost is a slower
 clean install, not a change to the dependency versions under test.
 
+Follow-up validation (2026-10-03): 658 unit tests and 17 integration tests passed,
+as did lint, syntax checks, package build, normal pre-commit hooks and actionlint
+1.7.12 (without shellcheck). The npm package contains all extracted adapters.
+Hosted reusable pilots, release/distribution and live ruleset checks are still
+separate activation gates, not claimed by these local results.
+
 ## Rollback
 
 - Remove or disable the newly restored schedule first.
