@@ -20,10 +20,12 @@ prerelease pilots below have passed.
 
 ## Required evidence before activation
 
-1. Publish the reviewed testpack commit before infra callers. Callers pin
-   `downstream-check.yml` by full SHA, never `@master`; preserve that referenced
-   commit on GitHub (do not rely solely on an unpushed local commit or change the
-   pin implicitly during a squash). Review each pin update explicitly.
+1. Merge the reviewed testpack helpers into `master` before distributing infra
+   callers. By the owner's decision, the reusable caller uses `@master` and
+   Actions use version tags, not commit hashes. A new run can pick up a newer
+   reviewed workflow; within that run its tools use the resolved workflow SHA.
+   Keep the separately pinned trusted policy/publisher source commit available
+   on GitHub, including after a squash merge.
 2. Observe green testpack `master` Quality runs on Ubuntu, macOS, and Windows.
 3. Run the reusable downstream check against exact candidate SHAs for at least:
    - a light extension update such as `tabs-extension` with
@@ -87,9 +89,8 @@ rollback point:
   changes and inconsistent lock roots fail closed. Audit-only remains mandatory.
 - Risk comments check the current open PR head twice and edit only their own
   stable marker. Artifacts remain untrusted text; no candidate code is executed.
-- Privileged workflows use pinned official Actions directly rather than a shared
-  composite whose nested action references remain mutable. Tool installation
-  does not run dependency lifecycle scripts.
+- Privileged workflows use official Actions directly. Tool installation does
+  not run dependency lifecycle scripts.
 - Local `infra sync --target ... --dry-run` previews a copy of the dirty working
   tree. It never resets/cleans the source. Symlink-containing targets fail safely;
   remote previews use unique temporary roots, not a caller-owned cleanup folder.
@@ -109,6 +110,32 @@ pending publication of the reviewed commits. Replaying saved corpus artifacts
 with the strengthened comparator found seven previously excluded client JS/CSS
 changes, including OpenAPI layout changes; review those differences before
 treating that candidate as approved. Components and search corpus replays passed.
+
+## Workflow readability and version policy (2026-10-03)
+
+The owner requested version tags for Actions and `@master` for the reusable
+testpack caller. Tags and branches are mutable: this accepts the residual risk
+that their contents can change without a diff in this repository. A major tag
+is not a guarantee of compatibility. Do not silently reintroduce Action SHA
+pins; keep exact candidate, policy and comparison source revisions intact.
+
+Large JavaScript blocks now live in independently tested modules:
+`scripts/dependency-verification-decision.js` exports validated classifier
+outputs, and `scripts/publish-dependency-risk-comment.js` publishes only a
+current, correctly bound artifact to its own marked comment. The privileged
+publisher checks out a reviewed immutable infra revision separately from the
+artifact; it never loads code from the PR or the artifact. Root and distributed
+comment workflows use the same publisher implementation.
+
+`scripts/workflows/` also contains the health/auto-merge summaries, PAT rotation
+alert and CI-gate/distribution report adapters. YAML passes the GitHub clients
+to these modules in two lines. Report-only jobs explicitly check out their own
+workflow revision before reading status artifacts. Adapter tests use mocked
+files and APIs; they do not publish issues or change rulesets.
+
+Removing the npm cache remains intentional: baseline and candidate must not
+share a cache populated by candidate lifecycle scripts. The cost is a slower
+clean install, not a change to the dependency versions under test.
 
 ## Rollback
 
