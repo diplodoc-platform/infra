@@ -475,6 +475,93 @@ test('CI gate publisher updates preserve manual bypass, conditions and other rul
     }
 });
 
+function assertSafeNodeSetup(steps, workingDirectory) {
+    const setups = steps.filter((step) => step.uses?.includes('setup-node'));
+    assert.strictEqual(setups.length, 1);
+    const setup = setups[0];
+    assert.strictEqual(setup.uses, 'diplodoc-platform/setup-node-action@v1');
+    assert.deepStrictEqual(setup.with, {
+        'node-version': "${{ vars.NODE_VERSION || '24' }}",
+        cache: '',
+        'run-install': 'false',
+    });
+    const installs = steps.filter(
+        (step) =>
+            /\bnpm\s+(?:ci|install)\b/.test(step.run || '') &&
+            // Distribution separately refreshes the target lockfile, without installing packages.
+            !(
+                step['working-directory'] === 'target' &&
+                step.run.includes('npm install --package-lock-only --ignore-scripts')
+            ),
+    );
+    assert.strictEqual(installs.length, 1);
+    const install = installs[0];
+    assert.strictEqual(install.run, 'npm ci --ignore-scripts');
+    assert.strictEqual(install['working-directory'], workingDirectory);
+    assert.ok(steps.indexOf(setup) < steps.indexOf(install));
+    assert.ok(!steps.some((step) => (step.run || '').includes('REQUIRED_NPM')));
+}
+
+test('shared Node setup preserves safe installs in every hardened root and distributed job', () => {
+    let checked = 0;
+    for (const [name, scaffolding, expectedJobs, workingDirectory] of [
+        ['dependency-health.yml', false, 1],
+        ['dependency-auto-merge.yml', false, 1],
+        ['check-pat-expiry.yml', false, 1],
+        ['sync-ci-gate.yml', false, 2],
+        ['distribute-infra.yml', false, 2],
+        ['dependency-policy-check.yml', false, 1, 'trusted-infra'],
+        ['dependency-risk-assessment.yml', false, 1, 'trusted-infra'],
+        ['dependency-policy-check.yml', true, 1, 'trusted-infra'],
+        ['dependency-risk-assessment.yml', true, 1, 'trusted-infra'],
+        ['dependency-deep-verification.yml', true, 1, 'trusted-infra'],
+    ]) {
+        const jobs = Object.values(readWorkflow(name, scaffolding).jobs).filter((job) =>
+            job.steps?.some((step) => step.uses?.includes('setup-node')),
+        );
+        assert.strictEqual(jobs.length, expectedJobs, name);
+        for (const job of jobs) {
+            assertSafeNodeSetup(job.steps, workingDirectory);
+            checked++;
+        }
+    }
+    assert.strictEqual(checked, 12);
+});
+
+test('Node setup contract rejects automatic installs, caches, duplicate npm upgrades and wrong roots', () => {
+    const workflow = readWorkflow('dependency-policy-check.yml', true);
+    const steps = Object.values(workflow.jobs)[0].steps;
+    const setupIndex = steps.findIndex((step) => step.uses?.includes('setup-node'));
+    const installIndex = steps.findIndex((step) => step.run === 'npm ci --ignore-scripts');
+    for (const mutate of [
+        (copy) => {
+            copy[setupIndex].with['run-install'] = 'true';
+        },
+        (copy) => {
+            copy[setupIndex].with.cache = 'npm';
+        },
+        (copy) => {
+            copy[setupIndex].uses = 'actions/setup-node@v4';
+        },
+        (copy) => {
+            copy[installIndex].run = 'npm ci';
+        },
+        (copy) => {
+            delete copy[installIndex]['working-directory'];
+        },
+        (copy) => {
+            copy.push({run: 'npm install -g npm@11.5.1'});
+        },
+        (copy) => {
+            copy.unshift(copy.splice(installIndex, 1)[0]);
+        },
+    ]) {
+        const copy = structuredClone(steps);
+        mutate(copy);
+        assert.throws(() => assertSafeNodeSetup(copy, 'trusted-infra'));
+    }
+});
+
 test('privileged automation uses version tags and App permission breadth stays accepted', () => {
     for (const name of [
         'dependency-health.yml',
