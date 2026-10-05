@@ -146,6 +146,35 @@ as did lint, syntax checks, package build, normal pre-commit hooks and actionlin
 Hosted reusable pilots, release/distribution and live ruleset checks are still
 separate activation gates, not claimed by these local results.
 
+## Deep verification caller contract
+
+The distributed deep-verification caller is automatic only for PRs authored by
+`dependabot[bot]`. It checks the PR author, not `github.actor`, so a human rerun
+of a Dependabot PR keeps the same selection. Ordinary PRs may still receive the
+cheap risk/policy assessment, but cannot start this deep caller. Manual engine
+pilots continue through testpack's separate `workflow_dispatch` entry point.
+
+The classifier and decision exporter share
+`scripts/dependency-verification-profiles.js`. `standard` and `toolchain` are
+valid policy outcomes that do not invoke testpack; `standard-ci` remains a
+non-deep compatibility alias for earlier assessment artifacts.
+`document-transform`, `document-rendering`, and `ecosystem` invoke testpack only
+when the assessment contains dependency changes. This does not change risk
+classification or make a devDependency automatically low risk.
+
+`test/integration/dependency-verification-contract.test.js` exercises both real
+CLI processes with base/head manifests and v3 lockfiles, then reads the JSON
+artifact and GitHub output files. It covers unrelated edits, low/dev-only,
+medium toolchain, high/critical production, registry overrides, and lockfile-only
+changes. Workflow tests require author guards on both caller jobs. Unknown
+profiles, malformed evidence, and mismatched SHAs must still fail closed.
+
+After modifying this contract, refresh the caller's immutable trusted policy
+revision to a commit containing both the exporter and the shared profile module.
+Local tests of an unpinned working tree are not evidence that a deployed caller
+uses the fix. Publication, hosted caller validation, and distribution remain
+separate gates; this contract does not enable schedules, merging, or releases.
+
 ## Rollback
 
 - Remove or disable the newly restored schedule first.

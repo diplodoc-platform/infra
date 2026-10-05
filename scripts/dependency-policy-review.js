@@ -48,6 +48,7 @@ const {
 } = require('./generate-dependency-policy');
 
 const {classifyDependency, elevateRisk, RISK_DESCRIPTIONS} = require('./risk-classification');
+const {DEFAULT_PROFILE_BY_RISK} = require('./dependency-verification-profiles');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -64,17 +65,6 @@ const DEPENDENCY_SECTIONS = [
  * Risk levels ordered from lowest to highest.  Used by `calculateMaxRisk`.
  */
 const RISK_ORDER = {low: 0, medium: 1, high: 2, critical: 3};
-
-/**
- * Default verification profile per risk level.  Registry entries can
- * override this; entries without a profile fall back to this mapping.
- */
-const DEFAULT_PROFILE_BY_RISK = {
-    low: 'standard',
-    medium: 'toolchain',
-    high: 'document-transform',
-    critical: 'ecosystem',
-};
 
 /**
  * Default risk for a dependency change that has no registry entry.

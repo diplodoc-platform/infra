@@ -3,10 +3,10 @@
 'use strict';
 
 const fs = require('node:fs');
+const {DEEP_PROFILES, SUPPORTED_PROFILES} = require('./dependency-verification-profiles');
 
 /** Validate classifier evidence before exporting a reusable-workflow decision. */
 function verificationDecision(assessment, expectedSha) {
-    const deepProfiles = new Set(['document-transform', 'document-rendering', 'ecosystem']);
     const summary = assessment.summary;
     if (
         typeof assessment.hasDependencyChanges !== 'boolean' ||
@@ -18,7 +18,7 @@ function verificationDecision(assessment, expectedSha) {
         summary.total !== assessment.direct.length + assessment.transitive.length ||
         assessment.hasDependencyChanges !== summary.total > 0 ||
         !['low', 'medium', 'high', 'critical'].includes(assessment.maxRisk) ||
-        !['standard-ci', ...deepProfiles].includes(assessment.verificationProfile) ||
+        !SUPPORTED_PROFILES.includes(assessment.verificationProfile) ||
         !/^[a-f0-9]{40}$/i.test(expectedSha || '') ||
         assessment.headSha !== expectedSha
     )
@@ -29,7 +29,7 @@ function verificationDecision(assessment, expectedSha) {
                 `has-dependency-changes=${assessment.hasDependencyChanges}`,
                 `profile=${assessment.verificationProfile}`,
                 `risk=${assessment.maxRisk}`,
-                `run-deep=${assessment.hasDependencyChanges && deepProfiles.has(assessment.verificationProfile)}`,
+                `run-deep=${assessment.hasDependencyChanges && DEEP_PROFILES.includes(assessment.verificationProfile)}`,
             ].join('\n') + '\n',
         summary: `Dependency changes: \`${summary.total}\`\n\nRisk: \`${assessment.maxRisk}\`\n\nProfile: \`${assessment.verificationProfile}\`\n\n`,
     };

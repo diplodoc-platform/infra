@@ -11,6 +11,7 @@ permissions:
 jobs:
   classify-dependency-diff:
     name: Classify Dependency Diff
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       has-dependency-changes: ${{ steps.decision.outputs.has-dependency-changes }}
@@ -87,7 +88,7 @@ jobs:
   deep-verification:
     name: Run Selected Deep Profile
     needs: classify-dependency-diff
-    if: needs.classify-dependency-diff.outputs.run-deep == 'true'
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && needs.classify-dependency-diff.outputs.run-deep == 'true'
     uses: diplodoc-platform/testpack/.github/workflows/downstream-check.yml@master
     with:
       package: ${{ github.event.repository.name }}
