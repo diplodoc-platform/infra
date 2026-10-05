@@ -33,21 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Node.js and install dependencies
-        uses: actions/setup-node@v4
+      - name: Setup Node.js and npm
+        uses: diplodoc-platform/setup-node-action@v1
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
 
-      - name: Ensure supported npm and install trusted infra dependencies
+      - name: Install trusted infra dependencies without lifecycle scripts
         shell: bash
-        run: |
-          REQUIRED_NPM=11.5.1
-          if [ "$(printf '%s\n' "$REQUIRED_NPM" "$(npm -v)" | sort -V | head -n1)" != "$REQUIRED_NPM" ]; then
-            npm install --prefix "$RUNNER_TEMP/npm-global" -g "npm@$REQUIRED_NPM"
-            echo "$RUNNER_TEMP/npm-global/bin" >> "$GITHUB_PATH"
-            export PATH="$RUNNER_TEMP/npm-global/bin:$PATH"
-          fi
-          npm ci --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Generate App token (org-wide)
         id: app-token

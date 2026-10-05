@@ -89,8 +89,11 @@ rollback point:
   changes and inconsistent lock roots fail closed. Audit-only remains mandatory.
 - Risk comments check the current open PR head twice and edit only their own
   stable marker. Artifacts remain untrusted text; no candidate code is executed.
-- Privileged workflows use official Actions directly. Tool installation does
-  not run dependency lifecycle scripts.
+- Node/npm setup uses the shared `diplodoc-platform/setup-node-action@v1`
+  with `cache: ''` and `run-install: 'false'`. The shared action owns the
+  minimum npm version; YAML does not duplicate its npm upgrade logic.
+  Tool installation remains a separate `npm ci --ignore-scripts` step.
+  Policy jobs install only under `trusted-infra`, never in the PR checkout.
 - Local `infra sync --target ... --dry-run` previews a copy of the dirty working
   tree. It never resets/cleans the source. Symlink-containing targets fail safely;
   remote previews use unique temporary roots, not a caller-owned cleanup folder.

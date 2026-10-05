@@ -23,10 +23,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Node.js and npm
+        uses: diplodoc-platform/setup-node-action@v1
         with:
           node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
       - name: Checkout trusted dependency policy tooling
         uses: actions/checkout@v5
         with:
