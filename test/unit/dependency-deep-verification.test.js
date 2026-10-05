@@ -30,8 +30,22 @@ test('classifies the actual dependency diff before invoking testpack', () => {
 
 test('does not select deep verification from the repository name', () => {
     const deep = workflow.jobs['deep-verification'];
-    assert.strictEqual(deep.if, "needs.classify-dependency-diff.outputs.run-deep == 'true'");
+    assert.strictEqual(
+        deep.if,
+        "github.event.pull_request.user.login == 'dependabot[bot]' && needs.classify-dependency-diff.outputs.run-deep == 'true'",
+    );
     assert.ok(!workflowSource.includes('["cli","components","transform"]'));
+});
+
+test('only Dependabot PR authors can start the automatic deep-verification caller', () => {
+    assert.strictEqual(
+        workflow.jobs['classify-dependency-diff'].if,
+        "github.event.pull_request.user.login == 'dependabot[bot]'",
+    );
+    // Check the PR author, not the actor: a human may rerun a Dependabot PR.
+    assert.ok(!workflowSource.includes('github.actor'));
+    assert.strictEqual(workflow.on.workflow_dispatch, undefined);
+    assert.deepStrictEqual(workflow.on.pull_request.paths, ['package.json', 'package-lock.json']);
 });
 
 test('passes the repository exact SHA and selected profile to testpack', () => {
