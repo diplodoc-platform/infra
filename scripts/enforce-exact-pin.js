@@ -159,15 +159,34 @@ function extractExactPins(packageJson) {
  *     when `repoName` is given — pass the full list to use global matching).
  * @param {string} depName Pinned dependency name.
  * @param {string} version Pinned version (exact, trimmed).
+ * @param {string} [section] Dependency section (required for managed infra pins).
+ * @param {string} [repoName] Trusted repository scope for managed pins.
+ * @param {Date} [now] Evaluation time; expired managed pin policies do not match.
  * @returns {object|undefined} Matching entry or undefined.
  */
-function findRegistryEntry(entries, depName, version) {
+function findRegistryEntry(entries, depName, version, section, repoName, now = new Date()) {
     if (!Array.isArray(entries)) {
         return undefined;
     }
     return entries.find((entry) => {
         if (!entry || entry.dependency !== depName) {
             return false;
+        }
+        if (entry['pin-policy'] === 'managed-infra') {
+            // Distribution deliberately freezes the tool and its scaffolding together.
+            // This is not a general any-version exception or a runtime dependency rule.
+            const expiry = new Date(entry['expires-at']).getTime();
+            return (
+                depName === '@diplodoc/infra' &&
+                section === 'devDependencies' &&
+                Array.isArray(entry.repositories) &&
+                entry.repositories.includes(repoName) &&
+                Number.isFinite(expiry) &&
+                expiry > now.getTime() &&
+                /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-rc-[a-zA-Z0-9-]+-[1-9]\d*)?$/.test(
+                    version,
+                )
+            );
         }
         const allowed = entry['allowed-version'];
         if (allowed === undefined || allowed === null || allowed === '') {
@@ -214,7 +233,13 @@ function enforce(packageJson, registry, repoName) {
 
     const violations = [];
     for (const pin of pins) {
-        const entry = findRegistryEntry(scopedEntries, pin.name, pin.version);
+        const entry = findRegistryEntry(
+            scopedEntries,
+            pin.name,
+            pin.version,
+            pin.section,
+            repoName,
+        );
         if (!entry) {
             violations.push({
                 name: pin.name,

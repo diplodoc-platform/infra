@@ -165,8 +165,10 @@ test('CLI: generates .github/dependency-policy.yml for cli with DEP-0001', async
         const content = readFile(tempDir, '.github/dependency-policy.yml');
         const parsed = yaml.load(content);
         assert.strictEqual(parsed['generated-for'], 'cli');
-        assert.strictEqual(parsed.entries.length, 1);
-        assert.strictEqual(parsed.entries[0].id, 'DEP-0001');
+        assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
+            'DEP-0001',
+            'DEP-0003',
+        ]);
     } finally {
         await removeTempDir(tempDir);
     }
@@ -175,14 +177,14 @@ test('CLI: generates .github/dependency-policy.yml for cli with DEP-0001', async
 test('CLI: repo with no matching entries gets empty entries list', async () => {
     const tempDir = await createTempDir();
     try {
-        writeJson(tempDir, 'package.json', {name: '@diplodoc/utils', version: '1.0.0'});
+        writeJson(tempDir, 'package.json', {name: '@diplodoc/unmanaged', version: '1.0.0'});
         execSync(`node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}"`, {
             stdio: 'pipe',
             env: {...process.env},
         });
         const content = readFile(tempDir, '.github/dependency-policy.yml');
         const parsed = yaml.load(content);
-        assert.strictEqual(parsed['generated-for'], 'utils');
+        assert.strictEqual(parsed['generated-for'], 'unmanaged');
         assert.deepStrictEqual(parsed.entries, []);
     } finally {
         await removeTempDir(tempDir);
@@ -200,7 +202,10 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json derivation', async () 
         const content = readFile(tempDir, '.github/dependency-policy.yml');
         const parsed = yaml.load(content);
         assert.strictEqual(parsed['generated-for'], 'transform');
-        assert.strictEqual(parsed.entries.length, 1);
+        assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
+            'DEP-0001',
+            'DEP-0003',
+        ]);
     } finally {
         await removeTempDir(tempDir);
     }
