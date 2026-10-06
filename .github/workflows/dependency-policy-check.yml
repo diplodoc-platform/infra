@@ -41,6 +41,8 @@ jobs:
         id: infra
         run: echo "path=trusted-infra" >> "$GITHUB_OUTPUT"
       - name: Run exact-pin enforcement
+        env:
+          POLICY_REPOSITORY: ${{ github.event.repository.name }}
         run: >
           git show "${{ github.event.pull_request.base.sha || github.event.before }}:package.json" >
           /tmp/base-package.json 2>/dev/null || echo '{}' > /tmp/base-package.json
@@ -48,6 +50,7 @@ jobs:
           node "${{ steps.infra.outputs.path || 'node_modules/@diplodoc/infra'
           }}/scripts/enforce-exact-pin.js" \
             --base-package /tmp/base-package.json \
+            --repo "$POLICY_REPOSITORY" \
             --package ./package.json \
             --registry "${{ steps.infra.outputs.path || 'node_modules/@diplodoc/infra' }}/dependency-policy.yml"
     timeout-minutes: 15

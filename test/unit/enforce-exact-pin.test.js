@@ -159,6 +159,110 @@ test('findRegistryEntry: handles non-array entries', () => {
 
 // --- missingMandatoryFields ----------------------------------------------
 
+test('managed infra policy allows scoped dev release pins but fails closed elsewhere', () => {
+    const entry = {
+        dependency: '@diplodoc/infra',
+        'pin-policy': 'managed-infra',
+        repositories: ['tabs-extension'],
+        'expires-at': '2026-12-01',
+        reason: 'distribution release identity',
+        owner: 'team',
+    };
+    const now = new Date('2026-10-06');
+    const match = (overrides, name, version, section, repo, date = now) =>
+        findRegistryEntry([{...entry, ...overrides}], name, version, section, repo, date);
+    for (const version of ['2.2.3', '0.0.0-rc-codex-tabs-pilot-37463553402']) {
+        assert.deepStrictEqual(
+            match({}, '@diplodoc/infra', version, 'devDependencies', 'tabs-extension'),
+            entry,
+        );
+    }
+    for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies', undefined]) {
+        assert.strictEqual(
+            match({}, '@diplodoc/infra', '2.2.3', section, 'tabs-extension'),
+            undefined,
+        );
+    }
+    for (const version of ['2', '2.2.3-malicious', '2.2.3+metadata', '2.2.3 || 3.0.0']) {
+        assert.strictEqual(
+            match({}, '@diplodoc/infra', version, 'devDependencies', 'tabs-extension'),
+            undefined,
+        );
+    }
+    for (const overrides of [
+        {'expires-at': null},
+        {'expires-at': 'invalid'},
+        {repositories: []},
+        {dependency: 'other'},
+    ]) {
+        assert.strictEqual(
+            match(overrides, '@diplodoc/infra', '2.2.3', 'devDependencies', 'tabs-extension'),
+            undefined,
+        );
+    }
+    assert.strictEqual(
+        match({}, '@diplodoc/infra', '2.2.3', 'devDependencies', 'unknown'),
+        undefined,
+    );
+    assert.strictEqual(
+        match({}, '@diplodoc/infra', '2.2.3', 'devDependencies', undefined),
+        undefined,
+    );
+    assert.strictEqual(
+        match(
+            {},
+            '@diplodoc/infra',
+            '2.2.3',
+            'devDependencies',
+            'tabs-extension',
+            new Date('2026-12-01'),
+        ),
+        undefined,
+    );
+});
+
+test('real registry accepts the pilot infra pin without permitting runtime or unrelated pins', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const version = '0.0.0-rc-codex-tabs-infra-pilot-20261006-37463553402';
+    assert.strictEqual(
+        enforceChanges(
+            {devDependencies: {'@diplodoc/infra': '2.2.3'}},
+            {devDependencies: {'@diplodoc/infra': version}},
+            registry,
+            'tabs-extension',
+        ).ok,
+        true,
+    );
+    for (const pkg of [
+        {dependencies: {'@diplodoc/infra': version}},
+        {devDependencies: {typescript: '6.0.4'}},
+    ])
+        assert.strictEqual(enforceChanges({}, pkg, registry, 'tabs-extension').ok, false);
+});
+
+test('managed infra registry scope stays aligned with distribution targets', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const distribution = yaml.load(readFile(join(__dirname, '../..'), 'distribution.yml'));
+    const managed = registry.entries.find((entry) => entry['pin-policy'] === 'managed-infra');
+    assert.deepStrictEqual(
+        [...managed.repositories].sort(),
+        Object.keys(distribution.repos).sort(),
+    );
+    for (const directory of ['.github', 'scaffolding/.github']) {
+        const workflow = yaml.load(
+            readFile(
+                join(__dirname, '../..', directory, 'workflows'),
+                'dependency-policy-check.yml',
+            ),
+        );
+        const step = workflow.jobs['dependency-policy-check'].steps.find(
+            (item) => item.name === 'Run exact-pin enforcement',
+        );
+        assert.strictEqual(step.env.POLICY_REPOSITORY, '${{ github.event.repository.name }}');
+        assert.ok(step.run.includes('--repo "$POLICY_REPOSITORY"'));
+    }
+});
+
 test('missingMandatoryFields: returns empty array when reason and owner present', () => {
     assert.deepStrictEqual(missingMandatoryFields({reason: 'x', owner: 'y'}), []);
 });

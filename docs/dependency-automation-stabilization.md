@@ -175,7 +175,24 @@ Local tests of an unpinned working tree are not evidence that a deployed caller
 uses the fix. Publication, hosted caller validation, and distribution remain
 separate gates; this contract does not enable schedules, merging, or releases.
 
-## Rollback
+## Managed infrastructure pins (2026-10-06 pilot fix)
+
+Distribution intentionally uses an exact `@diplodoc/infra` version so its tool
+and generated scaffolding stay together. DEP-0003 records this centrally with
+`pin-policy: managed-infra`, rather than adding an exception for each release.
+Only `devDependencies`, explicitly listed distribution repositories, numeric
+stable versions and the infra publisher's `-rc-<branch>-<run-id>` versions match.
+The rule expires on 2026-12-01; unscoped, malformed or expired rules fail closed.
+Runtime/peer/optional infra pins and unrelated new pins still require their own
+entries. The risk remains high and human review remains required.
+
+This permits the pin, not the author or artifact: it does not prove npm
+provenance, allow auto-merge, ignore Dependabot versions, or trust a policy file
+from the candidate. The distributed policy workflow must be deliberately pinned
+to the source commit containing this implementation and registry before the next
+single-repository prerelease pilot. Keep that source commit reachable after merge.
+
+## Rollback procedure
 
 - Remove or disable the newly restored schedule first.
 - Set distribution `defaults.auto_merge` back to `false` before changing any

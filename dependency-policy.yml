@@ -9,7 +9,8 @@
 #   id                   Unique identifier (DEP-NNNN)
 #   dependency           npm package name
 #   repositories         List of repos where the constraint applies
-#   allowed-version      The exact version that is pinned/permitted
+#   allowed-version      Exact permitted version (except managed-infra pins below)
+#   pin-policy           managed-infra: scoped dev-only release pins, not version ignores
 #   ignored-versions     Specific proven problematic versions (no open ranges)
 #   risk                 low | medium | high | critical
 #   category             Free-form category (e.g. output-regression, security)
@@ -29,9 +30,56 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-09-15
+last-updated: 2026-10-06
 
 entries:
+  - id: DEP-0003
+    dependency: '@diplodoc/infra'
+    pin-policy: managed-infra
+    repositories:
+      - cli
+      - client
+      - components
+      - directive
+      - liquid
+      - sentenizer
+      - transform
+      - translation
+      - utils
+      - yfmlint
+      - vsc
+      - ajv
+      - algolia-extension
+      - color-extension
+      - cut-extension
+      - file-extension
+      - folding-headings-extension
+      - html-extension
+      - latex-extension
+      - mermaid-extension
+      - openapi-extension
+      - page-constructor-extension
+      - quote-link-extension
+      - search-extension
+      - tabs-extension
+      - package-template
+      - testpack
+    ignored-versions: []
+    risk: high
+    category: tooling-distribution
+    verification-profile: document-transform
+    reason: 'Distribution freezes the infra release and scaffolding together; devDependencies only, stable or infra rc release versions.'
+    evidence:
+      pilot: https://github.com/diplodoc-platform/tabs-extension/pull/161
+      distribution: https://github.com/diplodoc-platform/infra/actions/runs/37463691539
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-06
+    review-after: 2026-12-01
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Reassess the managed dev-tool pin contract after stabilization
+      - Keep distribution review-only until hosted pilots pass
+
   - id: DEP-0001
     dependency: svgo
     repositories: [cli, transform]
