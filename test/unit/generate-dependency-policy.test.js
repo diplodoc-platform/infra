@@ -153,10 +153,10 @@ test('resolveRegistryPath: returns explicit override verbatim', () => {
 const SCRIPT = join(__dirname, '../../scripts/generate-dependency-policy.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
 
-test('CLI: generates .github/dependency-policy.yml for cli with DEP-0001', async () => {
+test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001', async () => {
     const tempDir = await createTempDir();
     try {
-        writeJson(tempDir, 'package.json', {name: '@diplodoc/cli', version: '1.0.0'});
+        writeJson(tempDir, 'package.json', {name: '@diplodoc/transform', version: '1.0.0'});
         execSync(`node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}"`, {
             stdio: 'pipe',
             env: {...process.env},
@@ -164,7 +164,7 @@ test('CLI: generates .github/dependency-policy.yml for cli with DEP-0001', async
         assert.ok(fileExists(tempDir, '.github/dependency-policy.yml'));
         const content = readFile(tempDir, '.github/dependency-policy.yml');
         const parsed = yaml.load(content);
-        assert.strictEqual(parsed['generated-for'], 'cli');
+        assert.strictEqual(parsed['generated-for'], 'transform');
         assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
             'DEP-0001',
             'DEP-0003',
