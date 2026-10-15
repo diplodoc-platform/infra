@@ -1,12 +1,12 @@
 # SVGO dependency exception
 
-DEP-0001 in `dependency-policy.yml` records the SVG parser constraint for Transform. Transform pins SVGO 4.1.0, applies the Node parser patch from [svg/svgo#2224](https://github.com/svg/svgo/pull/2224), and publishes the patched dependency through npm `bundleDependencies`. CLI does not need a separate direct SVGO development dependency.
+DEP-0001 in `dependency-policy.yml` records the SVG parser constraint for Transform. Transform pins the development dependency SVGO 4.1.0, applies the Node parser patch from [svg/svgo#2224](https://github.com/svg/svgo/pull/2224), and builds its patched Node parser into an isolated internal module. CLI does not need a separate direct SVGO development dependency.
 
 ## Why an ordinary upgrade is insufficient
 
 [DOCSTOOLS-6096](https://st.yandex-team.ru/DOCSTOOLS-6096) reports a failure while building the YDB article `ru/contributor/manage-releases.md`. Its draw.io SVG `major_release_branches.svg` exceeds SAX's default count of 512 expanded entities. This is a parsing failure before SVGO's optimization plugins run; it is not evidence of path collapsing or changed geometry.
 
-The initial workaround pinned SVGO to 3.3.2, which uses the old `@trysound/sax` fork. Plain 4.1.0 still fails on the same SVG. The maintained patch exposes `maxEntityCount`, and Transform passes a finite higher limit for inlining. The patch must cover both the ESM source and the generated CommonJS entry used by Transform, with matching declarations. Bundling ensures published consumers receive the patched installation without a patching install script.
+The initial workaround pinned SVGO to 3.3.2, which uses the old `@trysound/sax` fork. Plain 4.1.0 still fails on the same SVG. The maintained patch exposes `maxEntityCount`, and Transform passes a finite higher limit for inlining. The patch must cover both the ESM source and the generated CommonJS entry used by Transform, with matching declarations. The internal bundle includes the patched parser and dependency code without a patching install script or a runtime SVGO dependency. npm `bundleDependencies` is unsuitable here because its dependency tree can collide with an existing consumer's parser dependencies.
 
 The historical ignored versions 3.3.3 and 3.3.4 remain in the registry. They do not prove other versions safe, and a version bump alone does not verify patch delivery.
 
@@ -24,6 +24,6 @@ For a Dependabot PR lacking this evidence, use the `dependency-exception` label 
 
 ## Removing the exception
 
-Remove the local patch and bundled dependency only after upstream releases configurable entity limits for both Node entry points and the packed npm artifact passes without the workaround. Preserve the Transform and CLI counted-entity regressions. Recheck the TypeScript import adaptation against upstream's CommonJS declarations.
+Remove the local patch only after upstream releases configurable entity limits for both Node entry points and the packed npm artifact passes without the workaround. Preserve the Transform and CLI counted-entity regressions. Recheck the TypeScript import adaptation against upstream's CommonJS declarations.
 
-Update DEP-0001 together with changes to the maintained patch or dependency pin, retaining the incident and upstream references. Keep its expiry and owner explicit; do not widen the ignored-version list to unverified ranges.
+Update DEP-0001 together with changes to the maintained patch, internal bundle or dependency pin, retaining the incident and upstream references. Keep its expiry and owner explicit; do not widen the ignored-version list to unverified ranges.

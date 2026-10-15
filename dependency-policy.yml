@@ -88,7 +88,7 @@ entries:
     risk: high
     category: output-regression
     verification-profile: document-rendering
-    reason: 'SVGO 4.1.0 requires the maintained maxEntityCount patch and bundled delivery for large draw.io SVG metadata'
+    reason: 'SVGO 4.1.0 requires the maintained maxEntityCount patch and an isolated Node bundle for large draw.io SVG metadata'
     evidence:
       upstream-issue: https://github.com/svg/svgo/issues/2218
       upstream-patch: https://github.com/svg/svgo/pull/2224
@@ -100,7 +100,7 @@ entries:
     exit-criteria:
       - Upstream releases configurable entity limits for the Node entry points
       - Counted-entity regressions pass in Transform and CLI HTML and Markdown builds
-      - The packed npm artifact works without the local patch or bundled dependency
+      - The packed npm artifact works without the local patch
 
   - id: DEP-0002
     dependency: stylelint
