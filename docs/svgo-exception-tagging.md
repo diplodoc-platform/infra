@@ -1,6 +1,6 @@
-# SVGO dependency exception
+# SVGO parser patch maintenance
 
-DEP-0001 in `dependency-policy.yml` records the SVG parser constraint for Transform. Transform pins the development dependency SVGO 4.1.0, applies the Node parser patch from [svg/svgo#2224](https://github.com/svg/svgo/pull/2224), and builds its patched Node parser into an isolated internal module. CLI does not need a separate direct SVGO development dependency.
+DEP-0001 in `dependency-policy.yml` records the exact development pin required by Transform's version-specific parser patch. It is not a downgrade guard. Transform pins the development dependency SVGO 4.1.0, applies the Node parser patch from [svg/svgo#2224](https://github.com/svg/svgo/pull/2224), and builds its patched Node parser into an isolated internal module. CLI does not need a separate direct SVGO development dependency.
 
 ## Why an ordinary upgrade is insufficient
 
@@ -8,7 +8,7 @@ DEP-0001 in `dependency-policy.yml` records the SVG parser constraint for Transf
 
 The initial workaround pinned SVGO to 3.3.2, which uses the old `@trysound/sax` fork. Plain 4.1.0 still fails on the same SVG. The maintained patch exposes `maxEntityCount`, and Transform accepts an optional `svgMaxEntityCount` override for inlining. CLI forwards `content.svgMaxEntityCount` or `--svg-max-entity-count` in both HTML and Markdown builds. Neither package passes an entity limit by default; SVGO owns the default. The patch must cover both the ESM source and the generated CommonJS entry used by Transform, with matching declarations. The internal bundle includes the patched parser and dependency code without a patching install script or a runtime SVGO dependency. npm `bundleDependencies` is unsuitable here because its dependency tree can collide with an existing consumer's parser dependencies.
 
-The historical ignored versions 3.3.3 and 3.3.4 remain in the registry. They do not prove other versions safe, and a version bump alone does not verify patch delivery.
+SVGO 3.3.3 and 3.3.4 are no longer ignored: the 4.x dependency does not resolve to those versions. DEP-0001 now only registers the exact 4.1.0 development pin required by the local patch. Removing that entry while retaining the exact pin would violate `enforce-exact-pin`; remove both when the upstream option makes the patch unnecessary.
 
 ## Reviewing a proposed update
 
@@ -20,10 +20,10 @@ The historical ignored versions 3.3.3 and 3.3.4 remain in the registry. They do 
 
 Use numeric or custom entities that SAX actually counts. A diagram with hundreds of predefined entities such as `&amp;` can pass even when the original incident still fails. Ordinary green tests or a source-only patch are insufficient evidence for package delivery.
 
-For a Dependabot PR lacking this evidence, use the `dependency-exception` label and record DEP-0001 in the PR discussion. Do not silently merge or close it. Label/comment actions are separate from read-only review and require the user's authorization.
+When Dependabot proposes a newer version, update and verify the version-specific patch before accepting the update. The patch helper checks the installed version, so an unadapted upgrade fails explicitly. No historical 3.x ignore list is needed.
 
 ## Removing the exception
 
 Remove the local patch only after upstream releases configurable entity limits for both Node entry points and the packed npm artifact passes without the workaround. Preserve the Transform and CLI counted-entity regressions. Recheck the TypeScript import adaptation against upstream's CommonJS declarations.
 
-Update DEP-0001 together with changes to the maintained patch, internal bundle or dependency pin, retaining the public upstream references. Keep its expiry and owner explicit; do not widen the ignored-version list to unverified ranges.
+Update DEP-0001 together with changes to the maintained patch, internal bundle or dependency pin, retaining the public upstream references. Keep its expiry and owner explicit. Leave `ignored-versions` empty.
