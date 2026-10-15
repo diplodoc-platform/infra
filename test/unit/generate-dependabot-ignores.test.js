@@ -248,7 +248,7 @@ const SCRIPT = join(__dirname, '../../scripts/generate-dependabot-ignores.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
 const TEMPLATE_DEPENDABOT = join(__dirname, '../../scaffolding/.github/dependabot.yml');
 
-test('CLI: injects svgo ignores for transform repo', async () => {
+test('CLI: does not inject obsolete SVGO ignores for transform repo', async () => {
     const tempDir = await createTempDir();
     try {
         const githubDir = join(tempDir, '.github');
@@ -264,9 +264,9 @@ test('CLI: injects svgo ignores for transform repo', async () => {
 
         const content = readFile(githubDir, 'dependabot.yml');
         assert.ok(!content.includes(MARKER), 'Markers should be replaced');
-        assert.ok(content.includes("dependency-name: 'svgo'"), 'Should contain svgo ignore');
-        assert.ok(content.includes("'3.3.3'"), 'Should contain version 3.3.3');
-        assert.ok(content.includes("'3.3.4'"), 'Should contain version 3.3.4');
+        assert.ok(!content.includes('dependency-name: svgo'));
+        assert.ok(!content.includes("dependency-name: 'svgo'"));
+        assert.ok(content.includes('no registry-based ignores'));
         assert.ok(hasNoWildcardIgnores(content), 'No wildcard ignores');
         // Verify valid YAML
         yaml.load(content);
@@ -308,13 +308,29 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json', async () => {
         writeFile(githubDir, 'dependabot.yml', template);
         writeJson(tempDir, 'package.json', {name: '@diplodoc/whatever', version: '1.0.0'});
 
-        execSync(`node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}"`, {
-            stdio: 'pipe',
-            env: {...process.env, INFRA_REPO_NAME: 'transform'},
-        });
+        writeFile(
+            tempDir,
+            'registry.yml',
+            yaml.dump({
+                entries: [
+                    {
+                        dependency: 'example-parser',
+                        repositories: ['transform'],
+                        'ignored-versions': ['1.0.1'],
+                    },
+                ],
+            }),
+        );
+        execSync(
+            `node "${SCRIPT}" --registry "${join(tempDir, 'registry.yml')}" --target "${tempDir}"`,
+            {
+                stdio: 'pipe',
+                env: {...process.env, INFRA_REPO_NAME: 'transform'},
+            },
+        );
 
         const content = readFile(githubDir, 'dependabot.yml');
-        assert.ok(content.includes("dependency-name: 'svgo'"), 'transform has svgo in registry');
+        assert.ok(content.includes("dependency-name: 'example-parser'"));
     } finally {
         await removeTempDir(tempDir);
     }
@@ -404,14 +420,9 @@ test('CLI: generated dependabot.yml is valid YAML with no wildcard ignores', asy
         const parsed = yaml.load(content);
         assert.strictEqual(parsed.version, 2);
         assert.strictEqual(parsed.updates.length, 1);
-        // The npm update block should have an ignore section with svgo.
+        // No ignored versions apply to Transform's patched 4.x development pin.
         for (const block of parsed.updates) {
-            assert.ok(Array.isArray(block.ignore), 'Each block should have ignore array');
-            assert.strictEqual(block.ignore.length, 1);
-            assert.strictEqual(block.ignore[0]['dependency-name'], 'svgo');
-            assert.deepStrictEqual(block.ignore[0].versions, ['3.3.3', '3.3.4']);
-            // No update-types (wildcard ignores)
-            assert.strictEqual(block.ignore[0]['update-types'], undefined);
+            assert.deepStrictEqual(block.ignore || [], []);
         }
     } finally {
         await removeTempDir(tempDir);

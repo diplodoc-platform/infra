@@ -30,7 +30,7 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-10-06
+last-updated: 2026-10-15
 
 entries:
   - id: DEP-0003
@@ -84,9 +84,9 @@ entries:
     dependency: svgo
     repositories: [transform]
     allowed-version: 4.1.0
-    ignored-versions: [3.3.3, 3.3.4]
+    ignored-versions: []
     risk: high
-    category: output-regression
+    category: patched-dependency
     verification-profile: document-rendering
     reason: 'SVGO 4.1.0 requires the maintained maxEntityCount patch and an isolated Node bundle for large draw.io SVG metadata'
     evidence:
