@@ -473,7 +473,7 @@ test('CLI: passes for transform package.json against real registry', async () =>
         writeJson(tempDir, 'package.json', {
             name: '@diplodoc/transform',
             version: '1.0.0',
-            dependencies: {svgo: '4.1.0'},
+            devDependencies: {svgo: '4.1.0'},
         });
         execSync(
             `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --package "${join(tempDir, 'package.json')}" --repo transform`,
@@ -533,7 +533,7 @@ test('CLI: derives repo name from package.json when --repo omitted', async () =>
         writeJson(tempDir, 'package.json', {
             name: '@diplodoc/transform',
             version: '1.0.0',
-            dependencies: {svgo: '4.1.0'},
+            devDependencies: {svgo: '4.1.0'},
         });
         execSync(
             `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --package "${join(tempDir, 'package.json')}"`,
