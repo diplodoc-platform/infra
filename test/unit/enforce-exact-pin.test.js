@@ -467,16 +467,16 @@ test('formatViolations: returns empty string for no violations', () => {
 const SCRIPT = join(__dirname, '../../scripts/enforce-exact-pin.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
 
-test('CLI: passes for cli package.json against real registry', async () => {
+test('CLI: passes for transform package.json against real registry', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'package.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
-            devDependencies: {svgo: '3.3.2'},
+            dependencies: {svgo: '4.1.0'},
         });
         execSync(
-            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --package "${join(tempDir, 'package.json')}" --repo cli`,
+            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --package "${join(tempDir, 'package.json')}" --repo transform`,
             {stdio: 'pipe', env: {...process.env}},
         );
     } finally {
@@ -488,7 +488,7 @@ test('CLI: fails for unregistered exact pin', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'package.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {'some-unknown-dep': '1.2.3'},
         });
@@ -496,7 +496,7 @@ test('CLI: fails for unregistered exact pin', async () => {
         let stderr = '';
         try {
             execSync(
-                `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --package "${join(tempDir, 'package.json')}" --repo cli`,
+                `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --package "${join(tempDir, 'package.json')}" --repo transform`,
                 {stdio: 'pipe', env: {...process.env}},
             );
         } catch (error) {
@@ -531,9 +531,9 @@ test('CLI: derives repo name from package.json when --repo omitted', async () =>
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'package.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
-            devDependencies: {svgo: '3.3.2'},
+            dependencies: {svgo: '4.1.0'},
         });
         execSync(
             `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --package "${join(tempDir, 'package.json')}"`,

@@ -724,19 +724,19 @@ test('CLI: produces assessment for changed package.json', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'before.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.2'},
         });
         writeJson(tempDir, 'after.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.3'},
         });
         const output = execSync(
             `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
                 `--before-pkg "${join(tempDir, 'before.json')}" ` +
-                `--after-pkg "${join(tempDir, 'after.json')}" --repo cli`,
+                `--after-pkg "${join(tempDir, 'after.json')}" --repo transform`,
             {encoding: 'utf8', stdio: 'pipe', env: {...process.env}},
         );
         assert.ok(output.includes('Dependency Policy Risk Assessment'));
@@ -750,12 +750,12 @@ test('CLI: writes comment to file with --comment flag', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'before.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {},
         });
         writeJson(tempDir, 'after.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {ajv: '^8.17.1'},
         });
@@ -764,7 +764,7 @@ test('CLI: writes comment to file with --comment flag', async () => {
             `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
                 `--before-pkg "${join(tempDir, 'before.json')}" ` +
                 `--after-pkg "${join(tempDir, 'after.json')}" ` +
-                `--comment "${commentPath}" --quiet --repo cli`,
+                `--comment "${commentPath}" --quiet --repo transform`,
             {stdio: 'pipe', env: {...process.env}},
         );
         const content = readFile(tempDir, 'comment.md');
@@ -845,12 +845,12 @@ test('CLI: detects transitive changes from lockfile', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'before.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {lodash: '^4.17.0'},
         });
         writeJson(tempDir, 'after.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {lodash: '^4.17.0'},
         });
@@ -877,7 +877,7 @@ test('CLI: detects transitive changes from lockfile', async () => {
                 `--before-pkg "${join(tempDir, 'before.json')}" ` +
                 `--after-pkg "${join(tempDir, 'after.json')}" ` +
                 `--before-lock "${join(tempDir, 'before-lock.json')}" ` +
-                `--after-lock "${join(tempDir, 'after-lock.json')}" --repo cli`,
+                `--after-lock "${join(tempDir, 'after-lock.json')}" --repo transform`,
             {encoding: 'utf8', stdio: 'pipe', env: {...process.env}},
         );
         assert.ok(output.includes('Transitive Changes'));
@@ -901,12 +901,12 @@ test('CLI: derives repo name from after package.json', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'before.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.2'},
         });
         writeJson(tempDir, 'after.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.2'},
         });
@@ -925,12 +925,12 @@ test('CLI: includes compatibility score with --compatibility-score flag', async 
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'before.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.2'},
         });
         writeJson(tempDir, 'after.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.3'},
         });
@@ -938,7 +938,7 @@ test('CLI: includes compatibility score with --compatibility-score flag', async 
             `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
                 `--before-pkg "${join(tempDir, 'before.json')}" ` +
                 `--after-pkg "${join(tempDir, 'after.json')}" ` +
-                `--compatibility-score 85 --repo cli`,
+                `--compatibility-score 85 --repo transform`,
             {encoding: 'utf8', stdio: 'pipe', env: {...process.env}},
         );
         assert.ok(output.includes('Compatibility Score'));
@@ -952,19 +952,19 @@ test('CLI: includes auto-merge and exceptions in output', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'before.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.2'},
         });
         writeJson(tempDir, 'after.json', {
-            name: '@diplodoc/cli',
+            name: '@diplodoc/transform',
             version: '1.0.0',
             dependencies: {svgo: '3.3.3'},
         });
         const output = execSync(
             `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
                 `--before-pkg "${join(tempDir, 'before.json')}" ` +
-                `--after-pkg "${join(tempDir, 'after.json')}" --repo cli`,
+                `--after-pkg "${join(tempDir, 'after.json')}" --repo transform`,
             {encoding: 'utf8', stdio: 'pipe', env: {...process.env}},
         );
         assert.ok(output.includes('Auto-merge'));
