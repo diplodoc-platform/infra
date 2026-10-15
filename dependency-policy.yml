@@ -92,7 +92,6 @@ entries:
     evidence:
       upstream-issue: https://github.com/svg/svgo/issues/2218
       upstream-patch: https://github.com/svg/svgo/pull/2224
-      incident: https://st.yandex-team.ru/DOCSTOOLS-6096
     owner: diplodoc-platform/team
     introduced-at: 2026-06-21
     review-after: 2026-12-01
