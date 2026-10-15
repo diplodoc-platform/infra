@@ -248,17 +248,17 @@ const SCRIPT = join(__dirname, '../../scripts/generate-dependabot-ignores.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
 const TEMPLATE_DEPENDABOT = join(__dirname, '../../scaffolding/.github/dependabot.yml');
 
-test('CLI: injects svgo ignores for cli repo', async () => {
+test('CLI: injects svgo ignores for transform repo', async () => {
     const tempDir = await createTempDir();
     try {
         const githubDir = join(tempDir, '.github');
         mkdirSync(githubDir, {recursive: true});
         const template = readFile(dirname(TEMPLATE_DEPENDABOT), 'dependabot.yml');
         writeFile(githubDir, 'dependabot.yml', template);
-        writeJson(tempDir, 'package.json', {name: '@diplodoc/cli', version: '1.0.0'});
+        writeJson(tempDir, 'package.json', {name: '@diplodoc/transform', version: '1.0.0'});
 
         execSync(
-            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo cli`,
+            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo transform`,
             {stdio: 'pipe', env: {...process.env}},
         );
 
@@ -326,12 +326,12 @@ test('CLI: exits non-zero when no markers found', async () => {
         const githubDir = join(tempDir, '.github');
         mkdirSync(githubDir, {recursive: true});
         writeFile(githubDir, 'dependabot.yml', 'version: 2\nupdates: []');
-        writeJson(tempDir, 'package.json', {name: '@diplodoc/cli', version: '1.0.0'});
+        writeJson(tempDir, 'package.json', {name: '@diplodoc/transform', version: '1.0.0'});
 
         let exitCode = 0;
         try {
             execSync(
-                `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo cli`,
+                `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo transform`,
                 {stdio: 'pipe', env: {...process.env}},
             );
         } catch (err) {
@@ -346,12 +346,12 @@ test('CLI: exits non-zero when no markers found', async () => {
 test('CLI: exits non-zero when dependabot.yml not found', async () => {
     const tempDir = await createTempDir();
     try {
-        writeJson(tempDir, 'package.json', {name: '@diplodoc/cli', version: '1.0.0'});
+        writeJson(tempDir, 'package.json', {name: '@diplodoc/transform', version: '1.0.0'});
 
         let failed = false;
         try {
             execSync(
-                `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo cli`,
+                `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo transform`,
                 {stdio: 'pipe', env: {...process.env}},
             );
         } catch {
@@ -393,10 +393,10 @@ test('CLI: generated dependabot.yml is valid YAML with no wildcard ignores', asy
         mkdirSync(githubDir, {recursive: true});
         const template = readFile(dirname(TEMPLATE_DEPENDABOT), 'dependabot.yml');
         writeFile(githubDir, 'dependabot.yml', template);
-        writeJson(tempDir, 'package.json', {name: '@diplodoc/cli', version: '1.0.0'});
+        writeJson(tempDir, 'package.json', {name: '@diplodoc/transform', version: '1.0.0'});
 
         execSync(
-            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo cli`,
+            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}" --repo transform`,
             {stdio: 'pipe', env: {...process.env}},
         );
 

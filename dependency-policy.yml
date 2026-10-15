@@ -82,22 +82,25 @@ entries:
 
   - id: DEP-0001
     dependency: svgo
-    repositories: [cli, transform]
-    allowed-version: 3.3.2
+    repositories: [transform]
+    allowed-version: 4.1.0
     ignored-versions: [3.3.3, 3.3.4]
     risk: high
     category: output-regression
     verification-profile: document-rendering
-    reason: 'Newer versions break large SVG diagrams'
+    reason: 'SVGO 4.1.0 requires the maintained maxEntityCount patch and bundled delivery for large draw.io SVG metadata'
     evidence:
       upstream-issue: https://github.com/svg/svgo/issues/2218
+      upstream-patch: https://github.com/svg/svgo/pull/2224
+      incident: https://st.yandex-team.ru/DOCSTOOLS-6096
     owner: diplodoc-platform/team
     introduced-at: 2026-06-21
     review-after: 2026-12-01
     expires-at: 2026-12-01
     exit-criteria:
-      - Upstream issue is fixed
-      - Rendering regression fixture passes
+      - Upstream releases configurable entity limits for the Node entry points
+      - Counted-entity regressions pass in Transform and CLI HTML and Markdown builds
+      - The packed npm artifact works without the local patch or bundled dependency
 
   - id: DEP-0002
     dependency: stylelint
