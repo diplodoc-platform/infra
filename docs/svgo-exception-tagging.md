@@ -14,13 +14,13 @@ SVGO 3.3.3 and 3.3.4 are no longer ignored: the 4.x dependency does not resolve 
 
 1. Read DEP-0001 and inspect the version-specific patch in Transform's `patches/` directory.
 2. Check that the patch applies to the actual ESM and CommonJS entry points, including per-call configuration isolation.
-3. Run Transform's counted-entity tests and `npm run test:package`. The latter extracts the packed tarball and runs its bundled Node entries without the development installation.
-4. Run CLI's SVG entity regression in both HTML and Markdown modes and build the affected YDB documentation with and without an explicit entity limit. Verify that omitted configuration retains SVGO's default rejection and an explicit sufficient limit permits the diagram. Distinguish existing markup errors from a missing `manage-releases` page.
+3. Run Transform's counted-entity tests and `npm run test:package`. The latter extracts the packed tarball, runs its bundled Node entries without the development installation, and compiles public types in a clean consumer without SVGO and with `skipLibCheck: false`.
+4. Run CLI's SVG entity regression in both HTML and Markdown modes and build the affected YDB documentation with and without an explicit entity limit. Verify that omitted configuration keeps SVGO's default parser limit, preserves the image reference and warns, while an explicit sufficient limit permits inlining. Other parser errors must still fail. Distinguish existing markup errors from a missing `manage-releases` page.
 5. Compare rendered SVG output when changing SVGO's plugins or parser behavior.
 
 Use numeric or custom entities that SAX actually counts. A diagram with hundreds of predefined entities such as `&amp;` can pass even when the original incident still fails. Ordinary green tests or a source-only patch are insufficient evidence for package delivery.
 
-When Dependabot proposes a newer version, update and verify the version-specific patch before accepting the update. The patch helper checks the installed version, so an unadapted upgrade fails explicitly. No historical 3.x ignore list is needed.
+When Dependabot proposes a newer version, update and verify the version-specific patch before accepting the update. The patch helper checks the installed version, so an unadapted upgrade fails explicitly. No historical 3.x ignore list or blanket ignore of future 4.x versions is needed. Installation tolerates an unavailable patch so hook setup can still run; the build and packaging checks fail until a proposed version's patch is adapted.
 
 ## Removing the exception
 
