@@ -125,6 +125,14 @@ test('classifyDependency: parsers/sanitizers/renderers/Markdown/YAML are high', 
     assert.strictEqual(classifyDependency('@diplodoc/transform'), 'high');
 });
 
+test('classifyDependency: anchor generators are high regardless of manifest section', () => {
+    for (const name of ['slugify', 'github-slugger']) {
+        for (const section of [undefined, 'dependencies', 'devDependencies', 'transitive']) {
+            assert.strictEqual(classifyDependency(name, section), 'high');
+        }
+    }
+});
+
 test('classifyDependency: security-sensitive runtime is critical', () => {
     assert.strictEqual(classifyDependency('jsonwebtoken'), 'critical');
     assert.strictEqual(classifyDependency('jose'), 'critical');

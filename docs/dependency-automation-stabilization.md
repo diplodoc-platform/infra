@@ -162,6 +162,14 @@ non-deep compatibility alias for earlier assessment artifacts.
 when the assessment contains dependency changes. This does not change risk
 classification or make a devDependency automatically low risk.
 
+Risk categories describe output impact, not the installation section. Anchor/URL
+generators (`slugify`, `github-slugger`) are high risk even in `devDependencies`:
+they may be bundled into runtime code or generate document anchors. Lockfile-only
+updates (including entries marked `dev: true`) use the same classification, and
+grouped tooling changes must not lower the highest risk. This is a reviewed
+name-based ruleset, not automatic bundle analysis: newly introduced output-affecting
+libraries need an appropriate category or explicit policy entry.
+
 `test/integration/dependency-verification-contract.test.js` exercises both real
 CLI processes with base/head manifests and v3 lockfiles, then reads the JSON
 artifact and GitHub output files. It covers unrelated edits, low/dev-only,

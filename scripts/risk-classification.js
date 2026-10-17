@@ -5,7 +5,7 @@
  *
  * Dependency risk classification for Diplodoc Dependabot PRs.
  *
- * Maps a dependency (by name + package.json section) to one of four risk
+ * Maps a dependency by name to one of four risk
  * levels, independently of the bump size.  The classification is a
  * middle layer between the explicit policy registry (`risk` field on a
  * registry entry) and the change-type fallback (patch/minor/major).
@@ -17,7 +17,7 @@
  *   | low      | types, lint-only dev tools            | standard CI               | auto-merge possible    |
  *   | medium   | test runners, bundlers, SDK patch      | standard + integration    | human or delayed auto  |
  *   | high     | parsers, sanitizers, renderers, CLI,   | document-transform        | human only             |
- *   |          | svgo, Markdown/YAML                   |                           |                        |
+ *   |          | svgo, Markdown/YAML, anchor sluggers   |                           |                        |
  *   | critical | security-sensitive runtime,           | all checks + security     | assigned owner         |
  *   |          | major core                            | review                    |                        |
  *
@@ -54,7 +54,7 @@ const RISK_DESCRIPTIONS = {
         merge: 'human or delayed auto',
     },
     high: {
-        examples: 'parsers, sanitizers, renderers, CLI, svgo, Markdown/YAML',
+        examples: 'parsers, sanitizers, renderers, CLI, svgo, Markdown/YAML, anchor sluggers',
         checks: 'document-transform profile',
         merge: 'human only',
     },
@@ -160,6 +160,9 @@ const CLASSIFICATION_RULES = [
             'hast-*',
             'js-yaml',
             'yaml',
+            // Anchor/URL generators can be bundled into published output even as devDependencies.
+            'slugify',
+            'github-slugger',
             'cheerio',
             'acorn',
             'esprima',
@@ -216,8 +219,9 @@ function matchDependency(name, pattern) {
 }
 
 /**
- * Classify a dependency by name (and optionally the package.json section
- * it lives in) into one of the four risk levels.
+ * Classify a dependency by name into one of the four risk levels.
+ * The section is descriptive only: devDependencies can ship in bundles or
+ * generate published documents, so they must not receive a lower base risk.
  *
  * Returns `null` when no classification rule matches, signalling the
  * caller to fall back to change-type based defaults.

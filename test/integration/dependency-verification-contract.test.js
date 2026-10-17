@@ -153,6 +153,36 @@ for (const [name, dependency, from, to, section, risk, profile, runDeep] of [
         true,
     ],
     [
+        'bundled dev anchor generator patch',
+        'slugify',
+        '1.6.6',
+        '1.6.9',
+        'devDependencies',
+        'high',
+        'document-transform',
+        true,
+    ],
+    [
+        'production anchor generator patch',
+        'slugify',
+        '1.6.6',
+        '1.6.9',
+        'dependencies',
+        'high',
+        'document-transform',
+        true,
+    ],
+    [
+        'dev anchor generator major',
+        'github-slugger',
+        '1.0.0',
+        '2.0.0',
+        'devDependencies',
+        'critical',
+        'ecosystem',
+        true,
+    ],
+    [
         'critical parser major',
         'markdown-it',
         '14.1.0',
@@ -194,6 +224,32 @@ test('lockfile-only parser update is not mistaken for a no-change PR', () => {
     });
     assert.strictEqual(assessment.summary.direct, 0);
     assert.strictEqual(assessment.summary.transitive, 1);
+    assert.strictEqual(outputs.profile, 'document-transform');
+    assert.strictEqual(outputs['run-deep'], 'true');
+});
+
+test('lock-only dev anchor update requires deep verification despite an unchanged manifest', () => {
+    const pkg = manifest('slugify', '^1.6.6', 'devDependencies');
+    const beforeLock = lockfile(pkg);
+    const afterLock = lockfile(pkg);
+    beforeLock.packages['node_modules/slugify'].version = '1.6.6';
+    afterLock.packages['node_modules/slugify'].version = '1.6.9';
+    const {assessment, outputs} = classifyAndDecide(pkg, pkg, {beforeLock, afterLock});
+    assert.strictEqual(assessment.summary.direct, 0);
+    assert.strictEqual(assessment.summary.transitive, 1);
+    assert.strictEqual(outputs.risk, 'high');
+    assert.strictEqual(outputs.profile, 'document-transform');
+    assert.strictEqual(outputs['run-deep'], 'true');
+});
+
+test('grouping anchor and test-tool patches does not hide output-affecting risk', () => {
+    const before = manifest('slugify', '1.6.6', 'devDependencies');
+    before.devDependencies.vitest = '4.1.6';
+    const after = manifest('slugify', '1.6.9', 'devDependencies');
+    after.devDependencies.vitest = '4.1.7';
+    const {assessment, outputs} = classifyAndDecide(before, after);
+    assert.strictEqual(assessment.summary.direct, 2);
+    assert.strictEqual(outputs.risk, 'high');
     assert.strictEqual(outputs.profile, 'document-transform');
     assert.strictEqual(outputs['run-deep'], 'true');
 });
