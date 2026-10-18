@@ -360,7 +360,8 @@ function calculateMaxRisk(assessed) {
  *
  * Uses the verification-profile from the highest-risk registry entry
  * that has one.  Falls back to the default profile for the calculated
- * max risk.
+ * max risk. DOMPurify also requires browser coverage when the selected
+ * profile would otherwise exercise only document transformation.
  *
  * @param {Array<{entry:object|undefined,risk:string}>} assessed
  * @param {string} maxRisk
@@ -368,13 +369,21 @@ function calculateMaxRisk(assessed) {
  */
 function selectVerificationProfile(assessed, maxRisk) {
     const maxLevel = RISK_ORDER[maxRisk] || 0;
+    let profile = DEFAULT_PROFILE_BY_RISK[maxRisk] || 'standard';
     for (const item of assessed) {
         const itemLevel = RISK_ORDER[item.risk] || 0;
         if (itemLevel === maxLevel && item.entry && item.entry['verification-profile']) {
-            return item.entry['verification-profile'];
+            profile = item.entry['verification-profile'];
+            break;
         }
     }
-    return DEFAULT_PROFILE_BY_RISK[maxRisk] || 'standard';
+    if (
+        profile === 'document-transform' &&
+        assessed.some((item) => item.change?.name === 'dompurify' && item.risk === 'high')
+    ) {
+        return 'document-rendering';
+    }
+    return profile;
 }
 
 /**
