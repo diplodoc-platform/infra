@@ -170,6 +170,13 @@ grouped tooling changes must not lower the highest risk. This is a reviewed
 name-based ruleset, not automatic bundle analysis: newly introduced output-affecting
 libraries need an appropriate category or explicit policy entry.
 
+DOMPurify updates need browser coverage, including lock-only updates through
+`isomorphic-dompurify`. When the selected profile is `document-transform`, a
+high-risk DOMPurify change upgrades it to `document-rendering`. This also applies
+when grouped with a registry entry selecting transformation; critical changes
+retain the broader `ecosystem` profile. This selection does not enable a schedule,
+distribution, auto-merge or an Internal Check: those remain separate gates.
+
 `test/integration/dependency-verification-contract.test.js` exercises both real
 CLI processes with base/head manifests and v3 lockfiles, then reads the JSON
 artifact and GitHub output files. It covers unrelated edits, low/dev-only,

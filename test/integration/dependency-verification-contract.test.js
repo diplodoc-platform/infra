@@ -58,7 +58,7 @@ function classifyAndDecide(before, after, options = {}) {
                 '--registry',
                 join(infra, 'dependency-policy.yml'),
                 '--repo',
-                'transform',
+                options.repo || 'transform',
                 '--head-sha',
                 SHA,
                 '--compatibility-score',
@@ -252,6 +252,76 @@ test('grouping anchor and test-tool patches does not hide output-affecting risk'
     assert.strictEqual(outputs.risk, 'high');
     assert.strictEqual(outputs.profile, 'document-transform');
     assert.strictEqual(outputs['run-deep'], 'true');
+});
+
+test('components lock-only DOMPurify update selects real browser coverage', () => {
+    const pkg = manifest('isomorphic-dompurify', '^2.20.0');
+    pkg.name = '@diplodoc/components';
+    const {assessment, outputs} = classifyAndDecide(pkg, pkg, {
+        repo: 'components',
+        beforeLock: lockfile(pkg, {'node_modules/dompurify': {version: '3.3.1'}}),
+        afterLock: lockfile(pkg, {'node_modules/dompurify': {version: '3.4.16'}}),
+    });
+    assert.strictEqual(assessment.summary.direct, 0);
+    assert.strictEqual(assessment.summary.transitive, 1);
+    assert.strictEqual(outputs.risk, 'high');
+    assert.strictEqual(outputs.profile, 'document-rendering');
+    assert.strictEqual(outputs['run-deep'], 'true');
+});
+
+test('direct DOMPurify patch selects rendering without lowering major-bump coverage', () => {
+    for (const [to, risk, profile] of [
+        ['3.3.2', 'high', 'document-rendering'],
+        ['4.0.0', 'critical', 'ecosystem'],
+    ]) {
+        const {outputs} = classifyAndDecide(
+            manifest('dompurify', '3.3.1'),
+            manifest('dompurify', to),
+        );
+        assert.strictEqual(outputs.risk, risk);
+        assert.strictEqual(outputs.profile, profile);
+        assert.strictEqual(outputs['run-deep'], 'true');
+    }
+});
+
+test('grouping DOMPurify with a registry transform profile preserves browser coverage', () => {
+    for (const reverse of [false, true]) {
+        const dependencies = [
+            ['dompurify', '3.3.1'],
+            ['@diplodoc/infra', '2.2.2'],
+        ];
+        if (reverse) dependencies.reverse();
+        const before = {
+            ...manifest('dompurify', '3.3.1'),
+            dependencies: Object.fromEntries(dependencies),
+        };
+        const after = {
+            ...before,
+            dependencies: {...before.dependencies, dompurify: '3.4.16', '@diplodoc/infra': '2.2.3'},
+        };
+        const {outputs} = classifyAndDecide(before, after, {repo: 'components'});
+        assert.strictEqual(outputs.risk, 'high');
+        assert.strictEqual(outputs.profile, 'document-rendering');
+    }
+});
+
+test('grouping DOMPurify with critical changes keeps the ecosystem profile', () => {
+    const before = manifest('dompurify', '3.3.1');
+    before.dependencies['markdown-it'] = '14.1.0';
+    const after = {
+        ...before,
+        dependencies: {...before.dependencies, dompurify: '3.4.16', 'markdown-it': '15.0.0'},
+    };
+    const {outputs} = classifyAndDecide(before, after);
+    assert.strictEqual(outputs.risk, 'critical');
+    assert.strictEqual(outputs.profile, 'ecosystem');
+});
+
+test('removing DOMPurify does not introduce a new deep-profile trigger', () => {
+    const {outputs} = classifyAndDecide(manifest('dompurify', '3.3.1'), {dependencies: {}});
+    assert.strictEqual(outputs.risk, 'low');
+    assert.strictEqual(outputs.profile, 'standard');
+    assert.strictEqual(outputs['run-deep'], 'false');
 });
 
 module.exports = {tests};
