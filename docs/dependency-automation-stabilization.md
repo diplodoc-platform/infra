@@ -20,10 +20,13 @@ prerelease pilots below have passed.
 
 The separate [morning candidate train](dependency-candidate-train.md) prepares
 temporary CLI PRs for manual document validation, targeting readiness by 08:00
-Europe/Moscow. It is disabled unless explicitly enabled and has an outstanding
-downstream installed-version proof prerequisite. It is not the health audit or
-auto-merge audit. Its deployment does not activate either audit schedule, live
-merge, npm publication or distribution.
+Europe/Moscow. Scheduled preparation stays disabled unless explicitly enabled;
+an operator can approve one manual preparation without enabling the schedule.
+GitHub does not observe private document checks or send private notifications:
+hand off the exact CLI PR/SHA and tooling SHA to the internal operations system.
+Complete a manual pilot there, including installed-version proof, before enabling
+scheduled preparation. This is not the health or auto-merge audit; deployment
+does not activate either audit schedule, live merge, publication or distribution.
 
 ## Required evidence before activation
 

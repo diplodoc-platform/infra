@@ -125,15 +125,17 @@ function candidateBody(plan, runUrl) {
         `Installed-resolution evidence is in \`dependency-train/proof.json\`.\n\n` +
         `Target: ready for the operator by **08:00 Europe/Moscow**. ` +
         `The existing Internal check prepares the downstream PR; its CI still needs manual start. ` +
-        `The train will report the exact start link and wait, not merge any PR.\n\n` +
-        `[Preparation and observer](${runUrl}). Missing, skipped, stale or failed checks are not success.\n`
+        `Internal observation and existing notifications belong to the private operations system. ` +
+        `Preparation is NOT successful document verification.\n\n` +
+        `[Preparation](${runUrl}). Hand off this exact PR/SHA and tooling SHA to the internal observer. ` +
+        `Missing, skipped, stale or failed checks are not success. No merge or release is authorized.\n`
     );
 }
 
 async function publish(plan, directory, env = process.env, request = github) {
     validatePlan(plan);
     assert.equal(plan.toolSha, env.GITHUB_SHA, 'Tooling revision changed');
-    assert.equal(env.DEPENDENCY_CANDIDATE_TRAIN_ENABLED, 'true', 'Train is disabled');
+    assert.equal(env.DEPENDENCY_CANDIDATE_PREPARE_APPROVED, 'true', 'Preparation is not approved');
     assert.ok(env.TRAIN_APP_TOKEN && env.TRAIN_BOT_TOKEN, 'Publisher credentials are required');
     const botRequest = (route, options = {}) =>
         request(route, {...options, token: env.TRAIN_BOT_TOKEN});
@@ -279,6 +281,15 @@ if (require.main === module) {
             fs.appendFileSync(
                 process.env.GITHUB_OUTPUT,
                 `number=${result.number}\nsha=${result.sha}\n`,
+            );
+            fs.appendFileSync(
+                process.env.GITHUB_STEP_SUMMARY,
+                `## Candidate prepared — NOT verified\n\n` +
+                    `[CLI PR](${result.url})\n\n` +
+                    `PR number: ${result.number}\n\nCLI SHA: \`${result.sha}\`\n\n` +
+                    `Tooling SHA: \`${result.plan.toolSha}\`\n\n` +
+                    `Hand these identities to the internal operations observer. ` +
+                    `No merge, release or distribution was performed.\n`,
             );
         })
         .catch((error) => {

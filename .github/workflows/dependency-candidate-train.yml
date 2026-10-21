@@ -2,13 +2,21 @@ name: Morning Dependency Candidate Train
 
 on:
   schedule:
-    - cron: '17 3 * * *' # Prepare at 06:17 Moscow; target ready by 08:00.
+    - cron: '17 3 * * *' # Preparation only; opt-in, disabled by default.
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Selection report only; no build, CLI PR or notifications'
+        description: 'Selection only; false explicitly approves one preparation run'
         type: boolean
         default: true
+      repositories:
+        description: 'Explicit repository allowlist; falls back to organization variable'
+        type: string
+        default: ''
+      pr_number:
+        description: 'Optional exact Dependabot PR; requires one repository'
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -42,7 +50,8 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          DEPENDENCY_TRAIN_REPOSITORIES: ${{ vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
         run: node scripts/candidate-train/plan.js
       - uses: actions/upload-artifact@v4
         id: plan-artifact
@@ -51,42 +60,12 @@ jobs:
           path: train-plan.json
           if-no-files-found: error
 
-  preflight:
+  build:
     needs: select
     if: >-
       needs.select.outputs.selected != '0' &&
-      vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true' &&
-      (github.event_name == 'schedule' || toJSON(inputs.dry_run) == 'false')
-    runs-on: ${{ vars.DEPENDENCY_TRAIN_OBSERVER_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: diplodoc-platform/setup-node-action@v1
-        with:
-          node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
-          run-install: 'false'
-      - name: Configure private API certificate trust
-        env:
-          TRAIN_CA_PEM: ${{ secrets.DEPENDENCY_TRAIN_CA_PEM }}
-        run: node scripts/candidate-train/preflight.js ca
-      - name: Read-only private integration preflight (no package code)
-        env:
-          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/dependency-train-ca.pem
-          DEPENDENCY_CANDIDATE_TRAIN_ENABLED: ${{ vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED }}
-          DEPENDENCY_TRAIN_INTERNAL: ${{ vars.DEPENDENCY_TRAIN_INTERNAL }}
-          DEPENDENCY_TRAIN_NOTIFY_LOGIN: ${{ vars.DEPENDENCY_TRAIN_NOTIFY_LOGIN }}
-          DEPENDENCY_TRAIN_MESSENGER_API: ${{ vars.DEPENDENCY_TRAIN_MESSENGER_API }}
-          TRAIN_CI_TOKEN: ${{ secrets.DEPENDENCY_TRAIN_CI_TOKEN }}
-          TRAIN_REVIEW_TOKEN: ${{ secrets.DEPENDENCY_TRAIN_REVIEW_TOKEN }}
-          TRAIN_MESSENGER_TOKEN: ${{ secrets.DEPENDENCY_TRAIN_MESSENGER_TOKEN }}
-        run: node scripts/candidate-train/preflight.js
-
-  build:
-    needs: [select, preflight]
+      ((github.event_name == 'workflow_dispatch' && toJSON(inputs.dry_run) == 'false') ||
+      (github.event_name == 'schedule' && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 80
     outputs:
@@ -107,7 +86,7 @@ jobs:
           artifact-ids: ${{ needs.select.outputs.plan-artifact }}
           path: selected
           merge-multiple: true
-      - name: Build locked candidate packages and their affected consumers (no secrets)
+      - name: Build locked candidates and affected consumers (no secrets)
         run: node scripts/candidate-train/build.js selected/train-plan.json train-payload
       - uses: actions/upload-artifact@v4
         id: payload
@@ -118,11 +97,8 @@ jobs:
 
   publish:
     needs: [select, build]
-    if: vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    outputs:
-      candidate-artifact: ${{ steps.candidate.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -155,87 +131,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
-          DEPENDENCY_CANDIDATE_TRAIN_ENABLED: ${{ vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED }}
+          DEPENDENCY_CANDIDATE_PREPARE_APPROVED: 'true'
           TRAIN_APP_TOKEN: ${{ steps.app.outputs.token }}
           TRAIN_BOT_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
           TRAIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: node scripts/candidate-train/publish.js selected/train-plan.json train-payload
       - uses: actions/upload-artifact@v4
-        id: candidate
         with:
           name: dependency-train-candidate
           path: train-candidate.json
           if-no-files-found: error
-
-  observe:
-    needs: publish
-    if: vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true'
-    runs-on: ${{ vars.DEPENDENCY_TRAIN_OBSERVER_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 315
-    permissions:
-      contents: read
-      checks: read
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: diplodoc-platform/setup-node-action@v1
-        with:
-          node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
-          run-install: 'false'
-      - run: npm ci --ignore-scripts
-      - uses: actions/download-artifact@v7
-        with:
-          artifact-ids: ${{ needs.publish.outputs.candidate-artifact }}
-          path: selected
-          merge-multiple: true
-      - name: Configure private API certificate trust
-        env:
-          TRAIN_CA_PEM: ${{ secrets.DEPENDENCY_TRAIN_CA_PEM }}
-        run: node scripts/candidate-train/preflight.js ca
-      - name: Send private manual-start link and observe exact-head result (no start/merge API)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/dependency-train-ca.pem
-          DEPENDENCY_CANDIDATE_TRAIN_ENABLED: ${{ vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED }}
-          DEPENDENCY_TRAIN_INTERNAL: ${{ vars.DEPENDENCY_TRAIN_INTERNAL }}
-          DEPENDENCY_TRAIN_NOTIFY_LOGIN: ${{ vars.DEPENDENCY_TRAIN_NOTIFY_LOGIN }}
-          DEPENDENCY_TRAIN_MESSENGER_API: ${{ vars.DEPENDENCY_TRAIN_MESSENGER_API }}
-          TRAIN_CI_TOKEN: ${{ secrets.DEPENDENCY_TRAIN_CI_TOKEN }}
-          TRAIN_REVIEW_TOKEN: ${{ secrets.DEPENDENCY_TRAIN_REVIEW_TOKEN }}
-          TRAIN_MESSENGER_TOKEN: ${{ secrets.DEPENDENCY_TRAIN_MESSENGER_TOKEN }}
-        run: node scripts/candidate-train/observe.js selected/train-candidate.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: dependency-train-result
-          path: train-result.json
-          if-no-files-found: warn
-
-  preparation-failure:
-    needs: [select, preflight, build, publish]
-    if: >-
-      always() && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true' &&
-      (github.event_name == 'schedule' || toJSON(inputs.dry_run) == 'false') &&
-      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
-    runs-on: ${{ vars.DEPENDENCY_TRAIN_OBSERVER_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: diplodoc-platform/setup-node-action@v1
-        with:
-          node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
-          run-install: 'false'
-      - name: Notify preparation failure privately
-        env:
-          DEPENDENCY_TRAIN_NOTIFY_LOGIN: ${{ vars.DEPENDENCY_TRAIN_NOTIFY_LOGIN }}
-          DEPENDENCY_TRAIN_MESSENGER_API: ${{ vars.DEPENDENCY_TRAIN_MESSENGER_API }}
-          TRAIN_MESSENGER_TOKEN: ${{ secrets.DEPENDENCY_TRAIN_MESSENGER_TOKEN }}
-          TRAIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node scripts/candidate-train/notify.js
