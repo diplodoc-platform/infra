@@ -93,15 +93,74 @@ function installed(boundary, context, name) {
     }
 }
 
-function verifyLockedTree(boundary, directory, lock, replacementNames) {
+function runtimeVersions(lock, replacementNames) {
     assert.equal(lock.lockfileVersion, 3);
+    const resolutions = [];
+
+    const lookup = (context, name) => {
+        for (;;) {
+            const key = `${context ? context + '/' : ''}node_modules/${name}`;
+            if (lock.packages[key]) return key;
+            if (!context) return null;
+            const parent = context.lastIndexOf('/node_modules/');
+            context = parent < 0 ? '' : context.slice(0, parent);
+        }
+    };
+
+    function visit(key, chain, active, optional = false, depth = 0) {
+        assert.ok(depth <= 100, 'Runtime dependency depth exceeds the proof limit');
+        const entry = lock.packages[key];
+        assert.ok(entry, `Missing locked runtime context ${key}`);
+        const dependencies = {
+            ...entry.dependencies,
+            ...entry.peerDependencies,
+            ...entry.optionalDependencies,
+        };
+
+        for (const name of Object.keys(dependencies).sort()) {
+            assert.match(name, /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/);
+            if (replacementNames.has(name)) continue;
+
+            const isOptional =
+                optional ||
+                Object.hasOwn(entry.optionalDependencies || {}, name) ||
+                entry.peerDependenciesMeta?.[name]?.optional === true;
+            const target = lookup(key, name);
+            if (!target && isOptional) continue;
+            assert.ok(target, `Missing locked runtime dependency ${name}`);
+
+            const metadata = lock.packages[target];
+            assert.ok(!metadata.link && typeof metadata.version === 'string');
+            const path = `${chain}node_modules/${name}`;
+            const optionalPath =
+                isOptional || metadata.optional === true || metadata.devOptional === true;
+
+            assert.ok(
+                resolutions.length < 20000,
+                'Runtime dependency proof exceeds the size limit',
+            );
+            resolutions.push({
+                path,
+                version: metadata.version,
+                ...(optionalPath ? {optional: true} : {}),
+            });
+
+            // Check the closing edge too, but never recurse forever through a cycle.
+            if (!active.has(target))
+                visit(target, path + '/', new Set([...active, target]), optionalPath, depth + 1);
+        }
+    }
+
+    visit('', '', new Set(['']));
+
+    return resolutions;
+}
+
+function verifyLockedTree(boundary, directory, lock, replacementNames) {
     const proof = [];
-    for (const [key, entry] of Object.entries(lock.packages)) {
-        if (key === '' || entry.dev === true) continue;
-        assert.ok(key.startsWith('node_modules/') && !key.includes('..') && !entry.link);
-        const names = key.slice('node_modules/'.length).split('/node_modules/');
-        // Replacement packages have their own independently checked source lock.
-        if (names.some((name) => replacementNames.has(name))) continue;
+
+    for (const expected of runtimeVersions(lock, replacementNames)) {
+        const names = expected.path.slice('node_modules/'.length).split('/node_modules/');
         let cursor = directory;
         let actual;
         for (const name of names) {
@@ -109,10 +168,14 @@ function verifyLockedTree(boundary, directory, lock, replacementNames) {
             if (!actual) break;
             cursor = actual.directory;
         }
-        if (!actual && (entry.optional || entry.devOptional)) continue;
-        assert.ok(actual, `Missing locked dependency ${key}`);
-        assert.equal(actual.manifest.version, entry.version, `Locked resolution mismatch: ${key}`);
-        proof.push({path: key, version: entry.version});
+        if (!actual && expected.optional) continue;
+        assert.ok(actual, `Missing locked dependency ${expected.path}`);
+        assert.equal(
+            actual.manifest.version,
+            expected.version,
+            `Locked resolution mismatch: ${expected.path}`,
+        );
+        proof.push({path: expected.path, version: expected.version});
     }
     return proof;
 }
@@ -287,4 +350,11 @@ if (require.main === module) {
     }
 }
 
-module.exports = {scopedLocks, withArchives, installed, verifyLockedTree, buildCandidate};
+module.exports = {
+    scopedLocks,
+    withArchives,
+    installed,
+    runtimeVersions,
+    verifyLockedTree,
+    buildCandidate,
+};
