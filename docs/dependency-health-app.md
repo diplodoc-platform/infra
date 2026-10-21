@@ -4,10 +4,8 @@
 
 The central Dependency Health workflow audits all 28 Diplodoc platform
 repositories for open Dependabot PRs against the platform SLA. During
-stabilization it is **manual and dry-run by default**; the gated nightly
-schedule remains disabled unless explicitly enabled through the
-[automation control variables](dependency-automation-controls.md).
-Because the workflow must read PRs and check statuses across
+stabilization it is **manual and dry-run by default**; the proposed weekday
+schedule is recorded for later activation. Because the workflow must read PRs and check statuses across
 **every** repository, it cannot use the default `GITHUB_TOKEN` (scoped to a
 single repo). It uses a **GitHub App** installation token, the same App already
 provisioned for `distribute-infra.yml`, `sync-ci-gate.yml`, and
@@ -117,10 +115,10 @@ the past, and **expiring** when within 14 days of `review-after`.
 
 ## Workflow behaviour
 
-- **Gated schedule**: `17 0 * * *` (00:17 UTC / 03:17 Europe/Moscow), disabled
-  unless both `DEPENDENCY_SCHEDULES_ENABLED` and `DEPENDENCY_HEALTH_ENABLED`
-  equal `true`. Scheduled runs are always report-only. Enable only after the
-  [stabilization gates](dependency-automation-stabilization.md) are satisfied.
+- **Current schedule**: none during stabilization.
+- **Proposed schedule after activation**: `0 7 * * 1-5` (07:00 UTC,
+  weekdays only). Restore it only after completing
+  [`dependency-automation-stabilization.md`](dependency-automation-stabilization.md).
 - **Manual trigger**: `workflow_dispatch` with `dry_run: true` by default and
   an optional `skip_checks` input for faster re-runs. Dry-run still uploads the
   assignment plan but does not create issues or assign owners.

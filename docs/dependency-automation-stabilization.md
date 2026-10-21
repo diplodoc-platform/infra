@@ -7,22 +7,23 @@ below.
 
 ## Current stabilization state
 
-| Mechanism                   | Current behavior                                | Deliberately disabled                                         |
-| --------------------------- | ----------------------------------------------- | ------------------------------------------------------------- |
-| Dependency auto-merge audit | Manual audit; variable-gated nightly audit      | Scheduled execution, live merge, issue publication by default |
-| Dependency health audit     | Manual dry-run; variable-gated nightly audit    | Scheduled execution, issue creation, owner assignment         |
-| CI gate synchronization     | Manual dry-run; variable-gated weekly discovery | Scheduled execution, ruleset create/update                    |
-| Infrastructure distribution | Release/manual PR creation                      | Auto-approval and auto-merge (`auto_merge: false`)            |
+| Mechanism                   | Current behavior                            | Deliberately disabled                              |
+| --------------------------- | ------------------------------------------- | -------------------------------------------------- |
+| Dependency auto-merge audit | Manual dispatch, audit-only                 | Schedule, live merge, issue publication by default |
+| Dependency health audit     | Manual dispatch, `dry_run: true` by default | Weekday schedule, issue creation, owner assignment |
+| CI gate synchronization     | Manual dispatch, `dry_run: true` by default | Weekly schedule, ruleset create/update             |
+| Infrastructure distribution | Release/manual PR creation                  | Auto-approval and auto-merge (`auto_merge: false`) |
 
 The stable GitHub release event still starts infrastructure distribution for
 all configured repositories. Do not publish the stable release until the
 prerelease pilots below have passed.
 
-Scheduled audit jobs are off unless both the common schedules switch and the
-corresponding capability switch are enabled. No variable is created or changed
-by this code. See [dependency automation controls](dependency-automation-controls.md)
-for the names, cadence, override semantics, and report-only guarantees. These
-controls do not implement the separate nightly CLI candidate train.
+The separate [morning candidate train](dependency-candidate-train.md) prepares
+temporary CLI PRs for manual document validation, targeting readiness by 08:00
+Europe/Moscow. It is disabled unless explicitly enabled and has an outstanding
+downstream installed-version proof prerequisite. It is not the health audit or
+auto-merge audit. Its deployment does not activate either audit schedule, live
+merge, npm publication or distribution.
 
 ## Required evidence before activation
 
@@ -63,21 +64,16 @@ rollback point:
    assignment behavior on real data.
 3. Apply CI gate synchronization to one pilot repository only. Recheck both a
    dependency PR and an unrelated PR before expanding the target set.
-4. Enable the dependency health schedule variables only after several clean
-   manual runs and separate activation approval. The gated cadence is daily at
-   `00:17 UTC` (03:17 Europe/Moscow); scheduled runs stay report-only. The earlier
-   weekday `07:00 UTC` proposal is superseded.
-5. Enable weekly CI-gate discovery only after all conditional-context defects
-   are fixed. The gated cadence is Monday at `01:23 UTC` (04:23 Europe/Moscow);
-   scheduled runs cannot apply rulesets. The earlier `06:00 UTC` proposal is
-   superseded. Live ruleset changes remain an explicit manual operation.
+4. Restore the dependency health schedule only after several clean manual runs.
+   The previous proposed cadence was weekdays at `07:00 UTC`.
+5. Restore the CI gate schedule only after all conditional-context defects are
+   fixed. The previous cadence was Monday at `06:00 UTC`.
 6. Publish the stable infra release and distribute to all targets. Merge the
    generated PRs in waves, with core packages (`components`, `transform`,
    `cli`) last.
 7. Consider live auto-merge only after the full observation period. Restore its
-   live execution path in a separate reviewed change; the current workflow
-   explicitly forces dry-run. Its gated nightly audit at `00:47 UTC` (03:47
-   Europe/Moscow) is not live merge. The original proposal was a 4–6 week
+   live execution path and schedule in a separate reviewed change; the current
+   workflow cannot pass `--enabled`. The original proposal was a 4–6 week
    observation period with a 24-hour CI soak requirement.
 
 ## Security hardening and accepted risk (2026-09-30)
@@ -232,25 +228,9 @@ while the deep caller uses the corrected rules. The privileged comment publisher
 retains its separately reviewed source revision. These safeguards do not activate
 distribution, schedules, live merge, or CI-gate mutations.
 
-## Organization-variable audit controls (2026-10-21)
-
-The three existing central audits now declare fixed schedules with entry-job
-guards. Defaults remain disabled; no organization/repository variables are
-created. Enabling the schedules requires both the common switch and an
-audit-specific switch. Manual inputs are preserved, while scheduled health
-assignments and CI-gate runs force dry-run and scheduled issue publication is
-blocked. Auto-merge evaluation explicitly forces audit-only mode in every run.
-See [the controls guide](dependency-automation-controls.md) before activation.
-
-No consumer scaffolding, distribution config, package version, release workflow,
-or per-PR testpack caller is changed. A stable release still triggers wide
-distribution; merging this central-workflow change does not require a release.
-
 ## Rollback procedure
 
-- Disable the schedules variable in `infra` first, accounting for repository
-  overrides; cancel any active scheduled runs separately. Removing the schedule
-  declaration is also possible but no longer required for routine toggles.
+- Remove or disable the newly restored schedule first.
 - Set distribution `defaults.auto_merge` back to `false` before changing any
   individual repository overrides.
 - Revert ruleset changes on the pilot repository before expanding CI gate
