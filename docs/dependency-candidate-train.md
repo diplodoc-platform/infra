@@ -14,6 +14,10 @@ notifications, observe document checks, merge PRs or publish npm packages.
 3. Build/pack without secrets. Relocatable archives and scoped overrides carry
    source lock versions. Verify installed identities, run CLI tests/typecheck and
    HTML/Markdown smoke builds. Do not update baselines.
+   Resolution proof paths describe runtime dependency chains, not physical
+   lockfile directories. Resolve each edge from its installed parent and require
+   its exact source-lock version, including peer dependencies and cycle-closing
+   edges. Optional branches may be absent; present versions must still match.
 4. On a fresh publisher, independently validate data against canonical source
    locks. Use the existing CLI-scoped App token and contributor bot credential to
    open one immutable CLI candidate. Never execute candidate code in this job.

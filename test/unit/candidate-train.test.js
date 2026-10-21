@@ -59,6 +59,109 @@ function lock(manifest, version = '1.0.0') {
     };
 }
 
+function hoistedLock() {
+    return {
+        lockfileVersion: 3,
+        packages: {
+            '': {dependencies: {cheerio: '1.2.0', entities: '4.5.0'}},
+            'node_modules/cheerio': {version: '1.2.0', dependencies: {htmlparser2: '10.1.0'}},
+            'node_modules/cheerio/node_modules/htmlparser2': {
+                version: '10.1.0',
+                dependencies: {entities: '7.0.1'},
+            },
+            'node_modules/cheerio/node_modules/entities': {version: '7.0.1'},
+            'node_modules/entities': {version: '4.5.0'},
+        },
+    };
+}
+
+test('runtime proof follows dependency edges and accepts relocated exact versions', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-hoisting-test-'));
+    const lock = hoistedLock();
+    const oldPath = 'node_modules/cheerio/node_modules/entities';
+    const relocated = 'node_modules/cheerio/node_modules/htmlparser2/node_modules/entities';
+
+    for (const [location, manifest] of Object.entries(lock.packages)) {
+        if (!location) continue;
+        const target = path.join(directory, location === oldPath ? relocated : location);
+        fs.mkdirSync(target, {recursive: true});
+        common.write(path.join(target, 'package.json'), {
+            ...manifest,
+            name: location.split('/').at(-1),
+        });
+    }
+
+    const proof = builder.verifyLockedTree(directory, directory, lock, new Set());
+    assert.ok(proof.some((entry) => entry.path === relocated && entry.version === '7.0.1'));
+    assert.ok(!proof.some((entry) => entry.path === oldPath));
+
+    common.write(path.join(directory, relocated, 'package.json'), {
+        name: 'entities',
+        version: '4.5.0',
+    });
+    assert.throws(
+        () => builder.verifyLockedTree(directory, directory, lock, new Set()),
+        /Locked resolution mismatch/,
+    );
+
+    fs.unlinkSync(path.join(directory, relocated, 'package.json'));
+    assert.throws(
+        () => builder.verifyLockedTree(directory, directory, lock, new Set()),
+        /Locked resolution mismatch/,
+    );
+    fs.unlinkSync(path.join(directory, 'node_modules/entities/package.json'));
+    assert.throws(
+        () => builder.verifyLockedTree(directory, directory, lock, new Set()),
+        /Missing locked dependency/,
+    );
+});
+
+test('runtime graph retains distinct consumers, peer edges, optional paths and cycles', () => {
+    const lock = hoistedLock();
+    lock.packages['node_modules/cheerio'].peerDependencies = {entities: '*'};
+    lock.packages['node_modules/cheerio/node_modules/htmlparser2'].dependencies.cheerio = '*';
+    lock.packages[''].optionalDependencies = {native: '1.0.0'};
+    lock.packages['node_modules/native'] = {version: '1.0.0', dependencies: {entities: '*'}};
+
+    const proof = builder.runtimeVersions(lock, new Set());
+    assert.ok(
+        proof.some((item) => item.path === 'node_modules/entities' && item.version === '4.5.0'),
+    );
+    assert.ok(
+        proof.some(
+            (item) =>
+                item.path === 'node_modules/cheerio/node_modules/entities' &&
+                item.version === '7.0.1',
+        ),
+    );
+    assert.ok(proof.some((item) => item.path.endsWith('htmlparser2/node_modules/cheerio')));
+    assert.ok(
+        proof.some(
+            (item) => item.path === 'node_modules/native/node_modules/entities' && item.optional,
+        ),
+    );
+    assert.deepEqual(builder.runtimeVersions(lock, new Set(['cheerio', 'entities', 'native'])), []);
+
+    delete lock.packages['node_modules/cheerio/node_modules/htmlparser2'];
+    assert.throws(
+        () => builder.runtimeVersions(lock, new Set()),
+        /Missing locked runtime dependency/,
+    );
+});
+
+test('runtime proof rejects excessive depth instead of dropping unchecked edges', () => {
+    const lock = {lockfileVersion: 3, packages: {'': {dependencies: {p0: '*'}}}};
+
+    for (let index = 0; index < 102; index++) {
+        lock.packages[`node_modules/p${index}`] = {
+            version: '1.0.0',
+            dependencies: index < 101 ? {[`p${index + 1}`]: '*'} : {},
+        };
+    }
+
+    assert.throws(() => builder.runtimeVersions(lock, new Set()), /depth exceeds the proof limit/);
+});
+
 test('candidate allowlist is explicit, bounded, unique and excludes direct CLI updates', () => {
     assert.deepEqual(planner.allowlist('cut-extension, utils'), ['cut-extension', 'utils']);
     for (const value of ['', 'cli', 'utils,utils', '../utils', 'a,b,c,d']) {
@@ -202,9 +305,22 @@ test('installed-resolution proof rejects a silent fallback to another locked ver
         version: '1.0.0',
     });
     assert.throws(() =>
-        builder.verifyLockedTree(directory, directory, lock({}, '1.1.0'), new Set()),
+        builder.verifyLockedTree(
+            directory,
+            directory,
+            lock({dependencies: {parser: '*'}}, '1.1.0'),
+            new Set(),
+        ),
     );
-    assert.equal(builder.verifyLockedTree(directory, directory, lock({}), new Set()).length, 1);
+    assert.equal(
+        builder.verifyLockedTree(
+            directory,
+            directory,
+            lock({dependencies: {parser: '*'}}),
+            new Set(),
+        ).length,
+        1,
+    );
 });
 
 test('publisher accepts only canonical dependency payloads and rejects scripts, extra files and symlinks', () => {

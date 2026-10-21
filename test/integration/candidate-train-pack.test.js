@@ -10,6 +10,115 @@ const {withArchives, installed, verifyLockedTree} = require('../../scripts/candi
 
 const tests = [
     {
+        name: 'real npm packing and npm ci preserve exact versions along nested runtime chains',
+        fn() {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-nested-pack-'));
+            const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+            const command = (args, cwd) =>
+                execFileSync(npm, args, {
+                    cwd,
+                    encoding: 'utf8',
+                    shell: process.platform === 'win32',
+                    timeout: 120000,
+                    env: {
+                        ...process.env,
+                        npm_config_cache: path.join(root, 'cache'),
+                        npm_config_offline: 'true',
+                        npm_config_audit: 'false',
+                        npm_config_fund: 'false',
+                    },
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                });
+            const pack = (name, version, dependencies, code) => {
+                const directory = path.join(root, name + '-' + version);
+                fs.mkdirSync(directory);
+                write(path.join(directory, 'package.json'), {
+                    name,
+                    version,
+                    dependencies,
+                    main: 'index.js',
+                });
+                fs.writeFileSync(path.join(directory, 'index.js'), code);
+                const result = JSON.parse(
+                    command(['pack', '--ignore-scripts', '--json'], directory),
+                );
+                return 'file:' + path.join(directory, result[0].filename);
+            };
+
+            const oldLeaf = pack('candidate-entities', '4.5.0', {}, "module.exports = '4.5.0';");
+            const leaf = pack('candidate-entities', '7.0.1', {}, "module.exports = '7.0.1';");
+            const parser = pack(
+                'candidate-parser',
+                '10.1.0',
+                {'candidate-entities': leaf},
+                "module.exports = require('candidate-entities');",
+            );
+            const parent = pack(
+                'candidate-parent',
+                '1.2.0',
+                {'candidate-parser': parser},
+                "module.exports = require('candidate-parser');",
+            );
+            const cli = path.join(root, 'cli');
+            fs.mkdirSync(cli);
+            write(path.join(cli, 'package.json'), {
+                name: 'candidate-cli',
+                version: '1.0.0',
+                dependencies: {'candidate-parent': parent, 'candidate-entities': oldLeaf},
+            });
+            command(['install', '--ignore-scripts', '--offline'], cli);
+            command(['ci', '--ignore-scripts', '--offline'], cli);
+
+            // The source lock can hoist the leaf next to its real parent parser.
+            const lock = {
+                lockfileVersion: 3,
+                packages: {
+                    '': {
+                        dependencies: {
+                            'candidate-parent': '^1.2.0',
+                            'candidate-entities': '^4.5.0',
+                        },
+                    },
+                    'node_modules/candidate-parent': {
+                        version: '1.2.0',
+                        dependencies: {'candidate-parser': '^10.1.0'},
+                    },
+                    'node_modules/candidate-parent/node_modules/candidate-parser': {
+                        version: '10.1.0',
+                        dependencies: {'candidate-entities': '^7.0.1'},
+                    },
+                    'node_modules/candidate-parent/node_modules/candidate-entities': {
+                        version: '7.0.1',
+                    },
+                    'node_modules/candidate-entities': {version: '4.5.0'},
+                },
+            };
+            const proof = verifyLockedTree(cli, cli, lock, new Set());
+            assert.ok(
+                proof.some(
+                    (item) =>
+                        item.path ===
+                            'node_modules/candidate-parent/node_modules/candidate-parser/node_modules/candidate-entities' &&
+                        item.version === '7.0.1',
+                ),
+            );
+            assert.equal(require(path.join(cli, 'node_modules/candidate-parent')), '7.0.1');
+            assert.equal(require(path.join(cli, 'node_modules/candidate-entities')), '4.5.0');
+
+            const actualParent = installed(cli, cli, 'candidate-parent');
+            const actualParser = installed(cli, actualParent.directory, 'candidate-parser');
+            const actualLeaf = installed(cli, actualParser.directory, 'candidate-entities');
+            write(path.join(actualLeaf.directory, 'package.json'), {
+                name: 'candidate-entities',
+                version: '4.5.0',
+            });
+            assert.throws(
+                () => verifyLockedTree(cli, cli, lock, new Set()),
+                /Locked resolution mismatch/,
+            );
+        },
+    },
+    {
         name: 'temporary tarball preserves lock-only versions through relocated CLI npm ci',
         fn() {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-pack-proof-'));
