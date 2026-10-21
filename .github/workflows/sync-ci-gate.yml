@@ -2,11 +2,12 @@ name: Sync CI Gate
 
 # Points each target repo's "master CI gate" ruleset (Ruleset A, see ADR-002)
 # at the set of CI status-check contexts derived from its workflow files.
-# Stabilization mode is manual and dry-run by default. Applying rulesets and
-# restoring a schedule require the gates in
-# docs/dependency-automation-stabilization.md.
+# Scheduled execution requires both control variables and never applies rulesets.
+# Manual runs remain dry-run by default. See docs/dependency-automation-controls.md.
 
 on:
+  schedule:
+    - cron: '23 1 * * 1' # Monday 04:23 Europe/Moscow; disabled by default below.
   workflow_dispatch:
     inputs:
       target:
@@ -28,7 +29,13 @@ jobs:
   # ============================================================================
   prepare:
     name: Prepare repository list
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' &&
+       vars.DEPENDENCY_SCHEDULES_ENABLED == 'true' &&
+       vars.DEPENDENCY_CI_GATE_AUDIT_ENABLED == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       repos: ${{ steps.repos.outputs.list }}
     steps:
@@ -79,8 +86,9 @@ jobs:
   sync:
     name: 'Sync ${{ matrix.repo }}'
     needs: prepare
-    if: needs.prepare.outputs.repos != '[]'
+    if: needs.prepare.result == 'success' && needs.prepare.outputs.repos != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         repo: ${{ fromJson(needs.prepare.outputs.repos) }}
@@ -114,16 +122,16 @@ jobs:
 
       - name: Plan or sync CI gate ruleset
         env:
-          DRY_RUN: ${{ inputs.dry_run }}
+          DRY_RUN: ${{ github.event_name != 'workflow_dispatch' || toJSON(inputs.dry_run) != 'false' }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           # App id is used as the Integration bypass actor on the protection gate
           # (Ruleset B) when the script has to create it on a repo that lacks one.
           INFRA_APP_ID: ${{ secrets.INFRA_APP_ID }}
         run: |
           mkdir -p .status
-          DRY_RUN_FLAG=""
-          if [ "${DRY_RUN}" = "true" ]; then
-            DRY_RUN_FLAG="--dry-run"
+          DRY_RUN_FLAG="--dry-run"
+          if [ "${DRY_RUN}" = "false" ]; then
+            DRY_RUN_FLAG=""
           fi
           node scripts/sync-ci-gate.js \
             --repo "${REPO_NAME}" \

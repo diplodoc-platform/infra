@@ -6,14 +6,13 @@ name: Dependency Auto-merge Audit
 # evaluates open Dependabot PRs across all 28 repositories against the 9
 # strict auto-merge conditions defined in T10.1.
 #
-# Stabilization gating:
-#   - There is intentionally no schedule. Every evaluation is started manually
-#     while testpack and the downstream checks are being stabilized.
-#   - Every dispatch is DRY-RUN: it produces an audit log but cannot merge PRs.
-#   - Adding a schedule later requires a separate reviewed change after the
-#     manual validation period.
+# Scheduled execution requires both control variables and stays audit-only.
+# Neither manual nor scheduled execution can enable live merge here.
+# See docs/dependency-automation-controls.md before enabling either variable.
 
 on:
+  schedule:
+    - cron: '47 0 * * *' # 03:47 Europe/Moscow; disabled by default below.
   workflow_dispatch:
     inputs:
       publish_issue:
@@ -29,7 +28,13 @@ permissions:
 jobs:
   auto-merge:
     name: Audit Dependabot PRs
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' &&
+       vars.DEPENDENCY_SCHEDULES_ENABLED == 'true' &&
+       vars.DEPENDENCY_AUTOMERGE_AUDIT_ENABLED == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -56,11 +61,13 @@ jobs:
         id: automerge
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          AUTOMERGE_ENABLED: 'false'
         run: |
           mkdir -p .status
           set +e
           node scripts/auto-merge.js \
             --all \
+            --dry-run \
             --output .status/auto-merge-audit.json \
             --markdown .status/auto-merge-audit.md
           echo "exit-code=$?" >> "$GITHUB_OUTPUT"
@@ -76,7 +83,7 @@ jobs:
           retention-days: 90
 
       - name: Post audit log as tracking issue
-        if: always() && inputs.publish_issue == true
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.publish_issue == true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
