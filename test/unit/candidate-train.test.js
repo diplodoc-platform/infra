@@ -482,17 +482,10 @@ test('private adapter binds generated review/diff/badge and requires builder ver
                         module_name: 'ARCADIA',
                         url: 'https://artifact.example.test/review/index.html',
                     },
-                    ...(hasProof
-                        ? [
-                              {
-                                  module_name: 'LOG',
-                                  url: 'https://artifact.example.test/proof/dependency-train-proof.json',
-                              },
-                          ]
-                        : []),
                 ],
             };
         } else if (url.endsWith('dependency-train-proof.json')) {
+            if (!hasProof) return {status: 404};
             data = {
                 schema: 1,
                 trainId: plan.id,
