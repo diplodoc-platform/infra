@@ -134,6 +134,9 @@ async function planTrain(
     request = (route) => github(route, {token: env.GH_TOKEN}),
 ) {
     const repos = allowlist(env.DEPENDENCY_TRAIN_REPOSITORIES);
+    const prNumber = Number(env.DEPENDENCY_TRAIN_PR_NUMBER || 0);
+    assert.ok(Number.isSafeInteger(prNumber) && prNumber >= 0, 'Invalid source PR number');
+    assert.ok(prNumber === 0 || repos.length === 1, 'An exact PR requires one repository');
     assert.match(env.GITHUB_SHA, SHA);
     const metapackageSha = (await request(`/repos/${OWNER}/diplodoc/branches/master`)).commit.sha;
     const graph = await graphAt(metapackageSha, request);
@@ -155,7 +158,10 @@ async function planTrain(
             `/repos/${OWNER}/${repo}/pulls?state=open&base=master&sort=created&direction=asc`,
             request,
         );
-        for (const pr of pulls.filter((item) => item.user?.login === 'dependabot[bot]')) {
+        for (const pr of pulls.filter(
+            (item) =>
+                item.user?.login === 'dependabot[bot]' && (!prNumber || item.number === prNumber),
+        )) {
             try {
                 assert.equal(pr.base.sha, current, 'Refresh the PR against current master first');
                 const files = await pages(

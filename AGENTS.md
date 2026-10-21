@@ -13,6 +13,8 @@ The owner requested Action version tags and a reusable testpack caller at
 Exact candidate and trusted policy/publisher source SHAs remain required.
 Keep workflow JavaScript in the tested `scripts/` helpers, not large YAML blocks.
 Morning candidate trains are opt-in; see `docs/dependency-candidate-train.md`.
+GitHub only prepares candidates. Internal observation and existing notifications
+belong to Viewer ops; never add internal credentials/endpoints to GitHub Actions.
 Keep package execution secretless and publication data-only. A standalone
 install is not downstream workspace proof. Never accept a missing installed
 version proof, stale SHA/diff or skipped document badge as success.
