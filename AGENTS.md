@@ -12,6 +12,10 @@ The owner requested Action version tags and a reusable testpack caller at
 `@master` on 2026-10-03. Do not reinstate Action SHA pins without approval.
 Exact candidate and trusted policy/publisher source SHAs remain required.
 Keep workflow JavaScript in the tested `scripts/` helpers, not large YAML blocks.
+Central audit schedules require two opt-in variables; see
+`docs/dependency-automation-controls.md`. Keep scheduled runs report-only and
+auto-merge explicitly dry-run. Repository variables override organization
+defaults; consumer variables do not control audits executing in `infra`.
 
 This file contains instructions for AI agents working with the `@diplodoc/infra` project.
 
