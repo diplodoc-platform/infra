@@ -583,4 +583,29 @@ test('privileged automation uses version tags and App permission breadth stays a
     }
 });
 
+test('root and distributed risk assessments use the reviewed deep-caller classifier revision', () => {
+    const classifierRef = (workflow) => {
+        const steps = Object.values(workflow.jobs).flatMap((job) => job.steps || []);
+        const checkout = steps.find(
+            (step) =>
+                step.uses?.startsWith('actions/checkout@') &&
+                step.with?.repository === 'diplodoc-platform/infra' &&
+                step.with.path === 'trusted-infra',
+        );
+
+        assert.ok(checkout, 'trusted classifier checkout must exist');
+        assert.match(checkout.with.ref, /^[a-f0-9]{40}$/);
+        return checkout.with.ref;
+    };
+
+    const deepRef = classifierRef(readWorkflow('dependency-deep-verification.yml', true));
+    for (const scaffolding of [false, true]) {
+        assert.strictEqual(
+            classifierRef(readWorkflow('dependency-risk-assessment.yml', scaffolding)),
+            deepRef,
+            'risk summaries must not classify dependencies with older rules than deep verification',
+        );
+    }
+});
+
 module.exports = {tests};

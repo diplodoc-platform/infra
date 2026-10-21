@@ -26,9 +26,10 @@ const LEGACY_PATTERNS = {
         /^lint update && lint-staged$/,
         /^@diplodoc\/(lint|infra) update && lint-staged$/,
     ],
+    prepare: [/^husky$/, /^husky install$/, /^husky \| exit 0$/, /^husky install \|\| true$/],
 };
 
-function configure(command, impl, {force = false} = {}) {
+function configure(command, impl) {
     if (!pkg.scripts) {
         pkg.scripts = {};
     }
@@ -42,12 +43,6 @@ function configure(command, impl, {force = false} = {}) {
     }
 
     if (current === impl) {
-        return;
-    }
-
-    if (force) {
-        pkg.scripts[command] = impl;
-        console.log('[@diplodoc/infra]', '=> Update', command, 'script (forced)');
         return;
     }
 
@@ -75,7 +70,7 @@ function configure(command, impl, {force = false} = {}) {
 configure('lint', 'lint');
 configure('lint:fix', 'lint fix');
 configure('pre-commit', 'lint-staged');
-configure('prepare', 'husky || true', {force: true});
+configure('prepare', 'husky || true');
 configure('lock', 'npm install --no-workspaces --package-lock-only --ignore-scripts');
 
 writeFileSync(filename, JSON.stringify(pkg, null, 2) + '\n', 'utf8');

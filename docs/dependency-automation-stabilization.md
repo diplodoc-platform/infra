@@ -207,6 +207,20 @@ from the candidate. The distributed policy workflow must be deliberately pinned
 to the source commit containing this implementation and registry before the next
 single-repository prerelease pilot. Keep that source commit reachable after merge.
 
+## Distribution preflight safeguards (2026-10-21)
+
+Preserve custom consumer `prepare` scripts: they may perform required runtime or
+build preparation, not only hook installation. Add the standard Husky hook when
+missing and migrate only recognized standalone Husky commands. Do not replace or
+append commands to an arbitrary custom lifecycle hook; warn and leave it intact.
+
+Root and distributed risk assessments must use the same reviewed immutable
+classifier revision as the deep-verification caller. Otherwise a published risk
+summary can report a low-risk anchor generator or omit sanitizer browser coverage
+while the deep caller uses the corrected rules. The privileged comment publisher
+retains its separately reviewed source revision. These safeguards do not activate
+distribution, schedules, live merge, or CI-gate mutations.
+
 ## Rollback procedure
 
 - Remove or disable the newly restored schedule first.

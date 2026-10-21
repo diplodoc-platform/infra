@@ -456,6 +456,10 @@ After `infra init`, consumer packages get these scripts:
 
 **Note**: Unlike the old `@diplodoc/lint`, there is no `lint update &&` prefix. Infrastructure updates are delivered via automated PRs, not on every lint run.
 
+Preserve custom `prepare` hooks during updates. Only missing hooks and recognized
+standalone Husky commands receive the standard implementation; custom hooks may
+perform required package preparation such as dependency patches.
+
 ## Exports
 
 - `@diplodoc/infra/eslint-config` — Common ESLint config
