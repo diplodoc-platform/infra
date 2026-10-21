@@ -29,7 +29,7 @@ async function boundedFetch(url, options = {}) {
         signal: AbortSignal.timeout(20_000),
     });
     assert.ok(
-        response.status < 300 || (response.status >= 300 && response.status < 400),
+        (response.status >= 200 && response.status < 400) || response.status === 404,
         `Internal read: HTTP ${response.status}`,
     );
     return response;
@@ -177,15 +177,25 @@ async function inspectInternal(candidate, check, binding, env, fetcher = bounded
                 fetcher,
             );
             const badges = details.task_badges || details.taskBadges || [];
-            const badge = badges.find((item) => {
+            const urls = badges.flatMap((item) => {
                 const url = new URL(item.url);
-                return (
-                    url.origin === config.artifactOrigin &&
-                    url.pathname.endsWith('/dependency-train-proof.json')
-                );
+                if (url.origin !== config.artifactOrigin) return [];
+                if (url.pathname.endsWith('/dependency-train-proof.json')) return [url.href];
+                if (
+                    (item.module_name || item.moduleName) === 'ARCADIA' &&
+                    url.pathname.endsWith('/index.html')
+                ) {
+                    return [new URL('dependency-train-proof.json', url).href];
+                }
+                return [];
             });
-            if (!badge) continue;
-            const response = await fetcher(badge.url);
+            if (!urls.length) continue;
+            let response;
+            for (const url of urls) {
+                response = await fetcher(url);
+                if (response.status !== 404) break;
+            }
+            if (!response || response.status === 404) continue;
             assert.ok(response.status < 300, 'Installed-proof artifact redirected');
             const proof = await response.json();
             assert.equal(proof.schema, 1);

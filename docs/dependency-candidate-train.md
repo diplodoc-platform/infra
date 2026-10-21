@@ -118,8 +118,10 @@ unrelated builder settings. After its final root install, verify the selected
 source markers, archive hashes and expected locked runtime resolutions from
 the frozen candidate payload. A mismatch aborts before document validation.
 
-Only after verification, expose a trusted job badge at the configured artifact
-origin whose path ends in `/dependency-train-proof.json`. It must contain:
+Only after verification, expose `dependency-train-proof.json` beside the
+existing `ARCADIA` review-link badge's `index.html` at the configured artifact
+origin. A direct proof badge is also accepted. Missing (404) proof is not success.
+It must contain:
 
 ```json
 {
