@@ -39,9 +39,7 @@ test('should add scripts to empty package.json', async () => {
             result.scripts.lock,
             'npm install --no-workspaces --package-lock-only --ignore-scripts',
         );
-        // prepare script should be set (husky || true is forced)
-        assert(result.scripts.prepare !== undefined, 'prepare script should exist');
-        assert(result.scripts.prepare.includes('husky'), 'prepare script should contain husky');
+        assert.strictEqual(result.scripts.prepare, 'husky || true');
     } finally {
         await removeTempDir(tempDir);
     }
@@ -135,29 +133,49 @@ test('should migrate legacy "lint update && lint" → "lint"', async () => {
     }
 });
 
-test('should force update prepare script', async () => {
-    let tempDir = await createTempDir();
-    try {
-        // Setup
-        const pkg = {
-            name: 'test-package',
-            version: '1.0.0',
-            scripts: {
-                prepare: 'old prepare script',
-            },
-        };
-        writeJson(tempDir, 'package.json', pkg);
+test('should preserve custom prepare hooks and remain idempotent', async () => {
+    for (const prepare of [
+        'node scripts/prepare.mjs',
+        'node scripts/build-assets.js && husky',
+        'husky && node scripts/generate.js',
+    ]) {
+        const tempDir = await createTempDir();
+        try {
+            writeJson(tempDir, 'package.json', {
+                name: 'test-package',
+                version: '1.0.0',
+                scripts: {prepare},
+            });
 
-        // Execute
-        await runModifyPackage(tempDir);
+            const {stderr} = await runModifyPackage(tempDir);
+            const first = readJson(tempDir, 'package.json');
 
-        // Verify
-        const result = readJson(tempDir, 'package.json');
-        // prepare script should be force updated (husky || true)
-        assert(result.scripts.prepare !== undefined, 'prepare script should exist');
-        assert(result.scripts.prepare.includes('husky'), 'prepare script should contain husky');
-    } finally {
-        await removeTempDir(tempDir);
+            assert.strictEqual(first.scripts.prepare, prepare);
+            assert(stderr.includes('WARNING') && stderr.includes('prepare'));
+
+            await runModifyPackage(tempDir);
+            assert.deepStrictEqual(readJson(tempDir, 'package.json'), first);
+        } finally {
+            await removeTempDir(tempDir);
+        }
+    }
+});
+
+test('should migrate only known standalone Husky prepare hooks', async () => {
+    for (const prepare of ['husky', 'husky install', 'husky | exit 0', 'husky install || true']) {
+        const tempDir = await createTempDir();
+        try {
+            writeJson(tempDir, 'package.json', {
+                name: 'test-package',
+                version: '1.0.0',
+                scripts: {prepare},
+            });
+
+            await runModifyPackage(tempDir);
+            assert.strictEqual(readJson(tempDir, 'package.json').scripts.prepare, 'husky || true');
+        } finally {
+            await removeTempDir(tempDir);
+        }
     }
 });
 
