@@ -6,6 +6,7 @@ const {
     DEFAULT_PROFILE_BY_RISK,
     DEEP_PROFILES,
     SUPPORTED_PROFILES,
+    strongestProfile,
 } = require('../../scripts/dependency-verification-profiles');
 const {verificationDecision} = require('../../scripts/dependency-verification-decision');
 const classifier = require('../../scripts/dependency-policy-review');
@@ -25,6 +26,10 @@ function assessment(profile) {
         verificationProfile: profile,
     };
 }
+
+test('every supported verification profile has an explicit coverage rank', () => {
+    assert.doesNotThrow(() => strongestProfile(SUPPORTED_PROFILES));
+});
 
 test('classifier and decision share every default and registry verification profile', () => {
     assert.strictEqual(classifier.DEFAULT_PROFILE_BY_RISK, DEFAULT_PROFILE_BY_RISK);
