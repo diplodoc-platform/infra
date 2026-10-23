@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.3.0](https://github.com/diplodoc-platform/infra/compare/v2.2.3...v2.3.0) (2026-10-23)
+
+
+### Features
+
+* **dependabot:** add dependency automation scripts and workflows ([e80c61b](https://github.com/diplodoc-platform/infra/commit/e80c61bf9d43217128f883375142bb5ff751202c))
+* **dependabot:** select deep checks from dependency risk ([d0f99f9](https://github.com/diplodoc-platform/infra/commit/d0f99f9114c83e8ff90f9b8f21c04bd7a951da8c))
+
+
+### Bug Fixes
+
+* **ci:** bind pin enforcement to reviewed managed policy ([110d351](https://github.com/diplodoc-platform/infra/commit/110d35115687a71d7c26191203f08d6ed40bbf1b))
+* **ci:** include optional package checks in Quality ([46d475b](https://github.com/diplodoc-platform/infra/commit/46d475bcc12dd9886980357466470b898bee6d0a))
+* **ci:** pin audited dependency policy tooling ([7b23dd1](https://github.com/diplodoc-platform/infra/commit/7b23dd1546aa6055257952525f85010f5e5f31cb))
+* **ci:** preserve audit evidence and discover actual checks ([19a224a](https://github.com/diplodoc-platform/infra/commit/19a224ad8f1b6d2c3b50f5db8eba46fa6a4efd4f))
+* **ci:** preserve lifecycle hooks and align dependency assessments ([f18a9b1](https://github.com/diplodoc-platform/infra/commit/f18a9b1754decac26ad3e568d3104b130b47afa0))
+* **ci:** read trusted candidate proof beside review badge ([a487399](https://github.com/diplodoc-platform/infra/commit/a487399804e72287e39db2b47c8a03c52ab479da))
+* **ci:** restore shared Node setup without automatic installs ([a528277](https://github.com/diplodoc-platform/infra/commit/a52827744013e81a760c7734031b50c67a935e26))
+* **ci:** verify candidate dependency chains across npm hoisting ([2b92e47](https://github.com/diplodoc-platform/infra/commit/2b92e4764b738e8d2095e4a3d47fe3488e5cc542))
+* classify anchor generators as output-affecting dependencies ([3490adb](https://github.com/diplodoc-platform/infra/commit/3490adb3812e7da73feed6ce42702522082f63e1))
+* **dependabot:** make clean CI installs deterministic ([4434d19](https://github.com/diplodoc-platform/infra/commit/4434d19f0e22f05cb6a9cc153fb00ade5b691abd))
+* **deps:** align verification profiles and gate deep checks on Dependabot ([171679d](https://github.com/diplodoc-platform/infra/commit/171679ddee276ad38d4b4c9531d5b901a3f06825))
+* **deps:** close infra release-audit correctness gaps ([dde6fe6](https://github.com/diplodoc-platform/infra/commit/dde6fe6f1bcdfed17cc97eaf1fcbe6d5911bef3a))
+* **deps:** gate automation during stabilization ([2bb4739](https://github.com/diplodoc-platform/infra/commit/2bb4739cd0a07795b3e1ba27037977b55712726f))
+* **deps:** keep auto-merge disabled during stabilization ([575c967](https://github.com/diplodoc-platform/infra/commit/575c9676077ac68c2dc2b5f3eb8f40f0a4c5ebe6))
+* **deps:** pin the validated verification contract in distributed callers ([e81cde6](https://github.com/diplodoc-platform/infra/commit/e81cde6b514a44642bff0d67869ff2f81cd0a54f))
+* **deps:** remove dead infra verification workflow ([8491dd4](https://github.com/diplodoc-platform/infra/commit/8491dd4282f09ff4d6c2f61ac89a7441ab8647ad))
+* **deps:** remove obsolete SVGO 3 ignores ([4ff7437](https://github.com/diplodoc-platform/infra/commit/4ff743701ab5c8b6f8a7096e6a0cfae7a16928f7))
+* **deps:** require browser coverage for DOMPurify updates ([9625ffc](https://github.com/diplodoc-platform/infra/commit/9625ffc7036b4f41491fe2dd6cf01ffb8dd0913d))
+* **deps:** scope deep verification distribution ([a8934d4](https://github.com/diplodoc-platform/infra/commit/a8934d46a5d8e8bdabe66d00e649a21680d1054e))
+* **infra:** invoke npm CLI portably ([df28086](https://github.com/diplodoc-platform/infra/commit/df2808642547118f232b5ff3ddcf023fbbe07f05))
+* **infra:** unblock policy and Windows package checks ([b06a33d](https://github.com/diplodoc-platform/infra/commit/b06a33d5a6fc3408ee77d31c772ccd08c4a1da70))
+* **policy:** permit scoped managed infra release pins ([8768e51](https://github.com/diplodoc-platform/infra/commit/8768e512875e98ca1fc067352aa514aafe285801))
+* **security:** trust dependency evidence and preserve dry-run checkouts ([17765bf](https://github.com/diplodoc-platform/infra/commit/17765bf0ce700ad4e7681e24c0abb32dd21588d1))
+
 ## [2.2.3](https://github.com/diplodoc-platform/infra/compare/v2.2.2...v2.2.3) (2026-08-06)
 
 
