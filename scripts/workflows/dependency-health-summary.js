@@ -18,30 +18,45 @@ module.exports = async function dependencyHealthSummary(
         core.warning(`Could not read summary report: ${err.message}`);
     }
     const parts = [];
+    const incomplete = (report) => report.complete === false || report.errors?.length > 0;
+    const count = (report, value) => (incomplete(report) ? 'UNKNOWN' : (value ?? 0));
+    const auditWarning = (report, label) => {
+        if (!incomplete(report)) return '';
+        core.warning(`${label} is incomplete; counts are UNKNOWN, not all clear`);
+        return (
+            '**Incomplete audit: counts are UNKNOWN, not all clear. See uploaded reports.**\n\n' +
+            (report.errors || [])
+                .map((error) => `- ${error.repo}: ${error.phase} — ${error.message}`)
+                .join('\n') +
+            '\n\n'
+        );
+    };
     if (health) {
         const s = health.summary || {};
         parts.push(
             `## Dependency Health Audit\n\n` +
-                `- Total PRs: **${s.totalPrs ?? 0}**\n` +
-                `- Breaching SLA: **${s.breachingPrs ?? 0}**\n` +
-                `- Security PRs (breaching): **${s.securityPrs ?? 0}** (**${s.securityBreaching ?? 0}**)\n` +
-                `- Critical-risk PRs (breaching): **${s.criticalPrs ?? 0}** (**${s.criticalBreaching ?? 0}**)\n` +
-                `- Failing checks: **${s.failingPrs ?? 0}**\n` +
-                `- Registry exceptions: **${s.totalExceptions ?? 0}** (expiring: ${s.expiringExceptions ?? 0}, overdue: ${s.overdueExceptions ?? 0})\n`,
+                auditWarning(health, 'Dependency health audit') +
+                `- Total PRs: **${count(health, s.totalPrs)}**\n` +
+                `- Breaching SLA: **${count(health, s.breachingPrs)}**\n` +
+                `- Security PRs (breaching): **${count(health, s.securityPrs)}** (**${count(health, s.securityBreaching)}**)\n` +
+                `- Critical-risk PRs (breaching): **${count(health, s.criticalPrs)}** (**${count(health, s.criticalBreaching)}**)\n` +
+                `- Failing checks: **${count(health, s.failingPrs)}**\n` +
+                `- Registry exceptions: **${count(health, s.totalExceptions)}** (expiring: ${count(health, s.expiringExceptions)}, overdue: ${count(health, s.overdueExceptions)})\n`,
         );
     }
     if (summary) {
         const t = summary.totals || {};
         parts.push(
             `## Daily Summary\n\n` +
-                `- Actionable items: **${t.actionableItems ?? 0}**\n` +
-                `- PRs without owner: **${t.prsWithoutOwner ?? 0}**\n` +
-                `- Failing checks: **${t.failedChecks ?? 0}**\n` +
-                `- SLA breaches: **${t.slaBreaches ?? 0}**\n` +
-                `- Expiring exceptions: **${t.expiringExceptions ?? 0}**\n` +
-                `- Unpinned versions: **${t.unpinnedVersions ?? 0}**\n` +
-                `- Stale policy entries: **${t.stalePolicyEntries ?? 0}**\n` +
-                `- Repos at PR limit: **${t.reposAtPrLimit ?? 0}**\n`,
+                auditWarning(summary, 'Daily dependency summary') +
+                `- Actionable items: **${count(summary, t.actionableItems)}**\n` +
+                `- PRs without owner: **${count(summary, t.prsWithoutOwner)}**\n` +
+                `- Failing checks: **${count(summary, t.failedChecks)}**\n` +
+                `- SLA breaches: **${count(summary, t.slaBreaches)}**\n` +
+                `- Expiring exceptions: **${count(summary, t.expiringExceptions)}**\n` +
+                `- Unpinned versions: **${count(summary, t.unpinnedVersions)}**\n` +
+                `- Stale policy entries: **${count(summary, t.stalePolicyEntries)}**\n` +
+                `- Repos at PR limit: **${count(summary, t.reposAtPrLimit)}**\n`,
         );
     }
     let assign;
@@ -53,7 +68,8 @@ module.exports = async function dependencyHealthSummary(
     if (assign) {
         parts.push(
             `## Assignment Plan (T8.3)\n\n` +
-                `- SLA-breaching PR assignment actions: **${(assign.actions || []).length}**\n` +
+                auditWarning(assign, 'Owner assignment audit') +
+                `- SLA-breaching PR assignment actions: **${count(assign, (assign.actions || []).length)}**\n` +
                 (assign.issue
                     ? `- Tracking issue: #${assign.issue.number} (${assign.issue.created ? 'created' : 'updated'})\n`
                     : ''),

@@ -289,12 +289,62 @@ test('calculateMaxRisk: empty array returns low', () => {
 
 // --- selectVerificationProfile --------------------------------------------
 
-test('selectVerificationProfile: uses profile from highest-risk entry', () => {
+test('selectVerificationProfile: uses stronger required registry coverage', () => {
     const assessed = [
         {risk: 'low', entry: {'verification-profile': 'standard'}},
-        {risk: 'high', entry: {'verification-profile': 'deep'}},
+        {risk: 'high', entry: {'verification-profile': 'document-rendering'}},
     ];
-    assert.strictEqual(selectVerificationProfile(assessed, 'high'), 'deep');
+    assert.strictEqual(selectVerificationProfile(assessed, 'high'), 'document-rendering');
+});
+
+test('selectVerificationProfile: strongest coverage is independent of every permutation', () => {
+    const assessed = [
+        {risk: 'high', entry: {'verification-profile': 'document-transform'}},
+        {risk: 'high', entry: {'verification-profile': 'document-rendering'}},
+        {risk: 'high', entry: {'verification-profile': 'ecosystem'}},
+    ];
+    for (const first of assessed) {
+        for (const second of assessed.filter((item) => item !== first)) {
+            const third = assessed.find((item) => item !== first && item !== second);
+            assert.strictEqual(
+                selectVerificationProfile([first, second, third], 'high'),
+                'ecosystem',
+            );
+        }
+    }
+});
+
+test('selectVerificationProfile: lower-risk requirements and default coverage cannot be dropped', () => {
+    const assessed = [
+        {risk: 'high', entry: {'verification-profile': 'document-transform'}},
+        {risk: 'low', entry: {'verification-profile': 'document-rendering'}},
+    ];
+    for (const items of [assessed, [...assessed].reverse()]) {
+        assert.strictEqual(selectVerificationProfile(items, 'high'), 'document-rendering');
+    }
+    assert.strictEqual(
+        selectVerificationProfile(
+            [{risk: 'high', entry: {'verification-profile': 'standard'}}],
+            'high',
+        ),
+        'document-transform',
+    );
+});
+
+test('selectVerificationProfile: an unknown requirement fails closed at any risk', () => {
+    for (const profile of ['unknown-profile', '', null]) {
+        assert.throws(
+            () =>
+                selectVerificationProfile(
+                    [
+                        {risk: 'high', entry: {'verification-profile': 'ecosystem'}},
+                        {risk: 'low', entry: {'verification-profile': profile}},
+                    ],
+                    'high',
+                ),
+            /Unsupported verification profile:/,
+        );
+    }
 });
 
 test('selectVerificationProfile: falls back to default by risk', () => {
@@ -559,7 +609,12 @@ test('renderComment: includes auto-merge permission for high risk', () => {
         {name: 'svgo', section: 'dependencies', from: '3.3.2', to: '3.3.3', changeType: 'changed'},
     ];
     const entries = [
-        {id: 'DEP-0001', dependency: 'svgo', risk: 'high', 'verification-profile': 'deep'},
+        {
+            id: 'DEP-0001',
+            dependency: 'svgo',
+            risk: 'high',
+            'verification-profile': 'document-rendering',
+        },
     ];
     const assessment = buildAssessment(direct, [], entries);
     const comment = renderComment(assessment);
@@ -692,7 +747,12 @@ test('renderComment: includes direct changes table', () => {
         {name: 'svgo', section: 'dependencies', from: '3.3.2', to: '3.3.3', changeType: 'changed'},
     ];
     const entries = [
-        {id: 'DEP-0001', dependency: 'svgo', risk: 'high', 'verification-profile': 'deep'},
+        {
+            id: 'DEP-0001',
+            dependency: 'svgo',
+            risk: 'high',
+            'verification-profile': 'document-rendering',
+        },
     ];
     const assessment = buildAssessment(direct, [], entries);
     const comment = renderComment(assessment);

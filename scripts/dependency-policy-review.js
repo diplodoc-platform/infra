@@ -47,8 +47,16 @@ const {
     filterEntriesForRepo,
 } = require('./generate-dependency-policy');
 
-const {classifyDependency, elevateRisk, RISK_DESCRIPTIONS} = require('./risk-classification');
-const {DEFAULT_PROFILE_BY_RISK} = require('./dependency-verification-profiles');
+const {
+    classifyDependency,
+    elevateRisk,
+    riskForUpdate,
+    RISK_DESCRIPTIONS,
+    RISK_WEIGHT: RISK_ORDER,
+    DEFAULT_RISK_BY_CHANGE,
+} = require('./risk-classification');
+const {DEFAULT_PROFILE_BY_RISK, strongestProfile} = require('./dependency-verification-profiles');
+const {parseSemver: extractSemver, classifyVersionChange} = require('./dependency-versions');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -60,24 +68,6 @@ const DEPENDENCY_SECTIONS = [
     'peerDependencies',
     'optionalDependencies',
 ];
-
-/**
- * Risk levels ordered from lowest to highest.  Used by `calculateMaxRisk`.
- */
-const RISK_ORDER = {low: 0, medium: 1, high: 2, critical: 3};
-
-/**
- * Default risk for a dependency change that has no registry entry.
- * Determined by the type of version change.
- */
-const DEFAULT_RISK_BY_CHANGE = {
-    added: 'medium',
-    removed: 'low',
-    patch: 'low',
-    minor: 'medium',
-    major: 'high',
-    unknown: 'medium',
-};
 
 /**
  * Auto-merge permission per risk level, derived from the PLAN.md / E6
@@ -130,55 +120,6 @@ function diffDirectDependencies(before, after) {
     }
 
     return changes;
-}
-
-/**
- * Determine the semantic update type (patch / minor / major) from a
- * version change.  Returns `unknown` when versions cannot be compared.
- *
- * @param {string|null} from Old version specifier.
- * @param {string|null} to  New version specifier.
- * @returns {'patch'|'minor'|'major'|'unknown'}
- */
-function classifyVersionChange(from, to) {
-    const fromVer = extractSemver(from);
-    const toVer = extractSemver(to);
-    if (!fromVer || !toVer) {
-        return 'unknown';
-    }
-    if (toVer.major !== fromVer.major) {
-        return 'major';
-    }
-    if (toVer.minor !== fromVer.minor) {
-        return 'minor';
-    }
-    return 'patch';
-}
-
-/**
- * Extract major/minor/patch numbers from a version specifier string.
- * Strips leading range operators (`^`, `~`, `>=`, etc.) and pre-release
- * suffixes.
- *
- * @param {string|null} version
- * @returns {{major:number,minor:number,patch:number}|null}
- */
-function extractSemver(version) {
-    if (typeof version !== 'string' || version.length === 0) {
-        return null;
-    }
-    const cleaned = version
-        .replace(/^[^0-9]*/, '')
-        .split('-')[0]
-        .split('+')[0];
-    const parts = cleaned.split('.');
-    const major = parseInt(parts[0], 10);
-    const minor = parts.length > 1 ? parseInt(parts[1], 10) : 0;
-    const patch = parts.length > 2 ? parseInt(parts[2], 10) : 0;
-    if (Number.isNaN(major) || Number.isNaN(minor) || Number.isNaN(patch)) {
-        return null;
-    }
-    return {major, minor, patch};
 }
 
 /**
@@ -308,29 +249,10 @@ function lookupInRegistry(entries, change) {
  * @returns {string} Risk level (low | medium | high | critical).
  */
 function riskForChange(entry, change) {
-    if (entry && entry.risk && RISK_ORDER[entry.risk] !== undefined) {
-        return entry.risk;
-    }
-
-    const classified = classifyDependency(change.name, change.section);
-    if (classified !== null) {
-        if (change.changeType === 'changed' && classified !== 'low') {
-            const updateType = classifyVersionChange(change.from, change.to);
-            if (updateType === 'major') {
-                return elevateRisk(classified);
-            }
-        }
-        if (change.changeType === 'removed') {
-            return DEFAULT_RISK_BY_CHANGE.removed;
-        }
-        return classified;
-    }
-
-    if (change.changeType === 'changed') {
-        const updateType = classifyVersionChange(change.from, change.to);
-        return DEFAULT_RISK_BY_CHANGE[updateType] || 'medium';
-    }
-    return DEFAULT_RISK_BY_CHANGE[change.changeType] || 'medium';
+    return riskForUpdate(entry, {
+        ...change,
+        updateType: classifyVersionChange(change.from, change.to),
+    });
 }
 
 /**
@@ -358,32 +280,27 @@ function calculateMaxRisk(assessed) {
 /**
  * Select the verification profile for the assessment.
  *
- * Uses the verification-profile from the highest-risk registry entry
- * that has one.  Falls back to the default profile for the calculated
- * max risk. DOMPurify also requires browser coverage when the selected
- * profile would otherwise exercise only document transformation.
+ * Combine the default risk coverage with every individual registry
+ * requirement. Selection is independent of dependency order, and an unknown
+ * profile fails closed rather than silently dropping its required coverage.
  *
  * @param {Array<{entry:object|undefined,risk:string}>} assessed
  * @param {string} maxRisk
  * @returns {string} Verification profile name.
  */
 function selectVerificationProfile(assessed, maxRisk) {
-    const maxLevel = RISK_ORDER[maxRisk] || 0;
-    let profile = DEFAULT_PROFILE_BY_RISK[maxRisk] || 'standard';
+    const profiles = [DEFAULT_PROFILE_BY_RISK[maxRisk] || 'standard'];
+
     for (const item of assessed) {
-        const itemLevel = RISK_ORDER[item.risk] || 0;
-        if (itemLevel === maxLevel && item.entry && item.entry['verification-profile']) {
-            profile = item.entry['verification-profile'];
-            break;
+        if (item.entry && Object.hasOwn(item.entry, 'verification-profile')) {
+            profiles.push(item.entry['verification-profile']);
+        }
+        if (item.change?.name === 'dompurify' && item.risk === 'high') {
+            profiles.push('document-rendering');
         }
     }
-    if (
-        profile === 'document-transform' &&
-        assessed.some((item) => item.change?.name === 'dompurify' && item.risk === 'high')
-    ) {
-        return 'document-rendering';
-    }
-    return profile;
+
+    return strongestProfile(profiles);
 }
 
 /**

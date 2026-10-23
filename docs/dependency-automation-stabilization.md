@@ -231,6 +231,30 @@ while the deep caller uses the corrected rules. The privileged comment publisher
 retains its separately reviewed source revision. These safeguards do not activate
 distribution, schedules, live merge, or CI-gate mutations.
 
+## Release-audit corrections (2026-10-23)
+
+Grouped updates combine all registry verification requirements, independent of
+package order; lower-risk entries cannot reduce required document coverage.
+Inventory and policy review share version/risk classification. Exact-pin
+exceptions, including ordinary entries, require a valid unexpired deadline;
+valid npm ranges are not exact pins.
+
+Health, summary and assignment can share one scoped inventory snapshot. Missing
+or malformed mandatory manifests and incomplete inventory fail the audit and
+block issue/assignment publication; only an optional manifest's HTTP 404 means
+absence. An explicit auto-merge `--dry-run` overrides live environment flags.
+
+Scaffolding generators respect both local and central blacklists, including
+excluded files that do not exist yet. Existing candidate PRs must match their
+frozen CLI parent, canonical branch/base and complete permitted file tree;
+source and candidate heads are checked again before handoff.
+
+Regression tests keep root/distributed workflow copies in sync and validate the
+npm package's CLI dependency closure. Root-only candidate preparation and workflow
+adapters are excluded from npm; public audit commands remain available. This
+changes the earlier package-content note, not the activation policy. Distribution,
+schedules and live auto-merge must still not be launched without separate approval.
+
 ## Rollback procedure
 
 - Remove or disable the newly restored schedule first.

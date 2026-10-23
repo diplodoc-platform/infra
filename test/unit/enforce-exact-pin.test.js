@@ -27,6 +27,17 @@ test('isExactPin: bare numeric versions are exact pins', () => {
     assert.strictEqual(isExactPin('1.0.0'), true);
     assert.strictEqual(isExactPin('1.2.3-beta.1'), true);
     assert.strictEqual(isExactPin('0.0.0'), true);
+    assert.strictEqual(isExactPin('1.2.3-beta.1+build.2'), true);
+    assert.strictEqual(isExactPin('0.0.0-rc-codex-tabs-pilot-37463553402'), true);
+});
+
+test('isExactPin: npm partial, wildcard, hyphen and comparator ranges are not pins', () => {
+    for (const version of ['15', '3.3', '1.2.*', '1.2.x', '1.2.3 - 2.0.0', '1.2.3 <2.0.0']) {
+        assert.strictEqual(isExactPin(version), false, version);
+    }
+    for (const version of ['1.2.3garbage', '1.2.3.4', '1.2.3-01', '01.2.3']) {
+        assert.strictEqual(isExactPin(version), false, version);
+    }
 });
 
 test('isExactPin: caret and tilde ranges are not exact pins', () => {
@@ -122,8 +133,18 @@ test('extractExactPins: ignores missing/empty sections', () => {
 
 test('findRegistryEntry: matches by dependency name and allowed-version', () => {
     const entries = [
-        {id: 'DEP-0001', dependency: 'svgo', 'allowed-version': '3.3.2'},
-        {id: 'DEP-0002', dependency: 'ajv', 'allowed-version': '8.17.1'},
+        {
+            id: 'DEP-0001',
+            dependency: 'svgo',
+            'allowed-version': '3.3.2',
+            'expires-at': '2099-01-01',
+        },
+        {
+            id: 'DEP-0002',
+            dependency: 'ajv',
+            'allowed-version': '8.17.1',
+            'expires-at': '2099-01-01',
+        },
     ];
     const entry = findRegistryEntry(entries, 'svgo', '3.3.2');
     assert.ok(entry);
@@ -131,7 +152,7 @@ test('findRegistryEntry: matches by dependency name and allowed-version', () => 
 });
 
 test('findRegistryEntry: matches when allowed-version is missing (covers any pin)', () => {
-    const entries = [{id: 'DEP-0001', dependency: 'svgo'}];
+    const entries = [{id: 'DEP-0001', dependency: 'svgo', 'expires-at': '2099-01-01'}];
     const entry = findRegistryEntry(entries, 'svgo', '3.3.2');
     assert.ok(entry);
 });
@@ -147,7 +168,9 @@ test('findRegistryEntry: returns undefined when dependency name not in registry'
 });
 
 test('findRegistryEntry: coerces numeric allowed-version to string', () => {
-    const entries = [{id: 'DEP-0001', dependency: 'svgo', 'allowed-version': 3.3}];
+    const entries = [
+        {id: 'DEP-0001', dependency: 'svgo', 'allowed-version': 3.3, 'expires-at': '2099-01-01'},
+    ];
     const entry = findRegistryEntry(entries, 'svgo', '3.3');
     assert.ok(entry);
 });
@@ -155,6 +178,38 @@ test('findRegistryEntry: coerces numeric allowed-version to string', () => {
 test('findRegistryEntry: handles non-array entries', () => {
     assert.strictEqual(findRegistryEntry(null, 'svgo', '3.3.2'), undefined);
     assert.strictEqual(findRegistryEntry(undefined, 'svgo', '3.3.2'), undefined);
+});
+
+test('findRegistryEntry: ordinary exceptions expire and missing or invalid dates fail closed', () => {
+    const entry = {dependency: 'svgo', 'allowed-version': '3.3.2'};
+    const now = new Date('2026-10-06T00:00:00Z');
+    const match = (expiry) =>
+        findRegistryEntry(
+            [{...entry, 'expires-at': expiry}],
+            'svgo',
+            '3.3.2',
+            undefined,
+            undefined,
+            now,
+        );
+
+    for (const expiry of [
+        undefined,
+        null,
+        '',
+        false,
+        1,
+        'invalid',
+        '2026-02-30',
+        '2026-10-05',
+        '2026-10-06',
+        new Date('invalid'),
+    ]) {
+        assert.strictEqual(match(expiry), undefined, String(expiry));
+    }
+    for (const expiry of ['2026-10-07', new Date('2026-10-07')]) {
+        assert.ok(match(expiry));
+    }
 });
 
 // --- missingMandatoryFields ----------------------------------------------
@@ -192,6 +247,8 @@ test('managed infra policy allows scoped dev release pins but fails closed elsew
     for (const overrides of [
         {'expires-at': null},
         {'expires-at': 'invalid'},
+        {'expires-at': undefined},
+        {'expires-at': '2026-02-30'},
         {repositories: []},
         {dependency: 'other'},
     ]) {
@@ -295,6 +352,7 @@ test('enforce: passes when every exact pin has a registry entry', () => {
                 'allowed-version': '3.3.2',
                 reason: 'broken',
                 owner: 'team',
+                'expires-at': '2099-01-01',
                 repositories: ['cli', 'transform'],
             },
         ],
@@ -347,6 +405,7 @@ test('enforceChanges: validates a changed exact version against the registry', (
                 'allowed-version': '3.3.2',
                 reason: 'Known rendering regression in newer versions',
                 owner: 'team',
+                'expires-at': '2099-01-01',
                 repositories: ['cli'],
             },
         ],
@@ -360,7 +419,14 @@ test('enforceChanges: validates a changed exact version against the registry', (
 test('enforce: flags entry missing mandatory reason/owner', () => {
     const pkg = {dependencies: {svgo: '3.3.2'}};
     const registry = {
-        entries: [{id: 'DEP-0001', dependency: 'svgo', 'allowed-version': '3.3.2'}],
+        entries: [
+            {
+                id: 'DEP-0001',
+                dependency: 'svgo',
+                'allowed-version': '3.3.2',
+                'expires-at': '2099-01-01',
+            },
+        ],
     };
     const result = enforce(pkg, registry, 'cli');
     assert.strictEqual(result.ok, false);
@@ -379,6 +445,7 @@ test('enforce: scopes entries by repo when repoName given', () => {
                 reason: 'x',
                 owner: 'y',
                 repositories: ['transform'],
+                'expires-at': '2099-01-01',
             },
         ],
     };
@@ -398,6 +465,7 @@ test('enforce: global entries (no repositories) apply to all repos', () => {
                 'allowed-version': '3.3.2',
                 reason: 'x',
                 owner: 'y',
+                'expires-at': '2099-01-01',
             },
         ],
     };
@@ -407,7 +475,15 @@ test('enforce: global entries (no repositories) apply to all repos', () => {
 
 test('enforce: counts only exact pins, ignores ranges', () => {
     const pkg = {
-        dependencies: {svgo: '3.3.2', lodash: '^4.17.0', ajv: '~8.17.1'},
+        dependencies: {
+            svgo: '3.3.2',
+            lodash: '^4.17.0',
+            ajv: '~8.17.1',
+            wildcard: '1.2.*',
+            partial: '15',
+            hyphen: '1.2.3 - 2.0.0',
+            comparators: '1.2.3 <2.0.0',
+        },
     };
     const registry = {
         entries: [
@@ -417,6 +493,7 @@ test('enforce: counts only exact pins, ignores ranges', () => {
                 'allowed-version': '3.3.2',
                 reason: 'x',
                 owner: 'y',
+                'expires-at': '2099-01-01',
             },
         ],
     };

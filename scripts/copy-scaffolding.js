@@ -8,6 +8,7 @@ const {
     existsSync,
     realpathSync,
 } = require('node:fs');
+const {readBlacklist, isExcluded} = require('./scaffolding-blacklist');
 
 // Determine package root directory
 // Try multiple strategies to find the package root
@@ -40,14 +41,7 @@ if (!existsSync(srcDir)) {
 
 const targetDir = process.env.INFRA_TARGET_DIR || process.cwd();
 
-let infraBlacklist = [];
-if (process.env.INFRA_BLACKLIST) {
-    try {
-        infraBlacklist = JSON.parse(process.env.INFRA_BLACKLIST);
-    } catch {
-        // ignore invalid blacklist
-    }
-}
+const infraBlacklist = readBlacklist();
 
 /** @type {{ PACKAGE_NAME: string }} Variables for scaffolding template substitution */
 let scaffoldVars = {PACKAGE_NAME: 'package'};
@@ -90,24 +84,11 @@ if (!existsSync(srcDir)) {
     process.exit(1);
 }
 
-function matchesGlob(filePath, pattern) {
-    if (pattern.includes('*')) {
-        const regexStr = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
-        return new RegExp(`^${regexStr}$`).test(filePath);
-    }
-    return false;
-}
-
 function copyScaffoldingFiles(excludePatterns = []) {
     function shouldExclude(filePath) {
         const relPath = relative(srcDir, filePath);
 
-        if (infraBlacklist.length > 0) {
-            for (const pattern of infraBlacklist) {
-                if (relPath === pattern || relPath.startsWith(pattern)) return true;
-                if (matchesGlob(relPath, pattern)) return true;
-            }
-        }
+        if (isExcluded(relPath, infraBlacklist)) return true;
 
         return excludePatterns.some((pattern) => {
             if (typeof pattern === 'string') {
@@ -167,6 +148,8 @@ function copyWorkflows() {
         return;
     }
 
+    if (isExcluded('.github/workflows', infraBlacklist)) return;
+
     if (!existsSync(workflowsTarget)) {
         mkdirSync(workflowsTarget, {recursive: true});
     }
@@ -175,13 +158,7 @@ function copyWorkflows() {
     for (const entry of entries) {
         if (entry.isFile()) {
             const relPath = `.github/workflows/${entry.name}`;
-            const isBlacklisted = infraBlacklist.some(
-                (pattern) =>
-                    relPath === pattern ||
-                    relPath.startsWith(pattern) ||
-                    matchesGlob(relPath, pattern),
-            );
-            if (isBlacklisted) {
+            if (isExcluded(relPath, infraBlacklist)) {
                 console.log(`[@diplodoc/infra] Skipping ${relPath} (blacklisted)`);
                 continue;
             }

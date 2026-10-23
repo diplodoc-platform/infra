@@ -21,14 +21,7 @@
  *   | critical | security-sensitive runtime,           | all checks + security     | assigned owner         |
  *   |          | major core                            | review                    |                        |
  *
- * Runnable two ways:
- *   - As a CLI:   node scripts/risk-classification.js --name <pkg> [--section <s>]
- *   - As a module: require('./risk-classification') -> pure helpers for tests.
- *
- * Flags:
- *   --name <package>    Dependency package name (required)
- *   --section <section> package.json section (dependencies | devDependencies | ...)
- *   --json              Emit JSON result
+ * Shared module used by policy review and the Dependabot inventory.
  */
 
 const RISK_LEVELS = ['low', 'medium', 'high', 'critical'];
@@ -37,6 +30,15 @@ const RISK_LEVELS = ['low', 'medium', 'high', 'critical'];
  * Ordered risk weights (low < medium < high < critical).
  */
 const RISK_WEIGHT = {low: 0, medium: 1, high: 2, critical: 3};
+
+const DEFAULT_RISK_BY_CHANGE = {
+    added: 'medium',
+    removed: 'low',
+    patch: 'low',
+    minor: 'medium',
+    major: 'high',
+    unknown: 'medium',
+};
 
 /**
  * Human-readable description of each risk level, used by the review
@@ -253,21 +255,39 @@ function classifyDependency(name, section) {
  * @returns {string}
  */
 function elevateRisk(risk) {
-    const order = ['low', 'medium', 'high', 'critical'];
-    const idx = order.indexOf(risk);
+    const idx = RISK_LEVELS.indexOf(risk);
     if (idx === -1) {
         return risk;
     }
-    return order[Math.min(idx + 1, order.length - 1)];
+    return RISK_LEVELS[Math.min(idx + 1, RISK_LEVELS.length - 1)];
+}
+
+/** Apply the same registry, package-name and update-size policy to every consumer. */
+function riskForUpdate(entry, {name, section, changeType = 'changed', updateType = 'unknown'}) {
+    if (entry && entry.risk && RISK_WEIGHT[entry.risk] !== undefined) return entry.risk;
+
+    const classified = classifyDependency(name, section);
+    if (classified !== null) {
+        if (changeType === 'removed') return DEFAULT_RISK_BY_CHANGE.removed;
+        if (changeType === 'changed' && classified !== 'low' && updateType === 'major') {
+            return elevateRisk(classified);
+        }
+        return classified;
+    }
+
+    const fallback = changeType === 'changed' ? updateType : changeType;
+    return DEFAULT_RISK_BY_CHANGE[fallback] || 'medium';
 }
 
 module.exports = {
     RISK_LEVELS,
     RISK_WEIGHT,
+    DEFAULT_RISK_BY_CHANGE,
     RISK_DESCRIPTIONS,
     CLASSIFICATION_RULES,
     globToRegExp,
     matchDependency,
     classifyDependency,
     elevateRisk,
+    riskForUpdate,
 };

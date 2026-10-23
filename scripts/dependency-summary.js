@@ -33,30 +33,32 @@
  *   --markdown <path>     Write markdown summary to file
  *   --owner <name>        GitHub org owner (default: diplodoc-platform)
  *   --skip-checks         Skip per-PR check-status lookup (faster)
+ *   --snapshot <path>     Reuse the health audit's scoped PR inventory
  *
  * Environment variables:
  *   GH_TOKEN              GitHub token (App installation token) with repo:read
  *   GITHUB_TOKEN          Fallback for GH_TOKEN
  */
 
-const {readFileSync, writeFileSync, existsSync, mkdirSync} = require('node:fs');
-const {dirname, join, resolve} = require('node:path');
+const {join, resolve} = require('node:path');
 const yaml = require('js-yaml');
 
-const {parseRepoList, exportInventory, loadConfig, loadRegistry} = require('./export-pr-inventory');
+const {parseRepoList, loadConfig, loadRegistry} = require('./export-pr-inventory');
+const {parseFlags, writeOutput} = require('./cli-options');
+const {auditInventory, readSnapshot} = require('./inventory-snapshot');
+const {githubData} = require('./github-request');
 
-const {computeHealth, SLA_RULES} = require('./dependency-health');
+const {computeHealth} = require('./dependency-health');
 
-const {resolveRegistryPath, filterEntriesForRepo} = require('./generate-dependency-policy');
+const {filterEntriesForRepo} = require('./generate-dependency-policy');
 
-const {extractExactPins, findRegistryEntry} = require('./enforce-exact-pin');
+const {extractExactPins, findRegistryEntry, isExactPin} = require('./enforce-exact-pin');
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DEFAULT_OWNER = 'diplodoc-platform';
-const API_ROOT = 'https://api.github.com';
 
 /**
  * Default per-repo WIP limit when dependabot.yml is not available.
@@ -74,31 +76,6 @@ const NEW_PR_AGE_DAYS = 3;
 // GitHub API helpers
 // ---------------------------------------------------------------------------
 
-async function ghRequest(token, path) {
-    const res = await fetch(`${API_ROOT}${path}`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-            'User-Agent': 'diplodoc-infra-summary',
-        },
-    });
-    const text = await res.text();
-    let json = null;
-    if (text) {
-        try {
-            json = JSON.parse(text);
-        } catch {
-            json = null;
-        }
-    }
-    if (!res.ok) {
-        const detail = json && json.message ? json.message : text || res.statusText;
-        throw new Error(`GitHub API GET ${path} -> ${res.status}: ${detail}`);
-    }
-    return json;
-}
-
 /**
  * Fetch a file from a repository via the GitHub Contents API.
  * Returns the decoded text content, or null if the file does not exist.
@@ -111,16 +88,23 @@ async function ghRequest(token, path) {
  */
 async function fetchFileContent(token, owner, repo, path) {
     try {
-        const data = await ghRequest(
+        const data = await githubData(
             token,
             `/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`,
+            'diplodoc-infra-summary',
         );
-        if (data && data.content && data.encoding === 'base64') {
-            return Buffer.from(data.content, 'base64').toString('utf8');
+        if (!data || typeof data.content !== 'string' || data.encoding !== 'base64') {
+            throw new Error(`Incomplete Contents API response for ${path}`);
         }
-        return null;
-    } catch {
-        return null;
+        const encoded = data.content.replace(/\s/g, '');
+        const decoded = Buffer.from(encoded, 'base64');
+        if (decoded.toString('base64') !== encoded) {
+            throw new Error(`Invalid base64 content for ${path}`);
+        }
+        return decoded.toString('utf8');
+    } catch (error) {
+        if (error.status === 404) return null;
+        throw error;
     }
 }
 
@@ -229,13 +213,13 @@ function expiringExceptions(exceptions) {
  * @param {Array<object>} registryEntries Central registry entries (full list).
  * @returns {Array<{repo: string, name: string, version: string, section: string}>}
  */
-function unpinnedVersions(repoName, packageJson, registryEntries) {
+function unpinnedVersions(repoName, packageJson, registryEntries, now) {
     if (!packageJson || typeof packageJson !== 'object') return [];
     const scoped = filterEntriesForRepo(registryEntries || [], repoName);
     const pins = extractExactPins(packageJson);
     const violations = [];
     for (const pin of pins) {
-        const entry = findRegistryEntry(scoped, pin.name, pin.version);
+        const entry = findRegistryEntry(scoped, pin.name, pin.version, pin.section, repoName, now);
         if (!entry) {
             violations.push({
                 repo: repoName,
@@ -306,7 +290,7 @@ function stalePolicyEntries(repoName, packageJson, registryEntries) {
             // The actual version in package.json may be a range (^1.2.3).
             // Only flag a mismatch if the actual is an exact pin AND it
             // doesn't match the allowed-version.
-            if (/^\d/.test(actualVersion) && actualVersion !== allowedStr) {
+            if (isExactPin(actualVersion) && actualVersion !== allowedStr) {
                 stale.push({
                     repo: repoName,
                     id: entry.id || '(no id)',
@@ -361,7 +345,7 @@ function reposAtPrLimit(inventory, prLimits) {
  * @param {Date} [params.now]
  * @returns {object} Daily summary with 7 categories.
  */
-function buildSummary({inventory, health, manifests, registryEntries, prLimits, now}) {
+function buildSummary({inventory, health, manifests, registryEntries, prLimits, now, errors = []}) {
     const referenceTime = now || new Date();
     const inv = Array.isArray(inventory) ? inventory : [];
     const h = health || {prs: [], exceptions: [], summary: {}};
@@ -379,7 +363,9 @@ function buildSummary({inventory, health, manifests, registryEntries, prLimits, 
     const repos = new Set(inv.map((p) => p.repo));
     for (const [repoName, packageJson] of Object.entries(manifests || {})) {
         if (packageJson) {
-            cats.unpinnedVersions.push(...unpinnedVersions(repoName, packageJson, registryEntries));
+            cats.unpinnedVersions.push(
+                ...unpinnedVersions(repoName, packageJson, registryEntries, referenceTime),
+            );
             cats.stalePolicyEntries.push(
                 ...stalePolicyEntries(repoName, packageJson, registryEntries),
             );
@@ -398,6 +384,8 @@ function buildSummary({inventory, health, manifests, registryEntries, prLimits, 
 
     return {
         generatedAt: referenceTime.toISOString(),
+        complete: errors.length === 0,
+        errors,
         categories: cats,
         totals: {
             prsWithoutOwner: cats.prsWithoutOwner.length,
@@ -441,6 +429,17 @@ function renderSummaryMarkdown(summary) {
     lines.push(`Generated: ${summary.generatedAt || new Date().toISOString()}`);
     lines.push('');
 
+    if (summary.complete === false) {
+        lines.push(
+            '**Incomplete audit: results are unknown for some repositories. Do not treat zero counts as all clear.**',
+            '',
+        );
+        for (const error of summary.errors || []) {
+            lines.push(`- ${error.repo}: ${error.phase} — ${error.message}`);
+        }
+        lines.push('');
+    }
+
     // Summary table
     lines.push('## Summary');
     lines.push('');
@@ -472,7 +471,14 @@ function renderSummaryMarkdown(summary) {
         ['Repos at PR limit', totals.reposAtPrLimit, totals.reposAtPrLimit > 0 ? 'action' : 'ok'],
     ];
     for (const [label, count, status] of rows) {
-        const icon = status === 'critical' ? 'red' : status === 'action' ? 'orange' : 'green';
+        const icon =
+            status === 'critical'
+                ? 'red'
+                : status === 'action'
+                  ? 'orange'
+                  : summary.complete === false
+                    ? 'unknown'
+                    : 'green';
         lines.push(`| ${label} | ${count} | ${icon} |`);
     }
     lines.push('');
@@ -600,7 +606,7 @@ function renderSummaryMarkdown(summary) {
         lines.push('');
     }
 
-    if (totals.actionableItems === 0) {
+    if (totals.actionableItems === 0 && summary.complete !== false) {
         lines.push('---');
         lines.push('All clear. No actionable items found.');
         lines.push('');
@@ -631,12 +637,28 @@ function renderSummaryMarkdown(summary) {
  * @param {Date} [params.now] Reference time.
  * @returns {Promise<{summary: object, errors: Array}>}
  */
-async function runSummary({token, owner, repos, registryEntries = [], skipChecks = false, now}) {
-    const referenceTime = now || new Date();
+async function runSummary({
+    token,
+    owner,
+    repos,
+    registryEntries = [],
+    skipChecks = false,
+    now,
+    snapshot,
+}) {
+    const invResult = await auditInventory({
+        token,
+        owner,
+        repos,
+        registryEntries,
+        skipChecks,
+        now,
+        snapshot,
+    });
+    const referenceTime = now || new Date(invResult.capturedAt);
     const errors = [];
 
     // 1. PR inventory + health audit
-    const invResult = await exportInventory({token, owner, repos, registryEntries, skipChecks});
     for (const e of invResult.errors || []) {
         errors.push(e);
     }
@@ -649,16 +671,35 @@ async function runSummary({token, owner, repos, registryEntries = [], skipChecks
         // package.json
         try {
             const content = await fetchFileContent(token, owner, repo, 'package.json');
-            if (content) {
-                try {
-                    manifests[repo] = JSON.parse(content);
-                } catch {
-                    manifests[repo] = null;
-                    errors.push({repo, phase: 'parse-manifest', message: 'invalid package.json'});
-                }
-            } else {
-                manifests[repo] = null;
+            if (content === null) throw new Error('Required package.json is missing');
+            const manifest = JSON.parse(content);
+            if (
+                !manifest ||
+                typeof manifest !== 'object' ||
+                Array.isArray(manifest) ||
+                typeof manifest.name !== 'string' ||
+                !manifest.name.trim()
+            ) {
+                throw new Error('package.json must contain an object with a package name');
             }
+            for (const section of [
+                'dependencies',
+                'devDependencies',
+                'peerDependencies',
+                'optionalDependencies',
+            ]) {
+                const deps = manifest[section];
+                if (
+                    deps !== undefined &&
+                    (!deps ||
+                        typeof deps !== 'object' ||
+                        Array.isArray(deps) ||
+                        Object.values(deps).some((version) => typeof version !== 'string'))
+                ) {
+                    throw new Error(`Invalid package.json ${section}`);
+                }
+            }
+            manifests[repo] = manifest;
         } catch (error) {
             manifests[repo] = null;
             errors.push({repo, phase: 'fetch-manifest', message: error.message});
@@ -667,9 +708,26 @@ async function runSummary({token, owner, repos, registryEntries = [], skipChecks
         // dependabot.yml
         try {
             const depContent = await fetchFileContent(token, owner, repo, '.github/dependabot.yml');
+            if (depContent !== null) {
+                const config = yaml.load(depContent);
+                if (!config || config.version !== 2 || !Array.isArray(config.updates)) {
+                    throw new Error('Invalid dependabot.yml');
+                }
+                for (const block of config.updates) {
+                    const limit = block && block['open-pull-requests-limit'];
+                    if (
+                        !block ||
+                        typeof block !== 'object' ||
+                        Array.isArray(block) ||
+                        (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0))
+                    ) {
+                        throw new Error('Invalid dependabot.yml update block');
+                    }
+                }
+            }
             prLimits[repo] = parseDependabotLimit(depContent);
-        } catch {
-            prLimits[repo] = DEFAULT_PR_LIMIT;
+        } catch (error) {
+            errors.push({repo, phase: 'fetch-dependabot', message: error.message});
         }
     }
 
@@ -681,6 +739,7 @@ async function runSummary({token, owner, repos, registryEntries = [], skipChecks
         registryEntries,
         prLimits,
         now: referenceTime,
+        errors,
     });
 
     return {summary, errors};
@@ -689,29 +748,6 @@ async function runSummary({token, owner, repos, registryEntries = [], skipChecks
 // ---------------------------------------------------------------------------
 // CLI entry point
 // ---------------------------------------------------------------------------
-
-function parseFlags(argv) {
-    const flags = {};
-    for (let i = 0; i < argv.length; i++) {
-        if (!argv[i].startsWith('--')) continue;
-        const key = argv[i].slice(2);
-        const next = argv[i + 1];
-        if (next && !next.startsWith('--')) {
-            flags[key] = next;
-            i++;
-        } else {
-            flags[key] = true;
-        }
-    }
-    return flags;
-}
-
-function writeOutput(filePath, content) {
-    if (!filePath) return;
-    const abs = resolve(filePath);
-    mkdirSync(dirname(abs), {recursive: true});
-    writeFileSync(abs, content, 'utf8');
-}
 
 async function main() {
     const flags = parseFlags(process.argv.slice(2));
@@ -746,7 +782,10 @@ async function main() {
 
     let result;
     try {
-        result = await runSummary({token, owner, repos, registryEntries, skipChecks});
+        const snapshot = flags.snapshot
+            ? readSnapshot(flags.snapshot, {owner, repos, skipChecks})
+            : undefined;
+        result = await runSummary({token, owner, repos, registryEntries, skipChecks, snapshot});
     } catch (error) {
         console.error(`[@diplodoc/infra] Fatal: ${error.message}`);
         process.exit(1);
@@ -781,7 +820,7 @@ async function main() {
         }
     }
 
-    if (t.actionableItems > 0) {
+    if (t.actionableItems > 0 || errors.length > 0) {
         process.exit(1);
     }
 }
@@ -797,6 +836,7 @@ module.exports = {
     DEFAULT_PR_LIMIT,
     NEW_PR_AGE_DAYS,
     parseDependabotLimit,
+    fetchFileContent,
     prsWithoutOwner,
     prsWithFailedChecks,
     prsBreachingSla,

@@ -24,6 +24,7 @@
 const {readFileSync, writeFileSync, existsSync, mkdirSync} = require('node:fs');
 const {join, dirname} = require('node:path');
 const yaml = require('js-yaml');
+const {readBlacklist, isExcluded} = require('./scaffolding-blacklist');
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests — no process state)
@@ -143,6 +144,11 @@ function serializeRepoPolicy(policy) {
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
+    if (isExcluded('.github/dependency-policy.yml', readBlacklist())) {
+        console.log('[@diplodoc/infra] Skipping .github/dependency-policy.yml (blacklisted)');
+        process.exit(0);
+    }
+
     const args = process.argv.slice(2);
     const flags = {};
     for (let i = 0; i < args.length; i++) {
