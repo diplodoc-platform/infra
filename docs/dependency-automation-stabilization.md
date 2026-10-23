@@ -35,7 +35,10 @@ does not activate either audit schedule, live merge, publication or distribution
    Actions use version tags, not commit hashes. A new run can pick up a newer
    reviewed workflow; within that run its tools use the resolved workflow SHA.
    Keep the separately pinned trusted policy/publisher source commit available
-   on GitHub, including after a squash merge.
+   on GitHub, including after a rebase or squash merge. Keep any branch anchoring
+   that SHA indefinitely, or until a separately reviewed pin update replaces
+   every reference in infra, scaffolding and already distributed consumer
+   workflows. Do not rely on GitHub retaining an otherwise unreachable commit.
 2. Observe green testpack `master` Quality runs on Ubuntu, macOS, and Windows.
 3. Run the reusable downstream check against exact candidate SHAs for at least:
    - a light extension update such as `tabs-extension` with
