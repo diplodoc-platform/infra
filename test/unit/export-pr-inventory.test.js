@@ -250,10 +250,16 @@ test('normalizeLabels: handles objects, strings, and mixed', () => {
 
 // --- deriveUpdateType / compareSemver / parseSemver -----------------------
 
-test('deriveUpdateType: uses labels when present', () => {
+test('deriveUpdateType: accepts labels matching the version change', () => {
     assert.strictEqual(deriveUpdateType(['patch'], '1.0.0', '1.0.1'), 'patch');
     assert.strictEqual(deriveUpdateType(['minor'], '1.0.0', '1.1.0'), 'minor');
     assert.strictEqual(deriveUpdateType(['major'], '1.0.0', '2.0.0'), 'major');
+});
+
+test('deriveUpdateType: actual versions take precedence over misleading labels', () => {
+    assert.strictEqual(deriveUpdateType(['patch'], '1.0.0', '2.0.0'), 'major');
+    assert.strictEqual(deriveUpdateType(['major'], '1.0.0', '1.0.1'), 'patch');
+    assert.strictEqual(deriveUpdateType(['minor'], null, null), 'minor');
 });
 
 test('deriveUpdateType: falls back to semver comparison', () => {
@@ -298,6 +304,61 @@ test('assessRisk: falls back to update-type default', () => {
     assert.strictEqual(assessRisk('unknown-dep', [], 'minor'), 'medium');
     assert.strictEqual(assessRisk('unknown-dep', [], 'major'), 'high');
     assert.strictEqual(assessRisk('unknown-dep', [], 'unknown'), 'medium');
+});
+
+test('assessRisk: name and update-size classification agrees with policy review', () => {
+    const {riskForChange} = require('../../scripts/dependency-policy-review');
+    const versions = {patch: '1.0.1', minor: '1.1.0', major: '2.0.0', unknown: 'next'};
+
+    for (const name of [
+        'slugify',
+        'DOMPurify',
+        'js-yaml',
+        '@types/node',
+        'esbuild',
+        'jose',
+        'unknown-dep',
+    ]) {
+        for (const [updateType, to] of Object.entries(versions)) {
+            const change = {
+                name,
+                from: '1.0.0',
+                to,
+                changeType: 'changed',
+                section: 'devDependencies',
+            };
+            assert.strictEqual(
+                assessRisk(name, [], updateType),
+                riskForChange(undefined, change),
+                `${name}: ${updateType}`,
+            );
+        }
+    }
+    assert.strictEqual(assessRisk('slugify', [], 'patch'), 'high');
+    assert.strictEqual(assessRisk('DOMPurify', [], 'patch'), 'high');
+});
+
+test('buildInventoryEntry: a mislabeled major cannot downgrade risk compared with policy review', () => {
+    const {riskForChange} = require('../../scripts/dependency-policy-review');
+
+    for (const name of ['slugify', 'dompurify', 'unknown-dep']) {
+        const entry = buildInventoryEntry(
+            {title: `Bump ${name} from 1.0.0 to 2.0.0`, labels: ['patch']},
+            'transform',
+            'passing',
+            [],
+        );
+        const risk = riskForChange(undefined, {
+            name,
+            changeType: 'changed',
+            from: '1.0.0',
+            to: '2.0.0',
+        });
+
+        assert.strictEqual(entry.updateType, 'major');
+        assert.strictEqual(entry.risk, risk, name);
+        assert.notStrictEqual(entry.risk, 'low');
+    }
 });
 
 // --- buildInventoryEntry ---------------------------------------------------

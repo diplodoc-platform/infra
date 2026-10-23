@@ -39,7 +39,6 @@
  *   --dry-run             Audit-only: evaluate but do not merge (default)
  *   --enabled             Enable live auto-merge (phase 2)
  *   --skip-checks         Skip per-PR check-status lookup (faster, less data)
- *   --tracking-repo <name> Repo for audit tracking issue (default: infra)
  *
  * Environment variables:
  *   GH_TOKEN              GitHub token (App installation token)
@@ -47,29 +46,22 @@
  *   AUTOMERGE_ENABLED     'true' enables live merges (equivalent to --enabled)
  */
 
-const {readFileSync, writeFileSync, mkdirSync, existsSync} = require('node:fs');
-const {dirname, join, resolve} = require('node:path');
+const {join, resolve} = require('node:path');
 
 const {parseRepoList, exportInventory, loadConfig, loadRegistry} = require('./export-pr-inventory');
 
-const {evaluateAutoMerge, AUTO_MERGE_CONDITIONS, SOAK_WINDOW_MS} = require('./auto-merge-rules');
+const {evaluateAutoMerge} = require('./auto-merge-rules');
 
 const {filterEntriesForRepo} = require('./generate-dependency-policy');
 const {deriveManifestEvidence} = require('./manifest-evidence');
+const {parseFlags, writeOutput} = require('./cli-options');
+const {githubRequest} = require('./github-request');
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DEFAULT_OWNER = 'diplodoc-platform';
-const INFRA_REPO = 'infra';
-const API_ROOT = 'https://api.github.com';
-
-/**
- * Audit tracking issue title (stable, date-free for update-in-place).
- */
-const AUDIT_ISSUE_TITLE = 'Auto-merge Audit Log';
-const AUDIT_ISSUE_LABELS = ['dependency-health', 'auto-merge'];
 
 /**
  * Maximum number of files to fetch per PR (GitHub API paginates at 100).
@@ -81,39 +73,6 @@ const MAX_PR_FILES = 100;
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests — no network, no process state)
 // ---------------------------------------------------------------------------
-
-/**
- * Determine the package.json section that changed from a unified diff patch.
- *
- * The patch text from the GitHub API contains lines like:
- *   `+"devDependencies": {`
- *   `+    "eslint": "8.0.0",`
- *   `-    "eslint": "7.0.0",`
- *
- * We look for added (`+`) lines containing a section name key to determine
- * which section the dependency change lives in.  If multiple sections
- * changed, we return the first production-relevant one (conservative —
- * production deps block auto-merge, so the caller sees the exclusion).
- *
- * @param {string} patch Unified diff patch text for package.json.
- * @returns {string|null} Section name or null if not determinable.
- */
-function deriveSection(patch) {
-    if (typeof patch !== 'string' || patch.length === 0) return null;
-    const sections = [
-        'dependencies',
-        'devDependencies',
-        'peerDependencies',
-        'optionalDependencies',
-    ];
-    for (const section of sections) {
-        const pattern = new RegExp(`^\\+\\s*["']${section}["']\\s*:`, 'm');
-        if (pattern.test(patch)) {
-            return section;
-        }
-    }
-    return null;
-}
 
 /**
  * Determine whether a PR is a grouped Dependabot PR.
@@ -208,41 +167,6 @@ function deriveChecksGreen(checkRunsResponse, requiredChecks = [], headSha) {
 function deriveHasException(dependency, scopedEntries) {
     if (!dependency || !Array.isArray(scopedEntries)) return false;
     return scopedEntries.some((e) => e && e.dependency === dependency);
-}
-
-/**
- * Count new transitive dependencies from a lockfile diff patch.
- *
- * A "new transitive" is a package that appears in the `packages` or
- * `dependencies` section of package-lock.json with an added (`+`) line
- * and is NOT a direct dependency (i.e. it's nested under `node_modules/`
- * with a path prefix, indicating it's transitive).
- *
- * To distinguish NEW entries from UPDATED entries (version bump of an
- * existing package), we check that the added `node_modules/<name>` key
- * does NOT have a corresponding removed (`-`) line with the same key.
- * A version update produces both a `-` and `+` line for the same key.
- *
- * @param {string} lockPatch Unified diff patch for package-lock.json.
- * @returns {number}
- */
-function deriveNewTransitiveCount(lockPatch) {
-    if (typeof lockPatch !== 'string' || lockPatch.length === 0) return 0;
-    const lines = lockPatch.split('\n');
-    const added = new Set();
-    const removed = new Set();
-    for (const line of lines) {
-        const addMatch = line.match(/^\+\s*["'](node_modules\/[^"']+)["']\s*:/);
-        if (addMatch) added.add(addMatch[1]);
-        const removeMatch = line.match(/^-\s*["'](node_modules\/[^"']+)["']\s*:/);
-        if (removeMatch) removed.add(removeMatch[1]);
-    }
-    // New transitive = added entries that were NOT previously present (no removal).
-    let count = 0;
-    for (const name of added) {
-        if (!removed.has(name)) count++;
-    }
-    return count;
 }
 
 /**
@@ -476,30 +400,7 @@ function summarizeAudit(auditEntries) {
 // ---------------------------------------------------------------------------
 
 async function ghRequest(token, method, path, body) {
-    const opts = {
-        method: method || 'GET',
-        headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-            'User-Agent': 'diplodoc-infra-auto-merge',
-        },
-    };
-    if (body !== undefined) {
-        opts.headers['Content-Type'] = 'application/json';
-        opts.body = JSON.stringify(body);
-    }
-    const res = await fetch(`${API_ROOT}${path}`, opts);
-    const text = await res.text();
-    let json = null;
-    if (text) {
-        try {
-            json = JSON.parse(text);
-        } catch {
-            json = null;
-        }
-    }
-    return {ok: res.ok, status: res.status, json};
+    return githubRequest(token, method, path, body, 'diplodoc-infra-auto-merge');
 }
 
 /**
@@ -684,19 +585,6 @@ async function mergePullRequest(token, owner, repo, number, sha) {
     return {ok: true};
 }
 
-/**
- * Parse a GitHub PR URL into {owner, repo, number}.
- *
- * @param {string} url PR URL (e.g. https://github.com/diplodoc-platform/cli/pull/123)
- * @returns {{owner: string, repo: string, number: number}|null}
- */
-function parsePrUrl(url) {
-    if (typeof url !== 'string') return null;
-    const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-    if (!match) return null;
-    return {owner: match[1], repo: match[2], number: parseInt(match[3], 10)};
-}
-
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
@@ -843,27 +731,19 @@ function getHeadSha(entry) {
 // CLI entry point
 // ---------------------------------------------------------------------------
 
-function parseFlags(argv) {
-    const flags = {};
-    for (let i = 0; i < argv.length; i++) {
-        if (!argv[i].startsWith('--')) continue;
-        const key = argv[i].slice(2);
-        const next = argv[i + 1];
-        if (next && !next.startsWith('--')) {
-            flags[key] = next;
-            i++;
-        } else {
-            flags[key] = true;
-        }
+/** Explicit audit mode always overrides live-mode flags and environment. */
+function resolveAutoMergeMode(flags, env = process.env) {
+    if (flags['dry-run'] === true) return false;
+    const requested = flags.enabled === true || env.AUTOMERGE_ENABLED === 'true';
+    if (requested && env.AUTOMERGE_OBSERVATION_COMPLETE !== 'true') {
+        throw new Error(
+            'Live auto-merge requires AUTOMERGE_OBSERVATION_COMPLETE=true after the documented observation period',
+        );
     }
-    return flags;
-}
-
-function writeOutput(filePath, content) {
-    if (!filePath) return;
-    const abs = resolve(filePath);
-    mkdirSync(dirname(abs), {recursive: true});
-    writeFileSync(abs, content, 'utf8');
+    if (requested && flags['skip-checks'] === true) {
+        throw new Error('--skip-checks is audit-only and cannot be combined with live auto-merge');
+    }
+    return requested;
 }
 
 async function main() {
@@ -872,9 +752,7 @@ async function main() {
     const outputFile = typeof flags.output === 'string' ? flags.output : null;
     const markdownFile = typeof flags.markdown === 'string' ? flags.markdown : null;
 
-    const enableRequested = flags.enabled === true || process.env.AUTOMERGE_ENABLED === 'true';
-    const observationComplete = process.env.AUTOMERGE_OBSERVATION_COMPLETE === 'true';
-    const enabled = enableRequested && observationComplete;
+    const enabled = resolveAutoMergeMode(flags);
 
     const configPath = resolve(flags.config || join(__dirname, '..', 'distribution.yml'));
     const config = loadConfig(configPath);
@@ -898,19 +776,6 @@ async function main() {
 
     const registryEntries = loadRegistry(flags.registry);
     const skipChecks = flags['skip-checks'] === true;
-    if (enableRequested && !observationComplete) {
-        console.error(
-            'Error: live auto-merge requires AUTOMERGE_OBSERVATION_COMPLETE=true after the documented observation period',
-        );
-        process.exit(1);
-    }
-    if (enabled && skipChecks) {
-        console.error(
-            'Error: --skip-checks is audit-only and cannot be combined with live auto-merge',
-        );
-        process.exit(1);
-    }
-
     const mode = enabled ? 'ENABLED (live merges)' : 'DRY-RUN (audit only)';
     console.error(`[@diplodoc/infra] Auto-merge evaluation — ${mode} — ${repos.length} repo(s)...`);
 
@@ -954,7 +819,7 @@ async function main() {
         }
     }
 
-    if (s.mergeErrors > 0) {
+    if (s.mergeErrors > 0 || result.errors.length > 0) {
         process.exit(1);
     }
 }
@@ -968,23 +833,15 @@ if (require.main === module) {
 
 module.exports = {
     DEFAULT_OWNER,
-    INFRA_REPO,
-    AUDIT_ISSUE_TITLE,
-    AUDIT_ISSUE_LABELS,
-    SOAK_WINDOW_MS,
-    AUTO_MERGE_CONDITIONS,
-    deriveSection,
     deriveIsGrouped,
     deriveCiCompletedAt,
     deriveChecksGreen,
     deriveHasException,
-    deriveNewTransitiveCount,
     buildEvaluationInput,
     classifyPrForAutoMerge,
     formatAuditEntry,
     renderAuditLog,
     summarizeAudit,
-    parsePrUrl,
     fetchPrFiles,
     fetchJsonAtSha,
     fetchCheckRuns,
@@ -992,4 +849,5 @@ module.exports = {
     fetchRequiredChecks,
     mergePullRequest,
     runAutoMerge,
+    resolveAutoMergeMode,
 };

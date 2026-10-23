@@ -38,16 +38,19 @@
  *   --default-owner <login> Fallback assignee when no registry owner (default: diplodoc-platform/team)
  *   --dry-run             Do not assign or post — only print what would happen
  *   --skip-checks         Skip per-PR check-status lookup (faster)
+ *   --snapshot <path>     Reuse the health audit's scoped PR inventory
  *
  * Environment variables:
  *   GH_TOKEN              GitHub token (App installation token) with repo:read + issues:write
  *   GITHUB_TOKEN          Fallback for GH_TOKEN
  */
 
-const {readFileSync, writeFileSync, mkdirSync} = require('node:fs');
-const {dirname, join, resolve} = require('node:path');
+const {join, resolve} = require('node:path');
 
-const {parseRepoList, exportInventory, loadConfig, loadRegistry} = require('./export-pr-inventory');
+const {parseRepoList, loadConfig, loadRegistry} = require('./export-pr-inventory');
+const {parseFlags, writeOutput} = require('./cli-options');
+const {auditInventory, readSnapshot} = require('./inventory-snapshot');
+const {githubRequest} = require('./github-request');
 
 const {computeHealth} = require('./dependency-health');
 
@@ -59,7 +62,6 @@ const {filterEntriesForRepo} = require('./generate-dependency-policy');
 
 const DEFAULT_OWNER = 'diplodoc-platform';
 const INFRA_REPO = 'infra';
-const API_ROOT = 'https://api.github.com';
 
 /**
  * Stable title for the single SLA-breach tracking issue in the infra repo.
@@ -222,6 +224,16 @@ function renderTrackingIssue(health, registryEntries, defaultOwner, generatedAt)
     lines.push('');
     lines.push(`_Last updated: ${stamp}_`);
     lines.push('');
+    if (health && health.complete === false) {
+        lines.push(
+            '**Incomplete audit: assignment and issue updates were skipped. Zero counts are not all clear.**',
+            '',
+        );
+        for (const error of health.errors || []) {
+            lines.push(`- ${error.repo}: ${error.phase} — ${error.message}`);
+        }
+        lines.push('');
+    }
     lines.push('This issue is auto-maintained by the `Dependency Health Audit` workflow (T8.3).');
     lines.push('It tracks Dependabot PRs that have exceeded their SLA deadline. Each PR must');
     lines.push('either be **fixed** (merged, closed, or rebased) or have a **policy exception**');
@@ -238,11 +250,11 @@ function renderTrackingIssue(health, registryEntries, defaultOwner, generatedAt)
     lines.push(`| Distinct owners | ${Object.keys(groups).length} |`);
     lines.push('');
 
-    if (breaching.length === 0) {
+    if (breaching.length === 0 && (!health || health.complete !== false)) {
         lines.push('**No SLA breaches detected.** This issue will remain open as a placeholder');
         lines.push('and will be updated on the next audit run if breaches appear.');
         lines.push('');
-    } else {
+    } else if (breaching.length > 0) {
         const ownerNames = Object.keys(groups).sort();
         for (const owner of ownerNames) {
             const ownerPrs = groups[owner];
@@ -290,30 +302,7 @@ function renderTrackingIssue(health, registryEntries, defaultOwner, generatedAt)
 // ---------------------------------------------------------------------------
 
 async function ghRequest(token, method, path, body) {
-    const opts = {
-        method: method || 'GET',
-        headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-            'User-Agent': 'diplodoc-infra-assign',
-        },
-    };
-    if (body !== undefined) {
-        opts.headers['Content-Type'] = 'application/json';
-        opts.body = JSON.stringify(body);
-    }
-    const res = await fetch(`${API_ROOT}${path}`, opts);
-    const text = await res.text();
-    let json = null;
-    if (text) {
-        try {
-            json = JSON.parse(text);
-        } catch {
-            json = null;
-        }
-    }
-    return {ok: res.ok, status: res.status, json};
+    return githubRequest(token, method, path, body, 'diplodoc-infra-assign');
 }
 
 /**
@@ -350,13 +339,17 @@ async function addAssignees(token, owner, repo, number, logins) {
  * @returns {Promise<number|null>} Issue number or null if not found.
  */
 async function findTrackingIssue(token, owner, repo, title) {
-    const {ok, json} = await ghRequest(
+    const {ok, status, json} = await ghRequest(
         token,
         'GET',
         `/search/issues?q=${encodeURIComponent(`repo:${owner}/${repo} is:issue is:open in:title "${title}"`)}`,
     );
-    if (!ok || !json || !Array.isArray(json.items) || json.items.length === 0) {
-        return null;
+    if (!ok || !json || !Array.isArray(json.items) || json.incomplete_results === true) {
+        throw new Error(`Failed to search tracking issues: HTTP ${status} or incomplete response`);
+    }
+    if (json.items.length === 0) return null;
+    if (!Number.isSafeInteger(json.items[0].number) || json.items[0].number <= 0) {
+        throw new Error('Invalid issue number in tracking issue search');
     }
     return json.items[0].number;
 }
@@ -438,16 +431,32 @@ async function runAssign({
     defaultOwner,
     dryRun = false,
     now,
+    snapshot,
 }) {
-    const referenceTime = now || new Date();
+    const invResult = await auditInventory({
+        token,
+        owner,
+        repos,
+        registryEntries,
+        skipChecks,
+        now,
+        snapshot,
+    });
+    const referenceTime = now || new Date(invResult.capturedAt);
     const errors = [];
 
     // 1. Health audit (reuses export-pr-inventory + dependency-health)
-    const invResult = await exportInventory({token, owner, repos, registryEntries, skipChecks});
     for (const e of invResult.errors || []) {
         errors.push(e);
     }
     const health = computeHealth(invResult.inventory, registryEntries, referenceTime);
+    health.complete = errors.length === 0;
+    health.errors = errors.slice();
+
+    // Never mutate issues or assignees using a partial repository inventory.
+    if (errors.length > 0) {
+        return {actions: [], issue: null, health, summary: health.summary, errors};
+    }
 
     // 2. Build assignment actions
     const actions = buildAssignActions(health, registryEntries, defaultOwner);
@@ -521,29 +530,6 @@ async function runAssign({
 // CLI entry point
 // ---------------------------------------------------------------------------
 
-function parseFlags(argv) {
-    const flags = {};
-    for (let i = 0; i < argv.length; i++) {
-        if (!argv[i].startsWith('--')) continue;
-        const key = argv[i].slice(2);
-        const next = argv[i + 1];
-        if (next && !next.startsWith('--')) {
-            flags[key] = next;
-            i++;
-        } else {
-            flags[key] = true;
-        }
-    }
-    return flags;
-}
-
-function writeOutput(filePath, content) {
-    if (!filePath) return;
-    const abs = resolve(filePath);
-    mkdirSync(dirname(abs), {recursive: true});
-    writeFileSync(abs, content, 'utf8');
-}
-
 async function main() {
     const flags = parseFlags(process.argv.slice(2));
     const owner = flags.owner || process.env.REPO_OWNER || DEFAULT_OWNER;
@@ -582,6 +568,9 @@ async function main() {
 
     let result;
     try {
+        const snapshot = flags.snapshot
+            ? readSnapshot(flags.snapshot, {owner, repos, skipChecks})
+            : undefined;
         result = await runAssign({
             token: token || '',
             owner,
@@ -591,6 +580,7 @@ async function main() {
             trackingRepo,
             defaultOwner,
             dryRun,
+            snapshot,
         });
     } catch (error) {
         console.error(`[@diplodoc/infra] Fatal: ${error.message}`);
@@ -637,7 +627,7 @@ async function main() {
         }
     }
 
-    if (breaches > 0) {
+    if (breaches > 0 || result.errors.length > 0) {
         process.exit(1);
     }
 }

@@ -5,6 +5,17 @@ module.exports = async function dependencyAutoMergeSummary(
     files = require('node:fs'),
 ) {
     const fs = files;
+    if (env.AUDIT_EXIT_CODE !== undefined && env.AUDIT_EXIT_CODE !== '0') {
+        core.warning('Auto-merge audit is incomplete; counts are UNKNOWN, not all clear');
+        await core.summary
+            .addRaw(
+                '## Dependency Auto-merge (DRY-RUN)\n\n' +
+                    '**Incomplete audit: counts are UNKNOWN. See the job log and uploaded artifacts.**\n',
+            )
+            .write();
+        return;
+    }
+
     let audit;
     try {
         audit = JSON.parse(fs.readFileSync('.status/auto-merge-audit.json', 'utf8'));

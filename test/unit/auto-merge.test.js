@@ -1,84 +1,26 @@
 const assert = require('node:assert');
+const {execFileSync, spawnSync} = require('node:child_process');
+const {mkdtempSync, writeFileSync, rmSync} = require('node:fs');
+const {tmpdir} = require('node:os');
+const {join} = require('node:path');
 const {
-    SOAK_WINDOW_MS,
-    AUTO_MERGE_CONDITIONS,
-    deriveSection,
     deriveIsGrouped,
     deriveCiCompletedAt,
     deriveChecksGreen,
     deriveHasException,
-    deriveNewTransitiveCount,
     buildEvaluationInput,
     classifyPrForAutoMerge,
     formatAuditEntry,
     renderAuditLog,
     summarizeAudit,
-    parsePrUrl,
     extractRequiredCheckContexts,
+    resolveAutoMergeMode,
 } = require('../../scripts/auto-merge');
 
 const tests = [];
 function test(name, fn) {
     tests.push({name, fn});
 }
-
-// --- deriveSection ---------------------------------------------------------
-
-test('deriveSection: detects devDependencies from patch', () => {
-    const patch = [
-        '@@ -1,5 +1,5 @@',
-        ' {',
-        '   "name": "test",',
-        '+  "devDependencies": {',
-        '+    "eslint": "8.0.0",',
-        '-    "eslint": "7.0.0"',
-        '   }',
-        '}',
-    ].join('\n');
-    assert.strictEqual(deriveSection(patch), 'devDependencies');
-});
-
-test('deriveSection: detects dependencies (production)', () => {
-    const patch = [
-        '@@ -1,3 +1,3 @@',
-        ' {',
-        '+  "dependencies": {',
-        '+    "lodash": "4.17.21"',
-        ' }',
-    ].join('\n');
-    assert.strictEqual(deriveSection(patch), 'dependencies');
-});
-
-test('deriveSection: detects peerDependencies', () => {
-    const patch = '+  "peerDependencies": {';
-    assert.strictEqual(deriveSection(patch), 'peerDependencies');
-});
-
-test('deriveSection: detects optionalDependencies', () => {
-    const patch = '+    "optionalDependencies": {';
-    assert.strictEqual(deriveSection(patch), 'optionalDependencies');
-});
-
-test('deriveSection: returns null for empty patch', () => {
-    assert.strictEqual(deriveSection(''), null);
-    assert.strictEqual(deriveSection(null), null);
-    assert.strictEqual(deriveSection(undefined), null);
-});
-
-test('deriveSection: returns null when no section in patch', () => {
-    const patch = '+  "version": "1.0.0"';
-    assert.strictEqual(deriveSection(patch), null);
-});
-
-test('deriveSection: uses single quotes for section key', () => {
-    const patch = "+  'devDependencies': {";
-    assert.strictEqual(deriveSection(patch), 'devDependencies');
-});
-
-test('deriveSection: does not match removed lines (only added)', () => {
-    const patch = '-  "devDependencies": {';
-    assert.strictEqual(deriveSection(patch), null);
-});
 
 // --- deriveIsGrouped -------------------------------------------------------
 
@@ -309,54 +251,6 @@ test('deriveHasException: false for empty entries', () => {
     assert.ok(!deriveHasException('svgo', []));
     assert.ok(!deriveHasException('svgo', null));
     assert.ok(!deriveHasException('svgo', undefined));
-});
-
-// --- deriveNewTransitiveCount ---------------------------------------------
-
-test('deriveNewTransitiveCount: counts added node_modules entries', () => {
-    const patch = [
-        '@@ -1,10 +1,12 @@',
-        '   "packages": {',
-        '+    "node_modules/@babel/core": {',
-        '+      "version": "7.0.0"',
-        '+    },',
-        '+    "node_modules/@babel/parser": {',
-        '+      "version": "7.0.0"',
-        '+    },',
-        '     "node_modules/eslint": {',
-        '',
-    ].join('\n');
-    assert.strictEqual(deriveNewTransitiveCount(patch), 2);
-});
-
-test('deriveNewTransitiveCount: excludes updated entries (has both + and -)', () => {
-    const patch = [
-        '-    "node_modules/eslint": {',
-        '-      "version": "8.0.0"',
-        '-    },',
-        '+    "node_modules/eslint": {',
-        '+      "version": "8.0.1"',
-        '+    },',
-        '+    "node_modules/new-dep": {',
-        '+      "version": "1.0.0"',
-        '+    },',
-    ].join('\n');
-    assert.strictEqual(deriveNewTransitiveCount(patch), 1);
-});
-
-test('deriveNewTransitiveCount: 0 for empty patch', () => {
-    assert.strictEqual(deriveNewTransitiveCount(''), 0);
-    assert.strictEqual(deriveNewTransitiveCount(null), 0);
-});
-
-test('deriveNewTransitiveCount: 0 when no new entries', () => {
-    const patch = '-    "node_modules/old-dep": {';
-    assert.strictEqual(deriveNewTransitiveCount(patch), 0);
-});
-
-test('deriveNewTransitiveCount: ignores +++ header line', () => {
-    const patch = '+++ b/package-lock.json\n+    "node_modules/foo": {';
-    assert.strictEqual(deriveNewTransitiveCount(patch), 1);
 });
 
 // --- buildEvaluationInput --------------------------------------------------
@@ -762,28 +656,6 @@ test('renderAuditLog: valid markdown starting with #', () => {
     assert.ok(md.startsWith('# Auto-merge Audit Log'));
 });
 
-// --- parsePrUrl ------------------------------------------------------------
-
-test('parsePrUrl: parses valid PR URL', () => {
-    const result = parsePrUrl('https://github.com/diplodoc-platform/cli/pull/123');
-    assert.deepStrictEqual(result, {owner: 'diplodoc-platform', repo: 'cli', number: 123});
-});
-
-test('parsePrUrl: returns null for invalid URL', () => {
-    assert.strictEqual(parsePrUrl('https://example.com/foo'), null);
-    assert.strictEqual(parsePrUrl('not a url'), null);
-});
-
-test('parsePrUrl: returns null for non-string', () => {
-    assert.strictEqual(parsePrUrl(null), null);
-    assert.strictEqual(parsePrUrl(undefined), null);
-    assert.strictEqual(parsePrUrl(123), null);
-});
-
-test('parsePrUrl: handles issue URL (not pull)', () => {
-    assert.strictEqual(parsePrUrl('https://github.com/diplodoc-platform/cli/issues/123'), null);
-});
-
 // --- extractRequiredCheckContexts -----------------------------------------
 
 test('extractRequiredCheckContexts: combines legacy protection and active rulesets', () => {
@@ -830,14 +702,109 @@ test('extractRequiredCheckContexts: fails closed with malformed or absent respon
     );
 });
 
-// --- Constants -------------------------------------------------------------
-
-test('SOAK_WINDOW_MS: equals 24 hours', () => {
-    assert.strictEqual(SOAK_WINDOW_MS, 24 * 60 * 60 * 1000);
+test('explicit dry-run overrides every live-mode request without requiring observation', () => {
+    for (const observed of ['true', 'false', undefined]) {
+        assert.strictEqual(
+            resolveAutoMergeMode(
+                {'dry-run': true, enabled: true, 'skip-checks': true},
+                {AUTOMERGE_ENABLED: 'true', AUTOMERGE_OBSERVATION_COMPLETE: observed},
+            ),
+            false,
+        );
+    }
+    assert.strictEqual(resolveAutoMergeMode({}, {}), false);
 });
 
-test('AUTO_MERGE_CONDITIONS: re-exported from auto-merge-rules', () => {
-    assert.strictEqual(AUTO_MERGE_CONDITIONS.length, 9);
+test('live-mode validation still requires observation and complete checks', () => {
+    assert.throws(() => resolveAutoMergeMode({enabled: true}, {}), /OBSERVATION_COMPLETE/);
+    assert.throws(
+        () =>
+            resolveAutoMergeMode(
+                {enabled: true, 'skip-checks': true},
+                {AUTOMERGE_OBSERVATION_COMPLETE: 'true'},
+            ),
+        /audit-only/,
+    );
+    assert.strictEqual(
+        resolveAutoMergeMode({enabled: true}, {AUTOMERGE_OBSERVATION_COMPLETE: 'true'}),
+        true,
+    );
+});
+
+test('real CLI keeps explicit dry-run read-only even with live environment flags', () => {
+    const temporary = mkdtempSync(join(tmpdir(), 'infra-automerge-dry-run-'));
+    try {
+        const preload = join(temporary, 'github-mock.cjs');
+        writeFileSync(
+            preload,
+            [
+                'global.fetch = async (url, options) => {',
+                "    if ((options.method || 'GET') !== 'GET' || !url.includes('/pulls?')) {",
+                "        throw new Error('Unexpected or mutating GitHub request');",
+                '    }',
+                "    return {ok: true, status: 200, text: async () => '[]'};",
+                '};',
+            ].join('\n'),
+        );
+        for (const observed of ['true', 'false']) {
+            const output = execFileSync(
+                process.execPath,
+                [
+                    '--require',
+                    preload,
+                    join(__dirname, '../../scripts/auto-merge.js'),
+                    '--repo',
+                    'fixture',
+                    '--dry-run',
+                    '--enabled',
+                ],
+                {
+                    env: {
+                        ...process.env,
+                        GH_TOKEN: 'mock-token',
+                        AUTOMERGE_ENABLED: 'true',
+                        AUTOMERGE_OBSERVATION_COMPLETE: observed,
+                    },
+                    encoding: 'utf8',
+                },
+            );
+            assert.deepStrictEqual(JSON.parse(output), []);
+        }
+    } finally {
+        rmSync(temporary, {recursive: true, force: true});
+    }
+});
+
+test('real auto-merge CLI exits unsuccessfully when inventory cannot be read', () => {
+    const temporary = mkdtempSync(join(tmpdir(), 'infra-automerge-incomplete-'));
+    try {
+        const preload = join(temporary, 'github-mock.cjs');
+        writeFileSync(
+            preload,
+            [
+                'global.fetch = async (url, options) => {',
+                "    if ((options.method || 'GET') !== 'GET') throw new Error('Mutating request');",
+                '    return {ok: false, status: 503, text: async () => \'{"message":"Unavailable"}\'};',
+                '};',
+            ].join('\n'),
+        );
+        const result = spawnSync(
+            process.execPath,
+            [
+                '--require',
+                preload,
+                join(__dirname, '../../scripts/auto-merge.js'),
+                '--repo',
+                'fixture',
+                '--dry-run',
+            ],
+            {env: {...process.env, GH_TOKEN: 'mock-token'}, encoding: 'utf8'},
+        );
+        assert.strictEqual(result.status, 1, result.stderr);
+        assert.match(result.stderr, /503|Unavailable/);
+    } finally {
+        rmSync(temporary, {recursive: true, force: true});
+    }
 });
 
 module.exports = {tests};

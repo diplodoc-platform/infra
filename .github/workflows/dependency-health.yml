@@ -79,6 +79,7 @@ jobs:
             --all \
             --output .status/dependency-health.json \
             --markdown .status/dependency-health.md \
+            --snapshot-output .status/dependency-inventory.json \
             $SKIP_FLAG
           echo "exit-code=$?" >> "$GITHUB_OUTPUT"
 
@@ -99,8 +100,10 @@ jobs:
             --all \
             --output .status/dependency-summary.json \
             --markdown .status/dependency-summary.md \
+            --snapshot .status/dependency-inventory.json \
             $SKIP_FLAG
           echo "exit-code=$?" >> "$GITHUB_OUTPUT"
+          node -e "const fs = require('node:fs'); const p = '.status/dependency-summary.json'; console.log('complete=' + (fs.existsSync(p) && JSON.parse(fs.readFileSync(p)).complete === true))" >> "$GITHUB_OUTPUT"
 
       - name: Upload summary report
         if: always()
@@ -113,7 +116,7 @@ jobs:
           retention-days: 30
 
       - name: Post daily summary as tracking issue
-        if: always() && inputs.dry_run == false
+        if: always() && inputs.dry_run == false && steps.summary.outputs.complete == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -125,7 +128,7 @@ jobs:
           TITLE="Daily Dependency Health Summary — ${DATE}"
           # Check if an issue with this title already exists (avoid duplicates).
           EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" \
-            --search "${TITLE} in:title" --state open --json number --limit 1 2>/dev/null || echo "")
+            --search "${TITLE} in:title" --state open --json number --limit 1)
           BODY=$(cat .status/dependency-summary.md)
           if [ -n "$EXISTING" ] && [ "$EXISTING" != "[]" ]; then
             NUMBER=$(echo "$EXISTING" | jq -r '.[0].number')
@@ -173,6 +176,7 @@ jobs:
             --all \
             --output .status/dependency-assign.json \
             --markdown .status/dependency-assign.md \
+            --snapshot .status/dependency-inventory.json \
             $SKIP_FLAG \
             $DRY_RUN_FLAG
           echo "exit-code=$?" >> "$GITHUB_OUTPUT"

@@ -7,7 +7,7 @@
  * in package.json (a version with no range operator such as `^`, `~`, `>`,
  * `<`, `*`, `x`, `latest`, `workspace:`, `file:`, `link:`, `git+`), there
  * MUST be a corresponding entry in the central `dependency-policy.yml`
- * registry that carries a `reason` and an `owner`.
+ * registry that carries a `reason`, an `owner` and a future `expires-at` date.
  *
  * Any exact pin without a matching registry entry fails the check with a
  * clear error message referencing the missing entry.
@@ -46,34 +46,6 @@ const DEPENDENCY_SECTIONS = [
     'optionalDependencies',
 ];
 
-/**
- * Version specifiers that are NOT exact pins (range/alias operators).
- * An exact pin is a bare numeric version like "3.3.2" or "1.2.3-beta.1".
- */
-const NON_PIN_PREFIXES = [
-    '^',
-    '~',
-    '>',
-    '<',
-    '=',
-    '*',
-    'x',
-    'X',
-    'workspace:',
-    'file:',
-    'link:',
-    'git+',
-    'github:',
-    'http:',
-    'https:',
-    'npm:',
-];
-
-/**
- * Bare version tag keywords that are not exact pins either.
- */
-const NON_PIN_KEYWORDS = ['latest'];
-
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests — no process state)
 // ---------------------------------------------------------------------------
@@ -81,40 +53,39 @@ const NON_PIN_KEYWORDS = ['latest'];
 /**
  * Determine whether a version specifier is an exact pin.
  *
- * An exact pin is a version string that starts with a digit and contains no
- * range operator (`^`, `~`, `>`, `<`, `*`, `x`, `=`, `||`). Aliases
- * (`workspace:`, `file:`, `link:`, `git+`, `github:`, `http(s):`, `npm:`)
- * and the `latest` tag are not exact pins.
+ * Only a complete numeric version, with optional prerelease/build identifiers,
+ * is exact. Partial versions, wildcards, comparator sets and hyphen ranges are
+ * npm ranges, even when they start with a digit.
  *
  * @param {string} version npm version specifier.
  * @returns {boolean} True when `version` is an exact pin.
  */
 function isExactPin(version) {
-    if (typeof version !== 'string' || version.length === 0) {
+    if (typeof version !== 'string') return false;
+
+    const match = version
+        .trim()
+        .match(
+            /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+        );
+    if (!match) return false;
+
+    // Numeric prerelease identifiers cannot have leading zeroes in semver.
+    return !match[1] || match[1].split('.').every((part) => !/^0\d+$/.test(part));
+}
+
+/** YAML dates may be Date objects; all exceptions require a valid future date. */
+function isUnexpired(entry, now) {
+    const raw = entry['expires-at'];
+    if (!(raw instanceof Date) && (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw))) {
         return false;
     }
-    const trimmed = version.trim();
-    if (trimmed.length === 0) {
-        return false;
-    }
-    for (const prefix of NON_PIN_PREFIXES) {
-        if (trimmed.startsWith(prefix)) {
-            return false;
-        }
-    }
-    if (NON_PIN_KEYWORDS.includes(trimmed)) {
-        return false;
-    }
-    // A range with `||` (e.g. "1.2.3 || 1.3.0") is not a single exact pin.
-    if (trimmed.includes('||')) {
-        return false;
-    }
-    // Wildcard components (e.g. "3.x", "1.2.X") are not exact pins.
-    if (/\d[.-]x/i.test(trimmed)) {
-        return false;
-    }
-    // An exact pin must begin with a digit.
-    return /^\d/.test(trimmed);
+
+    const expiry = new Date(raw);
+    if (!Number.isFinite(expiry.getTime())) return false;
+    if (typeof raw === 'string' && expiry.toISOString().slice(0, 10) !== raw) return false;
+
+    return expiry.getTime() > now.getTime();
 }
 
 /**
@@ -161,7 +132,7 @@ function extractExactPins(packageJson) {
  * @param {string} version Pinned version (exact, trimmed).
  * @param {string} [section] Dependency section (required for managed infra pins).
  * @param {string} [repoName] Trusted repository scope for managed pins.
- * @param {Date} [now] Evaluation time; expired managed pin policies do not match.
+ * @param {Date} [now] Evaluation time; expired or undated exceptions do not match.
  * @returns {object|undefined} Matching entry or undefined.
  */
 function findRegistryEntry(entries, depName, version, section, repoName, now = new Date()) {
@@ -172,17 +143,16 @@ function findRegistryEntry(entries, depName, version, section, repoName, now = n
         if (!entry || entry.dependency !== depName) {
             return false;
         }
+        if (!isUnexpired(entry, now)) return false;
+
         if (entry['pin-policy'] === 'managed-infra') {
             // Distribution deliberately freezes the tool and its scaffolding together.
             // This is not a general any-version exception or a runtime dependency rule.
-            const expiry = new Date(entry['expires-at']).getTime();
             return (
                 depName === '@diplodoc/infra' &&
                 section === 'devDependencies' &&
                 Array.isArray(entry.repositories) &&
                 entry.repositories.includes(repoName) &&
-                Number.isFinite(expiry) &&
-                expiry > now.getTime() &&
                 /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-rc-[a-zA-Z0-9-]+-[1-9]\d*)?$/.test(
                     version,
                 )

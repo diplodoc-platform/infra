@@ -78,6 +78,32 @@ test('auto-merge adapter retains audit-only counts and warns on missing evidence
     assert.strictEqual(output.warnings.length, 1);
 });
 
+test('incomplete auto-merge audit cannot look all clear or publish a tracking issue', async () => {
+    for (const exitCode of ['1', '']) {
+        const {clients, output} = harness();
+        await run('dependency-auto-merge-summary')(
+            clients,
+            {AUDIT_EXIT_CODE: exitCode},
+            jsonFiles([]),
+        );
+        assert.ok(output.summary.includes('UNKNOWN'));
+        assert.ok(!output.summary.includes('Total evaluated: **0**'));
+        assert.strictEqual(output.warnings.length, 1);
+    }
+
+    const workflow = yaml.load(
+        fs.readFileSync(
+            path.join(__dirname, '../../.github/workflows/dependency-auto-merge.yml'),
+            'utf8',
+        ),
+    );
+    const steps = workflow.jobs['auto-merge'].steps;
+    assert.ok(steps.find((step) => step.id === 'automerge').run.includes('--dry-run'));
+    const publication = steps.find((step) => step.name === 'Post audit log as tracking issue');
+    assert.ok(publication.if.includes("steps.automerge.outputs.exit-code == '0'"));
+    assert.ok(!publication.run.includes('|| echo'));
+});
+
 test('health adapter preserves health, daily and assignment report sections', async () => {
     const {clients, output} = harness();
     await run('dependency-health-summary')(
@@ -101,6 +127,41 @@ test('health adapter preserves health, daily and assignment report sections', as
     await run('dependency-health-summary')(missing.clients, {}, missingFiles);
     assert.strictEqual(missing.output.summary, '');
     assert.strictEqual(missing.output.warnings.length, 3);
+});
+
+test('health adapter marks incomplete audits UNKNOWN and exposes their errors', async () => {
+    const {clients, output} = harness();
+    await run('dependency-health-summary')(
+        clients,
+        {},
+        jsonFiles({
+            complete: false,
+            errors: [{repo: 'tabs-extension', phase: 'list-prs', message: 'HTTP 503'}],
+            summary: {totalPrs: 0},
+            totals: {actionableItems: 0},
+            actions: [],
+        }),
+    );
+    assert.ok(output.summary.includes('Total PRs: **UNKNOWN**'));
+    assert.ok(output.summary.includes('Actionable items: **UNKNOWN**'));
+    assert.ok(output.summary.includes('assignment actions: **UNKNOWN**'));
+    assert.ok(output.summary.includes('tabs-extension: list-prs — HTTP 503'));
+    assert.ok(!output.summary.includes('**0**'));
+    assert.strictEqual(output.warnings.length, 3);
+});
+
+test('health adapter treats assignment errors without a complete flag as unknown', async () => {
+    const {clients, output} = harness();
+    await run('dependency-health-summary')(
+        clients,
+        {},
+        jsonFiles({
+            errors: [{repo: 'tabs-extension', phase: 'assign', message: 'HTTP 403'}],
+            actions: [],
+        }),
+    );
+    assert.ok(output.summary.includes('assignment actions: **UNKNOWN**'));
+    assert.ok(output.summary.includes('tabs-extension: assign — HTTP 403'));
 });
 
 test('aggregate report adapters fail on missing or malformed matrix evidence', async () => {

@@ -317,6 +317,26 @@ test('grouping DOMPurify with critical changes keeps the ecosystem profile', () 
     assert.strictEqual(outputs.profile, 'ecosystem');
 });
 
+test('grouped registry entries preserve rendering coverage in either manifest order', () => {
+    for (const reverse of [false, true]) {
+        const entries = [
+            ['@diplodoc/infra', '2.2.2'],
+            ['svgo', '4.1.0'],
+        ];
+        if (reverse) entries.reverse();
+        const before = {...manifest('svgo', '4.1.0'), dependencies: Object.fromEntries(entries)};
+        const after = {
+            ...before,
+            dependencies: {...before.dependencies, '@diplodoc/infra': '2.2.3', svgo: '4.1.1'},
+        };
+        const {outputs} = classifyAndDecide(before, after, {repo: 'transform'});
+
+        assert.strictEqual(outputs.risk, 'high');
+        assert.strictEqual(outputs.profile, 'document-rendering');
+        assert.strictEqual(outputs['run-deep'], 'true');
+    }
+});
+
 test('removing DOMPurify does not introduce a new deep-profile trigger', () => {
     const {outputs} = classifyAndDecide(manifest('dompurify', '3.3.1'), {dependencies: {}});
     assert.strictEqual(outputs.risk, 'low');

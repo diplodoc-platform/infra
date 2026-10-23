@@ -6,6 +6,7 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {
     OWNER,
+    SHA,
     SECTIONS,
     digest,
     read,
@@ -132,6 +133,75 @@ function candidateBody(plan, runUrl) {
     );
 }
 
+function assertCandidatePr(pr, branch, expectedSha) {
+    assert.ok(Number.isInteger(pr.number) && pr.number > 0, 'Invalid candidate PR');
+    assert.equal(pr.state, 'open', 'This immutable train was already closed');
+    assert.equal(pr.user?.login, 'diplodoc-bot');
+    assert.equal(pr.head?.repo?.full_name, `${OWNER}/cli`);
+    assert.equal(pr.head.ref, branch, 'Unexpected candidate branch');
+    assert.equal(pr.base?.repo?.full_name, `${OWNER}/cli`);
+    assert.equal(pr.base.ref, 'master', 'Candidate must target master');
+    assert.match(pr.head.sha, SHA);
+    if (expectedSha) {
+        assert.equal(pr.head.sha, expectedSha, 'Candidate head changed; rebuild the train');
+    }
+}
+
+function assertCandidateParent(commit, sha, plan) {
+    assert.equal(commit.sha, sha);
+    assert.deepEqual(
+        commit.parents?.map((parent) => parent.sha),
+        [plan.cli.sha],
+        'Candidate must have exactly the frozen CLI baseline as its parent',
+    );
+    assert.match(commit.tree?.sha, SHA);
+}
+
+async function verifyExistingCandidate(plan, sha, entries, request) {
+    const prefix = `/repos/${OWNER}/cli`;
+    const commit = await request(`${prefix}/git/commits/${sha}`);
+    assertCandidateParent(commit, sha, plan);
+
+    const base = await request(`${prefix}/git/commits/${plan.cli.sha}`);
+    const baseline = await request(`${prefix}/git/trees/${base.tree.sha}?recursive=1`);
+    const candidate = await request(`${prefix}/git/trees/${commit.tree.sha}?recursive=1`);
+    assert.equal(baseline.truncated, false, 'CLI baseline tree is incomplete');
+    assert.equal(candidate.truncated, false, 'Candidate tree is incomplete');
+
+    // Directory hashes change with their children; compare their paths/modes and
+    // every non-directory object's full identity instead of ignoring directories.
+    const identities = (tree) =>
+        tree.map(({path, mode, type, sha}) => ({
+            path,
+            mode,
+            type,
+            ...(type === 'tree' ? {} : {sha}),
+        }));
+    const expected = new Map(identities(baseline.tree).map((entry) => [entry.path, entry]));
+    for (const [file, bytes] of entries) {
+        const blobSha = createHash('sha1')
+            .update(`blob ${bytes.length}\0`)
+            .update(bytes)
+            .digest('hex');
+        expected.set(file, {path: file, mode: '100644', type: 'blob', sha: blobSha});
+        const segments = file.split('/');
+        for (let index = 1; index < segments.length; index++) {
+            const directory = segments.slice(0, index).join('/');
+            assert.ok(
+                !expected.has(directory) || expected.get(directory).type === 'tree',
+                'Payload directory would replace a baseline file',
+            );
+            expected.set(directory, {path: directory, mode: '040000', type: 'tree'});
+        }
+    }
+    const byPath = (a, b) => a.path.localeCompare(b.path);
+    assert.deepEqual(
+        identities(candidate.tree).sort(byPath),
+        [...expected.values()].sort(byPath),
+        'Existing candidate must contain only the exact approved changes on the frozen baseline',
+    );
+}
+
 async function publish(plan, directory, env = process.env, request = github) {
     validatePlan(plan);
     assert.equal(plan.toolSha, env.GITHUB_SHA, 'Tooling revision changed');
@@ -162,35 +232,24 @@ async function publish(plan, directory, env = process.env, request = github) {
     );
     if (pulls.length) {
         assert.equal(pulls.length, 1);
-        assert.equal(pulls[0].state, 'open', 'This immutable train was already closed');
-        assert.equal(pulls[0].user.login, 'diplodoc-bot');
-        assert.equal(pulls[0].head.repo.full_name, `${OWNER}/cli`);
-        const remote = await request(`${prefix}/git/trees/${pulls[0].head.sha}?recursive=1`);
-        assert.equal(remote.truncated, false);
+        const pr = pulls[0];
+        assertCandidatePr(pr, branch);
         const entries = [
             ...files.map((file) => [file, fs.readFileSync(path.join(directory, file))]),
             ['dependency-train/plan.json', Buffer.from(JSON.stringify(plan, null, 2) + '\n')],
         ];
-        for (const [file, bytes] of entries) {
-            const sha = createHash('sha1')
-                .update(`blob ${bytes.length}\0`)
-                .update(bytes)
-                .digest('hex');
-            assert.equal(
-                remote.tree.find((item) => item.path === file)?.sha,
-                sha,
-                'Existing immutable candidate contains a different payload',
-            );
-        }
+        await verifyExistingCandidate(plan, pr.head.sha, entries, request);
+        await unchangedSources(plan, request);
+        assertCandidatePr(await request(`${prefix}/pulls/${pr.number}`), branch, pr.head.sha);
         return {
-            number: pulls[0].number,
-            sha: pulls[0].head.sha,
+            number: pr.number,
+            sha: pr.head.sha,
             branch,
             reused: true,
             payloadSha256: digest(
                 fs.readFileSync(path.join(directory, 'dependency-train/proof.json')),
             ),
-            url: pulls[0].html_url,
+            url: pr.html_url,
             plan,
         };
     }
@@ -246,7 +305,9 @@ async function publish(plan, directory, env = process.env, request = github) {
     } catch (error) {
         if (error.status !== 422) throw error;
         const ref = await request(`${prefix}/git/ref/heads/${branch}`);
+        assert.equal(ref.object.type, 'commit');
         const current = await request(`${prefix}/git/commits/${ref.object.sha}`);
+        assertCandidateParent(current, ref.object.sha, plan);
         assert.equal(current.tree.sha, createdTree.sha, 'Existing branch has another payload');
         commit.sha = ref.object.sha;
     }
@@ -261,8 +322,9 @@ async function publish(plan, directory, env = process.env, request = github) {
             body: candidateBody(plan, env.TRAIN_RUN_URL),
         },
     });
-    assert.equal(pr.head.sha, commit.sha);
-    assert.equal(pr.user.login, 'diplodoc-bot');
+    assertCandidatePr(pr, branch, commit.sha);
+    await unchangedSources(plan, request);
+    assertCandidatePr(await request(`${prefix}/pulls/${pr.number}`), branch, commit.sha);
     return {
         number: pr.number,
         sha: commit.sha,

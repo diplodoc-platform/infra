@@ -33,26 +33,25 @@
  *   --markdown <path>     Write markdown report to file
  *   --owner <name>        GitHub org owner (default: diplodoc-platform)
  *   --skip-checks         Skip per-PR check-status lookup (faster)
+ *   --snapshot <path>     Reuse a scoped PR inventory instead of fetching it
+ *   --snapshot-output <path> Save the inventory for other audit reports
  *
  * Environment variables:
  *   GH_TOKEN              GitHub token (App installation token) with repo:read
  *   GITHUB_TOKEN          Fallback for GH_TOKEN
  */
 
-const {readFileSync, writeFileSync, existsSync, mkdirSync} = require('node:fs');
-const {dirname, join, resolve} = require('node:path');
-const yaml = require('js-yaml');
+const {join, resolve} = require('node:path');
 
-const {parseRepoList, exportInventory, loadConfig, loadRegistry} = require('./export-pr-inventory');
-
-const {resolveRegistryPath, filterEntriesForRepo} = require('./generate-dependency-policy');
+const {parseRepoList, loadConfig, loadRegistry} = require('./export-pr-inventory');
+const {parseFlags, writeOutput} = require('./cli-options');
+const {auditInventory, readSnapshot} = require('./inventory-snapshot');
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DEFAULT_OWNER = 'diplodoc-platform';
-const INFRA_REPO = 'infra';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
@@ -327,6 +326,13 @@ function renderHealthMarkdown(health) {
     lines.push('');
     lines.push(`Generated: ${new Date().toISOString()}`);
     lines.push('');
+    if (health.complete === false) {
+        lines.push('**Incomplete audit: zero counts do not confirm repository health.**', '');
+        for (const error of health.errors || []) {
+            lines.push(`- ${error.repo}: ${error.phase} — ${error.message}`);
+        }
+        lines.push('');
+    }
     lines.push('## SLA Summary');
     lines.push('');
     lines.push('| Metric | Count |');
@@ -431,39 +437,27 @@ async function runHealthAudit({
     registryEntries = [],
     skipChecks = false,
     now,
+    snapshot,
 }) {
-    const referenceTime = now || new Date();
-    const result = await exportInventory({token, owner, repos, registryEntries, skipChecks});
+    const result = await auditInventory({
+        token,
+        owner,
+        repos,
+        registryEntries,
+        skipChecks,
+        now,
+        snapshot,
+    });
+    const referenceTime = now || new Date(result.capturedAt);
     const health = computeHealth(result.inventory, registryEntries, referenceTime);
-    return {health, errors: result.errors || []};
+    health.complete = result.errors.length === 0;
+    health.errors = result.errors;
+    return {health, errors: result.errors, snapshot: result};
 }
 
 // ---------------------------------------------------------------------------
 // CLI entry point
 // ---------------------------------------------------------------------------
-
-function parseFlags(argv) {
-    const flags = {};
-    for (let i = 0; i < argv.length; i++) {
-        if (!argv[i].startsWith('--')) continue;
-        const key = argv[i].slice(2);
-        const next = argv[i + 1];
-        if (next && !next.startsWith('--')) {
-            flags[key] = next;
-            i++;
-        } else {
-            flags[key] = true;
-        }
-    }
-    return flags;
-}
-
-function writeOutput(filePath, content) {
-    if (!filePath) return;
-    const abs = resolve(filePath);
-    mkdirSync(dirname(abs), {recursive: true});
-    writeFileSync(abs, content, 'utf8');
-}
 
 async function main() {
     const flags = parseFlags(process.argv.slice(2));
@@ -486,7 +480,7 @@ async function main() {
     }
 
     const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-    if (!token) {
+    if (!token && !flags.snapshot) {
         console.error('Error: GH_TOKEN env var is required');
         process.exit(1);
     }
@@ -498,7 +492,11 @@ async function main() {
 
     let result;
     try {
-        result = await runHealthAudit({token, owner, repos, registryEntries, skipChecks});
+        const snapshot = flags.snapshot
+            ? readSnapshot(flags.snapshot, {owner, repos, skipChecks})
+            : undefined;
+        result = await runHealthAudit({token, owner, repos, registryEntries, skipChecks, snapshot});
+        writeOutput(flags['snapshot-output'], JSON.stringify(result.snapshot, null, 2));
     } catch (error) {
         console.error(`[@diplodoc/infra] Fatal: ${error.message}`);
         process.exit(1);
@@ -532,7 +530,7 @@ async function main() {
         }
     }
 
-    if (s.breachingPrs > 0 || s.overdueExceptions > 0) {
+    if (s.breachingPrs > 0 || s.overdueExceptions > 0 || errors.length > 0) {
         process.exit(1);
     }
 }

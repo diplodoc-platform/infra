@@ -30,31 +30,22 @@
  *   GITHUB_TOKEN         Fallback for GH_TOKEN
  */
 
-const {readFileSync, writeFileSync, existsSync, mkdirSync} = require('node:fs');
-const {dirname, join, resolve} = require('node:path');
+const {readFileSync, existsSync} = require('node:fs');
+const {join} = require('node:path');
 const yaml = require('js-yaml');
 
 const {resolveRegistryPath, filterEntriesForRepo} = require('./generate-dependency-policy');
+const {parseFlags, writeOutput} = require('./cli-options');
+const {githubData} = require('./github-request');
+const {parseSemver, classifyVersionChange: compareSemver} = require('./dependency-versions');
+const {riskForUpdate} = require('./risk-classification');
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DEFAULT_OWNER = 'diplodoc-platform';
-const API_ROOT = 'https://api.github.com';
 const INFRA_REPO = 'infra';
-
-const RISK_ORDER = {low: 0, medium: 1, high: 2, critical: 3};
-
-/**
- * Default risk derived from the Dependabot update type label.
- * Dependabot attaches `patch`, `minor`, `major` labels to its PRs.
- */
-const DEFAULT_RISK_BY_LABEL = {
-    patch: 'low',
-    minor: 'medium',
-    major: 'high',
-};
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit tests — no network, no process state)
@@ -149,8 +140,8 @@ function normalizeLabels(labels) {
 }
 
 /**
- * Derive the update type (patch / minor / major) from Dependabot labels or
- * version comparison.
+ * Compare versions first so stale labels cannot downgrade a major update.
+ * Labels are a fallback only when the versions cannot be compared.
  *
  * @param {string[]} labels Normalized lowercased label names.
  * @param {string|null} from Source version.
@@ -158,53 +149,19 @@ function normalizeLabels(labels) {
  * @returns {'patch'|'minor'|'major'|'unknown'}
  */
 function deriveUpdateType(labels, from, to) {
+    const compared = compareSemver(from, to);
+    if (compared !== 'unknown') return compared;
+
     for (const type of ['patch', 'minor', 'major']) {
         if (labels.includes(type)) return type;
     }
-    return compareSemver(from, to);
-}
-
-/**
- * Compare two semver strings and return the update type.
- *
- * @param {string|null} from
- * @param {string|null} to
- * @returns {'patch'|'minor'|'major'|'unknown'}
- */
-function compareSemver(from, to) {
-    const f = parseSemver(from);
-    const t = parseSemver(to);
-    if (!f || !t) return 'unknown';
-    if (t.major !== f.major) return 'major';
-    if (t.minor !== f.minor) return 'minor';
-    return 'patch';
-}
-
-/**
- * Parse a version string into major/minor/patch components.
- * Strips leading range operators and pre-release suffixes.
- *
- * @param {string|null} version
- * @returns {{major:number,minor:number,patch:number}|null}
- */
-function parseSemver(version) {
-    if (typeof version !== 'string' || version.length === 0) return null;
-    const cleaned = version
-        .replace(/^[^0-9]*/, '')
-        .split('-')[0]
-        .split('+')[0];
-    const parts = cleaned.split('.');
-    const major = parseInt(parts[0], 10);
-    const minor = parts.length > 1 ? parseInt(parts[1], 10) : 0;
-    const patch = parts.length > 2 ? parseInt(parts[2], 10) : 0;
-    if (Number.isNaN(major) || Number.isNaN(minor) || Number.isNaN(patch)) return null;
-    return {major, minor, patch};
+    return 'unknown';
 }
 
 /**
  * Assess the risk category for a PR by consulting the registry entries.
  * If the changed dependency has a registry entry with a `risk` field, use it.
- * Otherwise fall back to the default risk for the update type.
+ * Otherwise use the same package-name and update-size policy as PR review.
  *
  * @param {string} dependency Dependency name.
  * @param {Array<object>} scopedEntries Registry entries scoped to the repo.
@@ -213,10 +170,7 @@ function parseSemver(version) {
  */
 function assessRisk(dependency, scopedEntries, updateType) {
     const entry = scopedEntries.find((e) => e && e.dependency === dependency);
-    if (entry && entry.risk && RISK_ORDER[entry.risk] !== undefined) {
-        return entry.risk;
-    }
-    return DEFAULT_RISK_BY_LABEL[updateType] || 'medium';
+    return riskForUpdate(entry, {name: dependency, updateType});
 }
 
 /**
@@ -406,28 +360,7 @@ function renderMarkdown(inventory, summary) {
 // ---------------------------------------------------------------------------
 
 async function ghRequest(token, path) {
-    const res = await fetch(`${API_ROOT}${path}`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-            'User-Agent': 'diplodoc-infra-pr-inventory',
-        },
-    });
-    const text = await res.text();
-    let json = null;
-    if (text) {
-        try {
-            json = JSON.parse(text);
-        } catch {
-            json = null;
-        }
-    }
-    if (!res.ok) {
-        const detail = json && json.message ? json.message : text || res.statusText;
-        throw new Error(`GitHub API GET ${path} -> ${res.status}: ${detail}`);
-    }
-    return json;
+    return githubData(token, path, 'diplodoc-infra-pr-inventory');
 }
 
 /**
@@ -449,7 +382,10 @@ async function listDependabotPrs(token, owner, repo) {
             token,
             `/repos/${owner}/${repo}/pulls?state=open&per_page=100&page=${page}&sort=created&direction=desc`,
         );
-        if (!Array.isArray(data) || data.length === 0) break;
+        if (!Array.isArray(data)) {
+            throw new Error('Invalid GitHub pull request list response');
+        }
+        if (data.length === 0) break;
         for (const pr of data) {
             const isDependabot = pr.user && pr.user.login === 'dependabot[bot]';
             if (isDependabot) prs.push(pr);
@@ -502,27 +438,49 @@ function summarizePrChecks(status, checks) {
  * @param {string} owner
  * @param {string} repo
  * @param {string} sha PR head SHA.
+ * @param {boolean} [strict] Propagate missing/API evidence to the inventory audit.
  * @returns {Promise<string>}
  */
-async function getPrCheckStatus(token, owner, repo, sha) {
-    if (!sha) return 'unknown';
+async function getPrCheckStatus(token, owner, repo, sha, strict = false) {
     try {
+        if (!sha) throw new Error('Missing PR head SHA for check-status lookup');
         const data = await ghRequest(
             token,
             `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/status`,
         );
+        if (
+            !data ||
+            !['pending', 'success', 'failure', 'error'].includes(data.state) ||
+            !Number.isSafeInteger(data.total_count) ||
+            data.total_count < 0 ||
+            (data.statuses !== undefined && !Array.isArray(data.statuses))
+        ) {
+            throw new Error('Invalid GitHub combined check-status response');
+        }
         const checks = [];
         for (let page = 1; ; page++) {
             const response = await ghRequest(
                 token,
                 `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100&page=${page}`,
             );
-            if (!response || !Array.isArray(response.check_runs)) return 'unknown';
+            if (
+                !response ||
+                !Array.isArray(response.check_runs) ||
+                response.check_runs.some(
+                    (check) =>
+                        !check ||
+                        typeof check.status !== 'string' ||
+                        (check.status === 'completed' && !Object.hasOwn(check, 'conclusion')),
+                )
+            ) {
+                throw new Error('Invalid GitHub check-runs response');
+            }
             checks.push(...response.check_runs);
             if (response.check_runs.length < 100) break;
         }
         return summarizePrChecks(data, checks);
-    } catch {
+    } catch (error) {
+        if (strict) throw error;
         return 'unknown';
     }
 }
@@ -562,7 +520,15 @@ async function exportInventory({token, owner, repos, registryEntries = [], skipC
             let checkStatus = 'unknown';
             if (!skipChecks) {
                 const sha = pr.head && pr.head.sha;
-                checkStatus = await getPrCheckStatus(token, owner, repo, sha);
+                try {
+                    checkStatus = await getPrCheckStatus(token, owner, repo, sha, true);
+                } catch (error) {
+                    errors.push({
+                        repo,
+                        phase: 'check-status',
+                        message: `PR #${pr.number}: ${error.message}`,
+                    });
+                }
             }
 
             const entry = buildInventoryEntry(pr, repo, checkStatus, scopedEntries);
@@ -595,29 +561,6 @@ function loadRegistry(registryPath) {
 // ---------------------------------------------------------------------------
 // CLI entry point
 // ---------------------------------------------------------------------------
-
-function parseFlags(argv) {
-    const flags = {};
-    for (let i = 0; i < argv.length; i++) {
-        if (!argv[i].startsWith('--')) continue;
-        const key = argv[i].slice(2);
-        const next = argv[i + 1];
-        if (next && !next.startsWith('--')) {
-            flags[key] = next;
-            i++;
-        } else {
-            flags[key] = true;
-        }
-    }
-    return flags;
-}
-
-function writeOutput(filePath, content) {
-    if (!filePath) return;
-    const abs = resolve(filePath);
-    mkdirSync(dirname(abs), {recursive: true});
-    writeFileSync(abs, content, 'utf8');
-}
 
 async function main() {
     const flags = parseFlags(process.argv.slice(2));

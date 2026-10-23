@@ -13,6 +13,7 @@ const {tmpdir} = require('node:os');
 const {dirname, join, resolve} = require('node:path');
 const yaml = require('js-yaml');
 const {previewLocalSync} = require('../scripts/preview-sync');
+const {isExcluded} = require('../scripts/scaffolding-blacklist');
 
 const scriptPath = realpathSync(__filename);
 const srcDir = dirname(dirname(scriptPath));
@@ -188,7 +189,6 @@ Auto-merge options:
   --dry-run                 Audit-only: evaluate but do not merge (default)
   --enabled                 Enable live auto-merge (phase 2)
   --skip-checks             Skip per-PR check-status lookup (faster)
-  --tracking-repo <name>    Repo for audit tracking issue (default: infra)
 `);
 }
 
@@ -435,14 +435,13 @@ function applySyncToTarget(targetDir, repoName, blacklist, dryRun) {
         cwd: targetDir,
         env,
     });
-    execCommand(`node "${join(srcDir, 'scripts/generate-dependency-policy.js')}"`, {
-        cwd: targetDir,
-        env,
-    });
-    execCommand(`node "${join(srcDir, 'scripts/generate-dependabot-ignores.js')}"`, {
-        cwd: targetDir,
-        env,
-    });
+    for (const [file, script] of [
+        ['.github/dependency-policy.yml', 'generate-dependency-policy.js'],
+        ['.github/dependabot.yml', 'generate-dependabot-ignores.js'],
+    ]) {
+        if (isExcluded(file, blacklistPaths)) continue;
+        execCommand(`node "${join(srcDir, 'scripts', script)}"`, {cwd: targetDir, env});
+    }
     execCommand(`node "${join(srcDir, 'scripts/enforce-exact-pin.js')}" --warn-only`, {
         cwd: targetDir,
         env,
@@ -726,7 +725,6 @@ function runAutoMerge() {
     if (flags['skip-checks']) automergeArgs.push('--skip-checks');
     if (flags.enabled) automergeArgs.push('--enabled');
     if (flags['dry-run']) automergeArgs.push('--dry-run');
-    if (flags['tracking-repo']) automergeArgs.push('--tracking-repo', flags['tracking-repo']);
 
     try {
         execFileSync(process.execPath, automergeArgs, {

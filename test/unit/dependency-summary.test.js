@@ -201,7 +201,13 @@ test('unpinnedVersions: finds exact pins without registry entry', () => {
         devDependencies: {typescript: '5.0.0'},
     };
     const registry = [
-        {id: 'DEP-0001', dependency: 'svgo', 'allowed-version': '3.3.2', repositories: ['cli']},
+        {
+            id: 'DEP-0001',
+            dependency: 'svgo',
+            'allowed-version': '3.3.2',
+            repositories: ['cli'],
+            'expires-at': '2099-01-01',
+        },
     ];
     const violations = unpinnedVersions('cli', packageJson, registry);
     assert.strictEqual(violations.length, 1);
@@ -408,7 +414,13 @@ test('buildSummary: computes all 7 categories', () => {
         cli: {dependencies: {svgo: '3.3.2', katex: '0.16.9'}},
     };
     const registry = [
-        {id: 'DEP-0001', dependency: 'svgo', 'allowed-version': '3.3.2', repositories: ['cli']},
+        {
+            id: 'DEP-0001',
+            dependency: 'svgo',
+            'allowed-version': '3.3.2',
+            repositories: ['cli'],
+            'expires-at': '2099-01-01',
+        },
     ];
     const prLimits = {cli: 2};
 

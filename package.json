@@ -36,6 +36,8 @@
     "src",
     "scaffolding",
     "scripts",
+    "!scripts/candidate-train/**",
+    "!scripts/workflows/**",
     "tsconfig.json",
     "distribution.yml",
     "dependency-policy.yml",

@@ -27,6 +27,7 @@
 const {readFileSync, writeFileSync, existsSync} = require('node:fs');
 const {join, dirname} = require('node:path');
 const yaml = require('js-yaml');
+const {readBlacklist, isExcluded} = require('./scaffolding-blacklist');
 
 const {
     resolveRegistryPath,
@@ -157,6 +158,11 @@ function hasNoWildcardIgnores(content) {
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
+    if (isExcluded('.github/dependabot.yml', readBlacklist())) {
+        console.log('[@diplodoc/infra] Skipping .github/dependabot.yml (blacklisted)');
+        process.exit(0);
+    }
+
     const args = process.argv.slice(2);
     const flags = {};
     for (let i = 0; i < args.length; i++) {
