@@ -38,9 +38,9 @@ entries:
     repositories: [transform]
     allowed-version: 15.0.3
     ignored-versions: []
-    risk: high
+    risk: critical
     category: parser-migration
-    verification-profile: document-transform
+    verification-profile: ecosystem
     reason: 'Transform 5 freezes its native-type parser migration while HTML, declarations and actual CLI/viewer consumers are accepted together.'
     evidence:
       migration: https://github.com/diplodoc-platform/transform/pull/1126
@@ -57,9 +57,9 @@ entries:
     repositories: [transform]
     allowed-version: 4.0.0
     ignored-versions: []
-    risk: high
+    risk: critical
     category: parser-migration
-    verification-profile: document-transform
+    verification-profile: ecosystem
     reason: 'The Transform 5 definition-list migration is accepted with markdown-it 15 and native public types as one fixed parser stack.'
     evidence:
       migration: https://github.com/diplodoc-platform/transform/pull/1126
@@ -76,7 +76,7 @@ entries:
     repositories: [transform, tabs-extension]
     allowed-version: 2.3.7-transform5.0
     ignored-versions: []
-    risk: medium
+    risk: high
     category: prerelease-compatibility
     verification-profile: document-transform
     reason: 'The Transform 5 prerelease train requires the reviewed native markdown-it 15 declarations; these types are not compatible with TypeScript 5.2 and must not reach stable consumers yet.'
@@ -96,7 +96,7 @@ entries:
     repositories: [transform]
     allowed-version: 0.2.7-transform5.0
     ignored-versions: []
-    risk: medium
+    risk: high
     category: prerelease-compatibility
     verification-profile: document-transform
     reason: 'Transform 5 needs the reviewed markdown-it 13/15 peer and metadata contract; unchanged Transform 4 source does not typecheck against these declarations, so the candidate stays isolated.'
@@ -116,7 +116,7 @@ entries:
     repositories: [transform]
     allowed-version: 3.10.8-transform5.0
     ignored-versions: []
-    risk: medium
+    risk: high
     category: prerelease-compatibility
     verification-profile: document-transform
     reason: 'Transform 5 needs the reviewed public Token constructor and native parser declarations, with the matching Utils prerelease instead of the stable dependency graph.'

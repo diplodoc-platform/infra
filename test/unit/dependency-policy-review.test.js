@@ -780,6 +780,32 @@ test('renderComment: shows no changes message when empty', () => {
 const SCRIPT = join(__dirname, '../../scripts/dependency-policy-review.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
 
+test('CLI: parser migration exceptions retain critical ecosystem verification', async () => {
+    const tempDir = await createTempDir();
+    try {
+        writeJson(tempDir, 'before.json', {
+            dependencies: {'markdown-it': '13.0.2', 'markdown-it-deflist': '2.1.0'},
+        });
+        writeJson(tempDir, 'after.json', {
+            dependencies: {'markdown-it': '15.0.3', 'markdown-it-deflist': '4.0.0'},
+        });
+        const jsonPath = join(tempDir, 'assessment.json');
+        execSync(
+            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
+                `--before-pkg "${join(tempDir, 'before.json')}" ` +
+                `--after-pkg "${join(tempDir, 'after.json')}" ` +
+                `--json "${jsonPath}" --quiet --repo transform`,
+            {stdio: 'pipe', env: {...process.env}},
+        );
+        const assessment = JSON.parse(readFile(tempDir, 'assessment.json'));
+        assert.strictEqual(assessment.maxRisk, 'critical');
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem');
+        assert.strictEqual(assessment.summary.total, 2);
+    } finally {
+        await removeTempDir(tempDir);
+    }
+});
+
 test('CLI: produces assessment for changed package.json', async () => {
     const tempDir = await createTempDir();
     try {
