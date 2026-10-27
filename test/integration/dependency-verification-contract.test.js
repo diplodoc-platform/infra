@@ -144,9 +144,9 @@ for (const [name, dependency, from, to, section, risk, profile, runDeep] of [
     ],
     [
         'high parser patch',
-        'markdown-it',
-        '14.1.0',
-        '14.1.1',
+        'markdown-it-container',
+        '3.0.0',
+        '3.0.1',
         'dependencies',
         'high',
         'document-transform',
@@ -184,9 +184,9 @@ for (const [name, dependency, from, to, section, risk, profile, runDeep] of [
     ],
     [
         'critical parser major',
-        'markdown-it',
-        '14.1.0',
-        '15.0.0',
+        'markdown-it-container',
+        '3.0.0',
+        '4.0.0',
         'dependencies',
         'critical',
         'ecosystem',
@@ -219,8 +219,8 @@ for (const [name, dependency, from, to, section, risk, profile, runDeep] of [
 test('lockfile-only parser update is not mistaken for a no-change PR', () => {
     const pkg = manifest('unknown-library', '1.0.0');
     const {assessment, outputs} = classifyAndDecide(pkg, pkg, {
-        beforeLock: lockfile(pkg, {'node_modules/markdown-it': {version: '14.1.0'}}),
-        afterLock: lockfile(pkg, {'node_modules/markdown-it': {version: '14.1.1'}}),
+        beforeLock: lockfile(pkg, {'node_modules/markdown-it-container': {version: '3.0.0'}}),
+        afterLock: lockfile(pkg, {'node_modules/markdown-it-container': {version: '3.0.1'}}),
     });
     assert.strictEqual(assessment.summary.direct, 0);
     assert.strictEqual(assessment.summary.transitive, 1);
