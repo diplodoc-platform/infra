@@ -29,6 +29,7 @@ function fixture(options = {}) {
             dependencies: {'@diplodoc/utils': '^1.0.0'},
         },
     };
+    if (options.unplannedDrift) cli.manifest.dependencies.parser = '^1.0.0';
     const plan = {
         schema: 1,
         toolSha: SHA,
@@ -41,14 +42,38 @@ function fixture(options = {}) {
     plan.id = planId(plan);
     const branch = `codex/dependency-candidate-${plan.id}`;
     const lock = {lockfileVersion: 3, packages: {'': source.manifest}};
+    const registry = (name, version) => ({
+        version,
+        resolved: `https://registry.npmjs.org/${name}/-/${name.split('/').at(-1)}-${version}.tgz`,
+        integrity: `sha512-${createHash('sha512').update(`${name}@${version}`).digest('base64')}`,
+    });
+    const baselineLock = {
+        lockfileVersion: 3,
+        packages: {
+            '': cli.manifest,
+            'node_modules/@diplodoc/utils': registry('@diplodoc/utils', '1.0.0'),
+        },
+    };
     const manifest = withArchives(cli.manifest, new Map([['@diplodoc/utils', {...source, lock}]]));
     manifest.files = ['dependency-train'];
     write(path.join(directory, 'package.json'), manifest);
-    write(path.join(directory, 'package-lock.json'), {
-        lockfileVersion: 3,
-        packages: {'': manifest},
-    });
     const archive = Buffer.from('packed utils');
+    const candidateLock = {
+        lockfileVersion: 3,
+        packages: {
+            '': manifest,
+            'node_modules/@diplodoc/utils': {
+                version: '1.0.0',
+                resolved: 'file:dependency-train/payload/utils.tgz',
+                integrity: `sha512-${createHash('sha512').update(archive).digest('base64')}`,
+            },
+        },
+    };
+    if (options.unplannedDrift) {
+        baselineLock.packages['node_modules/parser'] = registry('parser', '1.1.0');
+        candidateLock.packages['node_modules/parser'] = registry('parser', '1.0.0');
+    }
+    write(path.join(directory, 'package-lock.json'), candidateLock);
     fs.mkdirSync(path.join(directory, 'dependency-train/payload'), {recursive: true});
     fs.writeFileSync(path.join(directory, 'dependency-train/payload/utils.tgz'), archive);
     write(path.join(directory, 'dependency-train/proof.json'), {
@@ -143,6 +168,14 @@ function fixture(options = {}) {
             const content = Buffer.from(JSON.stringify(lock));
             return {encoding: 'base64', content: content.toString('base64'), size: content.length};
         }
+        if (route === `${prefix}/git/trees/${SHA}`) {
+            return {truncated: false, tree: [{path: 'package-lock.json', type: 'blob', sha: SHA}]};
+        }
+        if (route === `${prefix}/git/blobs/${SHA}`) {
+            const content = Buffer.from(JSON.stringify(baselineLock));
+
+            return {encoding: 'base64', content: content.toString('base64'), size: content.length};
+        }
         if (route.startsWith(`${prefix}/pulls?state=all&head=`)) {
             return options.reuse ? [structuredClone(remote.pr)] : [];
         }
@@ -206,6 +239,17 @@ function fixture(options = {}) {
         close: () => fs.rmSync(directory, {recursive: true, force: true}),
     };
 }
+
+test('publisher independently rejects unrelated lock drift before any remote write', async () => {
+    const context = fixture({unplannedDrift: true});
+
+    try {
+        await assert.rejects(context.run(), /drift|unplanned|baseline/i);
+        assert.equal(context.remote.writes.length, 0);
+    } finally {
+        context.close();
+    }
+});
 
 for (const options of [{}, {reuse: true}, {resume: true}]) {
     test(`candidate publication succeeds with exact identity (${JSON.stringify(options)})`, async () => {

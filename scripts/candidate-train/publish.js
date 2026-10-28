@@ -17,9 +17,9 @@ const {
     pages,
     fileAt,
 } = require('./common');
-const {withArchives} = require('./build');
+const {withArchives, assertDependencyDelta} = require('./build');
 
-function validatePayload(plan, directory, locks = new Map()) {
+function validatePayload(plan, directory, locks, baselineLock) {
     validatePlan(plan);
     const order = buildOrder(plan.graph, plan.selected).filter((item) => item.repo !== 'cli');
     const names = new Map(
@@ -37,6 +37,9 @@ function validatePayload(plan, directory, locks = new Map()) {
     for (const section of SECTIONS) {
         assert.deepEqual(lock.packages[''][section] || {}, expected[section] || {});
     }
+    // Recompute the delta from independently fetched canonical locks, not the
+    // build job's proof or its claim that only planned versions have changed.
+    assertDependencyDelta(plan, baselineLock, lock, locks);
     const proof = read(path.join(directory, 'dependency-train', 'proof.json'));
     assert.equal(proof.schema, 1);
     assert.equal(proof.trainId, plan.id);
@@ -214,6 +217,9 @@ async function publish(plan, directory, env = process.env, request = github) {
     const bot = await botRequest('/user');
     assert.equal(bot.login, 'diplodoc-bot', 'The PR opener must be the contributor bot');
     await unchangedSources(plan, request);
+    const baselineLock = JSON.parse(
+        await fileAt('cli', plan.cli.sha, 'package-lock.json', request),
+    );
     const locks = new Map();
     for (const node of buildOrder(plan.graph, plan.selected).filter(
         (item) => item.repo !== 'cli',
@@ -223,7 +229,7 @@ async function publish(plan, directory, env = process.env, request = github) {
             JSON.parse(await fileAt(node.repo, node.sha, 'package-lock.json', request)),
         );
     }
-    const files = validatePayload(plan, directory, locks);
+    const files = validatePayload(plan, directory, locks, baselineLock);
     const prefix = `/repos/${OWNER}/cli`;
     const branch = `codex/dependency-candidate-${plan.id}`;
     const pulls = await pages(

@@ -10,13 +10,17 @@ on:
         type: boolean
         default: true
       repositories:
-        description: 'Explicit repository allowlist; falls back to organization variable'
+        description: 'Repository allowlist or all supported packages; falls back to organization variable'
         type: string
         default: ''
       pr_number:
         description: 'Optional exact Dependabot PR; requires one repository'
         type: number
         default: 0
+      wave:
+        description: 'Independent wave to prepare; inspect the dry-run inventory first'
+        type: number
+        default: 1
 
 permissions:
   contents: read
@@ -35,6 +39,7 @@ jobs:
     outputs:
       selected: ${{ steps.plan.outputs.selected }}
       plan-artifact: ${{ steps.plan-artifact.outputs.artifact-id }}
+      preparation-available: ${{ steps.open-candidate.outputs.available }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -52,6 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
           DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
+          DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && toJSON(inputs.wave) || '1' }}
         run: node scripts/candidate-train/plan.js
       - uses: actions/upload-artifact@v4
         id: plan-artifact
@@ -59,11 +65,17 @@ jobs:
           name: dependency-train-plan
           path: train-plan.json
           if-no-files-found: error
+      - name: Check for an open candidate before preparation
+        id: open-candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/candidate-train/open-candidate.js
 
   build:
     needs: select
     if: >-
       needs.select.outputs.selected != '0' &&
+      needs.select.outputs['preparation-available'] == 'true' &&
       ((github.event_name == 'workflow_dispatch' && toJSON(inputs.dry_run) == 'false') ||
       (github.event_name == 'schedule' && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true'))
     runs-on: ubuntu-latest

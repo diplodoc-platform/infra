@@ -53,9 +53,10 @@ function fixturePr() {
 }
 
 function lock(manifest, version = '1.0.0') {
+    const name = Object.keys(manifest.dependencies || {})[0] || 'parser';
     return {
         lockfileVersion: 3,
-        packages: {'': structuredClone(manifest), 'node_modules/parser': {version}},
+        packages: {'': structuredClone(manifest), [`node_modules/${name}`]: {version}},
     };
 }
 
@@ -162,9 +163,11 @@ test('runtime proof rejects excessive depth instead of dropping unchecked edges'
     assert.throws(() => builder.runtimeVersions(lock, new Set()), /depth exceeds the proof limit/);
 });
 
-test('candidate allowlist is explicit, bounded, unique and excludes direct CLI updates', () => {
+test('candidate allowlist supports all or explicit unique targets and excludes direct CLI updates', () => {
     assert.deepEqual(planner.allowlist('cut-extension, utils'), ['cut-extension', 'utils']);
-    for (const value of ['', 'cli', 'utils,utils', '../utils', 'a,b,c,d']) {
+    assert.deepEqual(planner.allowlist('all'), ['all']);
+    assert.deepEqual(planner.allowlist('a,b,c,d'), ['a', 'b', 'c', 'd']);
+    for (const value of ['', 'cli', 'utils,utils', '../utils', '*', 'all,utils']) {
         assert.throws(() => planner.allowlist(value));
     }
 });
@@ -221,8 +224,8 @@ test('registered unrelated packages may have an unscoped npm name', () => {
 });
 
 test('real Dependabot manifest and lock-only minor changes are selected', () => {
-    const before = {name: '@diplodoc/utils', dependencies: {parser: '^1.0.0'}};
-    const after = {...before, dependencies: {parser: '^1.1.0'}};
+    const before = {name: '@diplodoc/utils', dependencies: {'@types/example': '^1.0.0'}};
+    const after = {...before, dependencies: {'@types/example': '^1.1.0'}};
     for (const manifest of [after, before]) {
         const result = planner.assess(
             fixturePr(),
@@ -238,8 +241,8 @@ test('real Dependabot manifest and lock-only minor changes are selected', () => 
 });
 
 test('selection rejects forged authors, stale locks, script edits, majors and workflow changes', () => {
-    const before = {name: '@diplodoc/utils', dependencies: {parser: '^1.0.0'}};
-    const after = {...before, dependencies: {parser: '^1.1.0'}};
+    const before = {name: '@diplodoc/utils', dependencies: {'@types/example': '^1.0.0'}};
+    const after = {...before, dependencies: {'@types/example': '^1.1.0'}};
     const files = [{filename: 'package-lock.json', status: 'modified'}];
     const run = (pr, changed, manifest, targetLock = lock(manifest, '1.1.0')) =>
         planner.assess(pr, changed, before, manifest, lock(before), targetLock, []);
@@ -247,7 +250,7 @@ test('selection rejects forged authors, stale locks, script edits, majors and wo
     assert.throws(() => run(fixturePr(), files, {...after, scripts: {prepare: 'bad'}}));
     assert.throws(() => run(fixturePr(), [{filename: '.github/workflows/x.yml'}], after));
     assert.throws(() => run(fixturePr(), files, after, lock(before)));
-    const major = {...after, dependencies: {parser: '^2.0.0'}};
+    const major = {...after, dependencies: {'@types/example': '^2.0.0'}};
     assert.throws(() => run(fixturePr(), files, major, lock(major, '2.0.0')));
 });
 
@@ -336,7 +339,33 @@ test('publisher accepts only canonical dependency payloads and rejects scripts, 
     );
     manifest.files = ['dependency-train'];
     common.write(path.join(directory, 'package.json'), manifest);
-    common.write(path.join(directory, 'package-lock.json'), lock(manifest));
+    const registry = (item) => ({
+        ...item.manifest,
+        resolved: `https://registry.npmjs.org/${item.manifest.name}/-/${item.repo}-1.0.0.tgz`,
+        integrity: `sha512-${require('node:crypto').createHash('sha512').update(item.repo).digest('base64')}`,
+    });
+    const baseline = {lockfileVersion: 3, packages: {'': plan.cli.manifest}};
+    const candidate = {lockfileVersion: 3, packages: {'': manifest}};
+    const locks = new Map();
+
+    for (const item of order) {
+        baseline.packages[`node_modules/${item.manifest.name}`] = registry(item);
+        candidate.packages[`node_modules/${item.manifest.name}`] = {
+            ...item.manifest,
+            resolved: `file:dependency-train/payload/${item.repo}.tgz`,
+            integrity: registry(item).integrity,
+        };
+        locks.set(item.repo, {
+            lockfileVersion: 3,
+            packages: {
+                '': item.manifest,
+                ...(item.repo === 'transform'
+                    ? {'node_modules/@diplodoc/utils': registry(order[0])}
+                    : {}),
+            },
+        });
+    }
+    common.write(path.join(directory, 'package-lock.json'), candidate);
     const packages = order.map((item) => {
         const bytes = Buffer.from(item.repo);
         fs.writeFileSync(path.join(directory, `dependency-train/payload/${item.repo}.tgz`), bytes);
@@ -345,6 +374,7 @@ test('publisher accepts only canonical dependency payloads and rejects scripts, 
             name: item.manifest.name,
             sourceSha: item.sha,
             archiveSha256: common.digest(bytes),
+            sourceLockSha256: common.digest(JSON.stringify(locks.get(item.repo))),
             resolutions: [],
         };
     });
@@ -355,16 +385,18 @@ test('publisher accepts only canonical dependency payloads and rejects scripts, 
         cliBaseSha: SHA,
         packages,
     });
-    assert.equal(publisher.validatePayload(plan, directory).length, 5);
+    const validate = () => publisher.validatePayload(plan, directory, locks, baseline);
+
+    assert.equal(validate().length, 5);
     common.write(path.join(directory, 'package.json'), {...manifest, scripts: {prepare: 'bad'}});
-    assert.throws(() => publisher.validatePayload(plan, directory));
+    assert.throws(validate);
     common.write(path.join(directory, 'package.json'), manifest);
     fs.writeFileSync(path.join(directory, 'extra.js'), 'bad');
-    assert.throws(() => publisher.validatePayload(plan, directory));
+    assert.throws(validate);
     fs.unlinkSync(path.join(directory, 'extra.js'));
     if (process.platform !== 'win32') {
         fs.symlinkSync(path.join(directory, 'package.json'), path.join(directory, 'unexpected'));
-        assert.throws(() => publisher.validatePayload(plan, directory));
+        assert.throws(validate);
     }
 });
 
@@ -378,6 +410,7 @@ test('manual preparation does not require enabling scheduled execution', () => {
 
     assert.equal(workflow.on.workflow_dispatch.inputs.dry_run.default, true);
     assert.equal(workflow.on.workflow_dispatch.inputs.pr_number.default, 0);
+    assert.equal(workflow.on.workflow_dispatch.inputs.wave.default, 1);
     assert.deepEqual(Object.keys(workflow.jobs), ['select', 'build', 'publish']);
 
     for (const enabled of ['', 'false', 'true']) {
@@ -390,7 +423,7 @@ test('manual preparation does not require enabling scheduled execution', () => {
 
         for (const dryRun of ['', true, false]) {
             const actual = runInNewContext(workflow.jobs.build.if, {
-                needs: {select: {outputs: {selected: '1'}}},
+                needs: {select: {outputs: {selected: '1', 'preparation-available': 'true'}}},
                 vars,
                 github: {event_name: 'workflow_dispatch'},
                 inputs: {dry_run: dryRun},
@@ -399,7 +432,51 @@ test('manual preparation does not require enabling scheduled execution', () => {
 
             assert.equal(actual, dryRun === false);
         }
+
+        for (const available of ['', 'false']) {
+            const actual = runInNewContext(workflow.jobs.build.if, {
+                needs: {select: {outputs: {selected: '1', 'preparation-available': available}}},
+                vars,
+                github: {event_name: 'workflow_dispatch'},
+                inputs: {dry_run: false},
+                toJSON: JSON.stringify,
+            });
+
+            assert.equal(actual, false, 'An open or unknown candidate must block a build');
+        }
     }
+});
+
+test('manual wave zero is rejected by the planner rather than defaulted by the workflow', () => {
+    const workflow = yaml.load(
+        fs.readFileSync(
+            path.join(root, '.github/workflows/dependency-candidate-train.yml'),
+            'utf8',
+        ),
+    );
+    const expression = workflow.jobs.select.steps
+        .find((step) => step.id === 'plan')
+        .env.DEPENDENCY_TRAIN_WAVE.slice(3, -2)
+        .trim();
+
+    for (const wave of [0, 1, 2]) {
+        assert.equal(
+            runInNewContext(expression, {
+                github: {event_name: 'workflow_dispatch'},
+                inputs: {wave},
+                toJSON: JSON.stringify,
+            }),
+            String(wave),
+        );
+    }
+    assert.equal(
+        runInNewContext(expression, {
+            github: {event_name: 'schedule'},
+            inputs: {},
+            toJSON: JSON.stringify,
+        }),
+        '1',
+    );
 });
 
 test('GitHub preparation cannot access internal APIs or notification credentials', () => {
