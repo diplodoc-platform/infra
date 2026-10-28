@@ -14,6 +14,14 @@ function repositoryTargets(graph, requested) {
     for (const node of graph) {
         if (node.repo === 'cli') continue;
 
+        if (node.repo === 'vsc') {
+            unsupported.push({
+                repo: node.repo,
+                reason: 'Standalone VSC updates require a separate candidate path',
+            });
+            continue;
+        }
+
         try {
             buildOrder(graph, [node]);
             supported.push(node.repo);
@@ -33,6 +41,7 @@ function repositoryTargets(graph, requested) {
             graph.some((node) => node.repo === repo),
             `Unregistered target ${repo}`,
         );
+        assert.notEqual(repo, 'vsc', 'Standalone VSC updates require a separate candidate path');
         assert.ok(supported.includes(repo), `${repo} is not in the CLI build graph`);
     }
 

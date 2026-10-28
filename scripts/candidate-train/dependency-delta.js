@@ -2,6 +2,8 @@
 
 const assert = require('node:assert/strict');
 const {buildOrder} = require('./common');
+const {optInExtension} = require('./model');
+const {modeledRuntimeLock} = require('./build-inputs');
 
 const NAME = /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const RUNTIME = ['dependencies', 'peerDependencies', 'optionalDependencies'];
@@ -51,7 +53,7 @@ function identity(entry) {
     return {version: entry.version, resolved: entry.resolved, integrity: entry.integrity};
 }
 
-function contexts(lock) {
+function contexts(lock, additionalEdges = new Map()) {
     const result = new Map();
     const seen = new Set();
     let count = 0;
@@ -62,7 +64,13 @@ function contexts(lock) {
         seen.add(state);
         assert.ok(depth <= MAX_DEPTH, 'Dependency comparison exceeds the depth limit');
 
-        for (const [name, edge] of edges(lock.packages[key], key === '')) {
+        const entry = lock.packages[key];
+        const modeled = additionalEdges.get(key);
+        const effective = modeled
+            ? {...entry, dependencies: {...entry.dependencies, ...modeled}}
+            : entry;
+
+        for (const [name, edge] of edges(effective, key === '')) {
             assert.ok(++count <= MAX_EDGES, 'Dependency comparison exceeds the size limit');
             const target = lookup(lock, key, name);
             if (!target && (optional || edge.optional)) continue;
@@ -104,11 +112,29 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
             const location = trail ? `${trail} > ${name}` : name;
             const expected = expectedEdges.get(name);
             const actual = actualEdges.get(name);
+            const archive = options.archives.get(name);
+
+            if (!expected && actual && options.allowOptInRoots && depth === 0) {
+                const profile = optInExtension(name);
+                const permittedRoot =
+                    archive &&
+                    options.selected.has(name) &&
+                    profile?.name === name &&
+                    profile.repo === archive.repo &&
+                    !actual.optional &&
+                    Object.keys(actual.specs).length === 1 &&
+                    actual.specs.dependencies ===
+                        `file:dependency-train/payload/${archive.repo}.tgz`;
+
+                // Every installed archive is compared with its canonical source
+                // lock below, including these explicitly selected CLI additions.
+                if (permittedRoot) continue;
+            }
+
             if (!expected || !actual) fail(location, 'dependency edge was added or removed');
             if (expected.optional !== actual.optional)
                 fail(location, 'dependency optionality changed');
 
-            const archive = options.archives.get(name);
             for (const section of new Set([
                 ...Object.keys(expected.specs),
                 ...Object.keys(actual.specs),
@@ -135,6 +161,13 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
             assert.ok(!after.link && typeof after.version === 'string');
 
             if (archive) {
+                if (
+                    options.validateArchives &&
+                    (after.version !== archive.manifest.version ||
+                        after.resolved !== `file:dependency-train/payload/${archive.repo}.tgz`)
+                ) {
+                    fail(location, 'archive does not match its frozen source');
+                }
                 // Canonical archive children are checked independently in every
                 // installed context, rather than trusting their parent's lock.
                 if (options.cutArchives) continue;
@@ -221,11 +254,34 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks) {
     validateLock(candidateLock);
     const settings = sourceContext(plan, baselineLock, sourceLocks);
     const {archives} = settings;
-    const candidateContexts = contexts(candidateLock);
+    const additionalEdges = new Map();
+
+    for (const [name, archive] of archives) {
+        const modeled = modeledRuntimeLock(archive, sourceLocks.get(archive.repo));
+        if (!modeled) continue;
+
+        for (const [context, entry] of Object.entries(candidateLock.packages)) {
+            const exactName =
+                context === `node_modules/${name}` || context.endsWith(`/node_modules/${name}`);
+
+            if (
+                exactName &&
+                entry.version === archive.manifest.version &&
+                entry.resolved === `file:dependency-train/payload/${archive.repo}.tgz`
+            ) {
+                additionalEdges.set(context, modeled.packages[''].dependencies);
+            }
+        }
+    }
+
+    // Implicit runtime edges must participate in discovery too. Otherwise a
+    // nested replacement archive could escape its independent canonical check.
+    const candidateContexts = contexts(candidateLock, additionalEdges);
 
     compare(baselineLock, '', candidateLock, '', {
         ...settings,
         includeDev: true,
+        allowOptInRoots: true,
         label: 'Unplanned CLI dependency delta',
     });
 
@@ -250,7 +306,28 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks) {
                 ...settings,
                 cutArchives: true,
                 label: `Canonical source lock ${archive.repo}`,
+                validateArchives: true,
             });
+
+            const modeled = modeledRuntimeLock(archive, source);
+            if (modeled) {
+                // Some shipped code consumes a declared build input at runtime.
+                // Resolve that explicit model edge from the archive's actual
+                // installed context without rewriting canonical source evidence.
+                const view = {
+                    ...candidateLock,
+                    packages: {
+                        ...candidateLock.packages,
+                        [context]: modeled.packages[''],
+                    },
+                };
+                compare(modeled, '', view, context, {
+                    ...settings,
+                    cutArchives: true,
+                    label: `Modeled runtime input ${archive.repo}`,
+                    validateArchives: true,
+                });
+            }
         }
     }
 

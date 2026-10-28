@@ -300,6 +300,52 @@ test('archive specs are relocatable and preserve unrelated scripts and nested ov
     assert.equal(result.overrides.other, '2.0.0');
 });
 
+test('only trusted opt-in archives add candidate CLI dependencies without changing source manifests', () => {
+    const manifest = {
+        name: '@diplodoc/cli',
+        dependencies: {'@diplodoc/utils': '^1.0.0'},
+        devDependencies: {'@diplodoc/yfmlint': '^1.0.0'},
+        scripts: {build: 'original-build'},
+    };
+    const original = structuredClone(manifest);
+    const archives = new Map([
+        ['@diplodoc/html-extension', {repo: 'html-extension'}],
+        ['@diplodoc/yfmlint', {repo: 'yfmlint'}],
+        ['@diplodoc/unregistered', {repo: 'unregistered'}],
+    ]);
+    const result = builder.withArchives(manifest, archives);
+
+    assert.equal(
+        result.dependencies['@diplodoc/html-extension'],
+        'file:dependency-train/payload/html-extension.tgz',
+    );
+    assert.equal(
+        result.devDependencies['@diplodoc/yfmlint'],
+        'file:dependency-train/payload/yfmlint.tgz',
+    );
+    assert.ok(!Object.hasOwn(result.dependencies, '@diplodoc/unregistered'));
+    assert.deepEqual(result.scripts, manifest.scripts);
+    assert.deepEqual(manifest, original);
+
+    const ordinary = builder.withArchives({...manifest, name: '@diplodoc/client'}, archives);
+    assert.ok(!Object.hasOwn(ordinary.dependencies, '@diplodoc/html-extension'));
+    const forged = builder.withArchives(
+        manifest,
+        new Map([['@diplodoc/html-extension', {repo: 'another-extension'}]]),
+    );
+    assert.ok(!Object.hasOwn(forged.dependencies, '@diplodoc/html-extension'));
+
+    const declared = builder.withArchives(
+        {...manifest, devDependencies: {'@diplodoc/html-extension': '^1.0.0'}},
+        archives,
+    );
+    assert.ok(!Object.hasOwn(declared.dependencies, '@diplodoc/html-extension'));
+    assert.equal(
+        declared.devDependencies['@diplodoc/html-extension'],
+        'file:dependency-train/payload/html-extension.tgz',
+    );
+});
+
 test('installed-resolution proof rejects a silent fallback to another locked version', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-resolution-test-'));
     fs.mkdirSync(path.join(directory, 'node_modules/parser'), {recursive: true});
