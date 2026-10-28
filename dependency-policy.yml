@@ -30,9 +30,71 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-10-27
+last-updated: 2026-10-28
 
 entries:
+  - id: DEP-0009
+    dependency: markdown-it-ins
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform 5 adapts the frozen ins tokenizer/postprocessor rule shapes and owned delimiter fields to underline tokens; the exact upstream grammar is accepted with native markdown-it 15 and actual consumers.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1137
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact underline adapter with native parser types and real CLI/viewer rendering
+      - Revalidate upstream rule and delimiter shapes plus protected syntax before widening the range
+
+  - id: DEP-0010
+    dependency: markdown-it-sub
+    repositories: [transform]
+    allowed-version: 2.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform 5 freezes the upstream plain-text subscript delimiter and escaping grammar accepted with native markdown-it 15, strikethrough/linkify interactions and actual consumers.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1137
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact subscript grammar with native parser types and real CLI/viewer rendering
+      - Revalidate delimiter, escaping and protected-content behavior before widening the range
+
+  # Approved published archive SHA256: 880926fc1a559c746fc12533842cc8b9eefb617282b3daa368faed4bde000ff6
+  - id: DEP-0011
+    dependency: '@diplodoc/directive'
+    repositories: [transform]
+    allowed-version: 0.5.0-transform5.0
+    ignored-versions: []
+    risk: critical
+    category: prerelease-compatibility
+    verification-profile: ecosystem
+    reason: 'Transform 5 requires the approved directive scanner and portable declarations from the public parser API for strict browser types; the published prerelease remains isolated from stable consumers while this parser boundary is accepted.'
+    evidence:
+      portability: https://github.com/diplodoc-platform/directive/pull/60
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+      registry-archive: https://registry.npmjs.org/@diplodoc/directive/-/directive-0.5.0-transform5.0.tgz
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact published scanner in Transform with native parser and strict browser declarations
+      - Agree a compatible stable release and revalidate scanner behavior before replacing the prerelease pin
+
   - id: DEP-0004
     dependency: markdown-it
     repositories: [transform]

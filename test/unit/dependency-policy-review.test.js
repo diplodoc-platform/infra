@@ -806,6 +806,41 @@ test('CLI: parser migration exceptions retain critical ecosystem verification', 
     }
 });
 
+test('CLI: inline and directive exceptions cannot downgrade future parser majors', async () => {
+    const tempDir = await createTempDir();
+    try {
+        writeJson(tempDir, 'before.json', {
+            dependencies: {
+                'markdown-it-ins': '4.0.0',
+                'markdown-it-sub': '2.0.0',
+                '@diplodoc/directive': '0.5.0-transform5.0',
+            },
+        });
+        writeJson(tempDir, 'after.json', {
+            dependencies: {
+                'markdown-it-ins': '5.0.0',
+                'markdown-it-sub': '3.0.0',
+                '@diplodoc/directive': '1.0.0',
+            },
+        });
+        const jsonPath = join(tempDir, 'assessment.json');
+        execSync(
+            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
+                `--before-pkg "${join(tempDir, 'before.json')}" ` +
+                `--after-pkg "${join(tempDir, 'after.json')}" ` +
+                `--json "${jsonPath}" --quiet --repo transform`,
+            {stdio: 'pipe', env: {...process.env}},
+        );
+        const assessment = JSON.parse(readFile(tempDir, 'assessment.json'));
+        assert.strictEqual(assessment.maxRisk, 'critical');
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem');
+        assert.strictEqual(assessment.summary.total, 3);
+        assert.ok(assessment.direct.every(({risk}) => risk === 'critical'));
+    } finally {
+        await removeTempDir(tempDir);
+    }
+});
+
 test('CLI: produces assessment for changed package.json', async () => {
     const tempDir = await createTempDir();
     try {
