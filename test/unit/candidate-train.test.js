@@ -493,7 +493,7 @@ test('manual preparation does not require enabling scheduled execution', () => {
     }
 });
 
-test('manual wave zero is rejected by the planner rather than defaulted by the workflow', () => {
+test('manual wave accepts string and numeric inputs without JSON quotes or a zero fallback', () => {
     const workflow = yaml.load(
         fs.readFileSync(
             path.join(root, '.github/workflows/dependency-candidate-train.yml'),
@@ -505,12 +505,17 @@ test('manual wave zero is rejected by the planner rather than defaulted by the w
         .env.DEPENDENCY_TRAIN_WAVE.slice(3, -2)
         .trim();
 
-    for (const wave of [0, 1, 2]) {
+    const format = (pattern, value) => {
+        assert.equal(pattern, '{0}');
+        return String(value);
+    };
+
+    for (const wave of [0, 1, 2, '0', '1', '2']) {
         assert.equal(
             runInNewContext(expression, {
                 github: {event_name: 'workflow_dispatch'},
                 inputs: {wave},
-                toJSON: JSON.stringify,
+                format,
             }),
             String(wave),
         );
@@ -519,9 +524,19 @@ test('manual wave zero is rejected by the planner rather than defaulted by the w
         runInNewContext(expression, {
             github: {event_name: 'schedule'},
             inputs: {},
-            toJSON: JSON.stringify,
+            format,
         }),
         '1',
+    );
+});
+
+test('manual zero wave remains invalid before any candidate lookup', async () => {
+    await assert.rejects(
+        planner.planTrain(
+            {DEPENDENCY_TRAIN_REPOSITORIES: 'all', DEPENDENCY_TRAIN_WAVE: '0'},
+            async () => assert.fail('An invalid wave must not access the API'),
+        ),
+        /Invalid wave number/,
     );
 });
 
