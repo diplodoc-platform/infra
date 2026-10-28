@@ -33,6 +33,177 @@ registry-owner: diplodoc-platform/infra
 last-updated: 2026-10-28
 
 entries:
+  - id: DEP-0012
+    dependency: '@typescript-eslint/eslint-plugin'
+    repositories: [notes-extension]
+    allowed-version: 8.72.1
+    ignored-versions: []
+    risk: high
+    category: tooling-compatibility
+    verification-profile: standard
+    reason: 'The isolated notes source lint requires the directly declared ESLint plugin version paired with the supported parser; ancestor workspace resolution previously hid the missing peer.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate normal isolated source lint and plugin/parser peer resolution before widening the pin
+
+  - id: DEP-0013
+    dependency: '@typescript-eslint/parser'
+    repositories: [notes-extension]
+    allowed-version: 8.72.1
+    ignored-versions: []
+    risk: high
+    category: tooling-compatibility
+    verification-profile: standard
+    reason: 'The isolated notes source lint requires the directly declared TypeScript ESLint parser paired with its plugin; an ancestor workspace dependency previously masked the missing peer.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate normal isolated source lint and plugin/parser peer resolution before widening the pin
+
+  - id: DEP-0014
+    dependency: 'markdown-it'
+    repositories: [notes-extension]
+    allowed-version: 15.0.3
+    ignored-versions: []
+    risk: high
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The notes package tests its accepted native parser stack while separately exercising installed MarkdownIt 13, 14 and 15 with strict declarations and browser behavior.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate all three native parser and installed browser matrices before widening the pin
+
+  - id: DEP-0015
+    dependency: 'typescript'
+    repositories: [notes-extension]
+    allowed-version: 6.0.3
+    ignored-versions: []
+    risk: high
+    category: declaration-compatibility
+    verification-profile: ecosystem
+    reason: 'The accepted notes package emits and validates native parser declarations with this TypeScript release; changes require strict CJS and ESM consumer checks.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate native parser declarations and strict installed CJS/ESM consumers before widening the pin
+
+  - id: DEP-0016
+    dependency: 'esbuild'
+    repositories: [notes-extension]
+    allowed-version: 0.25.12
+    ignored-versions: []
+    risk: high
+    category: build-output
+    verification-profile: document-transform
+    reason: 'The accepted notes implementation uses this builder for the actual dual-format parser and browser outputs; output parity is checked against the reviewed archive.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate the actual CJS/ESM/browser build, resources and accepted package outputs before widening the pin
+
+  - id: DEP-0017
+    dependency: 'sass'
+    repositories: [notes-extension]
+    allowed-version: 1.97.3
+    ignored-versions: []
+    risk: high
+    category: build-output
+    verification-profile: document-rendering
+    reason: 'The accepted notes styles and exported Sass are checked against the Transform styling contract; a compiler change needs computed CSS parity validation.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate exported Sass and computed styles across the accepted rendering matrix before widening the pin
+
+  - id: DEP-0018
+    dependency: 'markdown-it-directive'
+    repositories: [directive]
+    allowed-version: 2.0.6
+    ignored-versions: []
+    risk: high
+    category: patched-dependency
+    verification-profile: ecosystem
+    reason: 'The Directive migration patches this exact upstream source so prototype-named attribute keys, including constructor, and repeated attributes parse safely; the patch and generated build shape must be verified together.'
+    evidence:
+      review: https://github.com/diplodoc-platform/directive/pull/61
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate full patched source and built shape plus constructor, prototype-named and repeated-attribute parsing across supported native MarkdownIt versions before widening the pin
+
+  - id: DEP-0019
+    dependency: 'markdown-it-footnote'
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The Transform footnote adapter depends on specific upstream rule and private environment counter shapes; focused parser and source gates are bounded while actual consumer acceptance remains pending.'
+    evidence:
+      review: https://st.yandex-team.ru/DOCSTOOLS-6948
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete real CLI and Viewer consumer acceptance and revalidate adapted rule and environment shapes before widening the pin
+
+  - id: DEP-0020
+    dependency: '@mdit/plugin-tasklist'
+    repositories: [transform]
+    allowed-version: 1.1.4
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The Transform task-list adapter depends on accepted upstream token shapes and owned token mutations; focused parser and source gates are bounded while actual consumer acceptance remains pending.'
+    evidence:
+      review: https://st.yandex-team.ru/DOCSTOOLS-6948
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete real CLI and Viewer consumer acceptance and revalidate upstream token shapes and owned mutations before widening the pin
+
   - id: DEP-0009
     dependency: markdown-it-ins
     repositories: [transform]
@@ -217,6 +388,7 @@ entries:
       - html-extension
       - latex-extension
       - mermaid-extension
+      - notes-extension
       - openapi-extension
       - page-constructor-extension
       - quote-link-extension

@@ -780,6 +780,48 @@ test('renderComment: shows no changes message when empty', () => {
 const SCRIPT = join(__dirname, '../../scripts/dependency-policy-review.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
 
+test('new scoped pins retain registry risk and no ignored versions on changes', () => {
+    const yaml = require('js-yaml');
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
+    const {strongestProfile} = require('../../scripts/dependency-verification-profiles');
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const pins = [
+        ['@typescript-eslint/eslint-plugin', '8.72.1', 'notes-extension'],
+        ['@typescript-eslint/parser', '8.72.1', 'notes-extension'],
+        ['markdown-it', '15.0.3', 'notes-extension'],
+        ['typescript', '6.0.3', 'notes-extension'],
+        ['esbuild', '0.25.12', 'notes-extension'],
+        ['sass', '1.97.3', 'notes-extension'],
+        ['markdown-it-directive', '2.0.6', 'directive'],
+        ['markdown-it-footnote', '4.0.0', 'transform'],
+        ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
+    ];
+    for (const [name, version, repo] of pins) {
+        const change = {
+            name,
+            section: 'devDependencies',
+            from: version,
+            to: '99.0.0',
+            changeType: 'changed',
+        };
+        const scoped = buildAssessment([change], [], filterEntriesForRepo(registry.entries, repo));
+        assert.strictEqual(scoped.direct[0].inRegistry, true, name);
+        assert.strictEqual(scoped.direct[0].ignored, false, name);
+        assert.ok(['high', 'critical'].includes(scoped.maxRisk), name);
+        assert.strictEqual(
+            strongestProfile([
+                scoped.verificationProfile,
+                scoped.direct[0].entry['verification-profile'],
+            ]),
+            scoped.verificationProfile,
+            name,
+        );
+        assert.notStrictEqual(scoped.autoMergePermission, 'permitted', name);
+        const other = buildAssessment([change], [], filterEntriesForRepo(registry.entries, 'cli'));
+        assert.strictEqual(other.direct[0].inRegistry, false, `cli:${name}`);
+    }
+});
+
 test('CLI: parser migration exceptions retain critical ecosystem verification', async () => {
     const tempDir = await createTempDir();
     try {

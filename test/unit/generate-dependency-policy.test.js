@@ -176,9 +176,35 @@ test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001',
             'DEP-0009',
             'DEP-0010',
             'DEP-0011',
+            'DEP-0019',
+            'DEP-0020',
         ]);
     } finally {
         await removeTempDir(tempDir);
+    }
+});
+
+test('CLI: generates only scoped notes and directive policies', async () => {
+    for (const [repo, expected] of [
+        [
+            'notes-extension',
+            ['DEP-0003', 'DEP-0012', 'DEP-0013', 'DEP-0014', 'DEP-0015', 'DEP-0016', 'DEP-0017'],
+        ],
+        ['directive', ['DEP-0003', 'DEP-0018']],
+    ]) {
+        const tempDir = await createTempDir();
+        try {
+            writeJson(tempDir, 'package.json', {name: `@diplodoc/${repo}`, version: '1.0.0'});
+            execSync(`node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}"`, {
+                stdio: 'pipe',
+                env: {...process.env},
+            });
+            const policy = yaml.load(readFile(tempDir, '.github/dependency-policy.yml'));
+            assert.strictEqual(policy['generated-for'], repo);
+            assert.deepStrictEqual(policy.entries.map((entry) => entry.id).sort(), expected);
+        } finally {
+            await removeTempDir(tempDir);
+        }
     }
 });
 
@@ -221,6 +247,8 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json derivation', async () 
             'DEP-0009',
             'DEP-0010',
             'DEP-0011',
+            'DEP-0019',
+            'DEP-0020',
         ]);
     } finally {
         await removeTempDir(tempDir);

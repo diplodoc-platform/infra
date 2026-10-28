@@ -307,7 +307,7 @@ test('real registry accepts only the reviewed Transform inline and directive pin
     const result = enforceChanges({}, {dependencies: pins}, registry, 'transform');
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.checked, 3);
-    assert.strictEqual(registry.entries.length, 11);
+    assert.strictEqual(registry.entries.length, 20);
     for (const [name, version] of Object.entries(pins)) {
         const entry = findRegistryEntry(registry.entries, name, version);
         assert.deepStrictEqual(entry.repositories, ['transform']);
@@ -361,13 +361,86 @@ test('real registry rejects the reviewed Transform pins in CLI scope', () => {
     assert.strictEqual(result.violations.length, 3);
 });
 
-test('managed infra registry scope stays aligned with distribution targets', () => {
+test('new exact pins retain version, repository and expiry boundaries', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const pins = [
+        ['@typescript-eslint/eslint-plugin', '8.72.1', 'notes-extension'],
+        ['@typescript-eslint/parser', '8.72.1', 'notes-extension'],
+        ['markdown-it', '15.0.3', 'notes-extension'],
+        ['typescript', '6.0.3', 'notes-extension'],
+        ['esbuild', '0.25.12', 'notes-extension'],
+        ['sass', '1.97.3', 'notes-extension'],
+        ['markdown-it-directive', '2.0.6', 'directive'],
+        ['markdown-it-footnote', '4.0.0', 'transform'],
+        ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
+    ];
+    for (const [name, version, repo] of pins) {
+        const pkg = {devDependencies: {[name]: version}};
+        assert.strictEqual(enforce(pkg, registry, repo).ok, true, `${repo}:${name}`);
+        assert.strictEqual(enforce(pkg, registry, 'cli').ok, false, `cli:${name}`);
+        assert.strictEqual(
+            enforce({devDependencies: {[name]: '99.0.0'}}, registry, repo).ok,
+            false,
+            `wrong version ${name}`,
+        );
+        const entry = registry.entries.find(
+            (item) => item.dependency === name && item.repositories.includes(repo),
+        );
+        assert.ok(entry, name);
+        assert.deepStrictEqual(entry.repositories, [repo]);
+        assert.deepStrictEqual(entry['ignored-versions'], []);
+        assert.strictEqual(
+            new Date(entry['review-after']).toISOString().slice(0, 10),
+            '2026-11-17',
+        );
+        assert.strictEqual(new Date(entry['expires-at']).toISOString().slice(0, 10), '2026-12-01');
+        assert.strictEqual(
+            findRegistryEntry(
+                [entry],
+                name,
+                version,
+                'devDependencies',
+                repo,
+                new Date('2026-12-01'),
+            ),
+            undefined,
+            `expired ${name}`,
+        );
+    }
+});
+
+test('notes managed infra pin remains dev-only and scope-bound', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const version = '2.3.0';
+    assert.strictEqual(
+        enforce({devDependencies: {'@diplodoc/infra': version}}, registry, 'notes-extension').ok,
+        true,
+    );
+    assert.strictEqual(
+        enforce({peerDependencies: {'@diplodoc/infra': version}}, registry, 'notes-extension').ok,
+        false,
+    );
+    assert.strictEqual(
+        enforce({devDependencies: {'@diplodoc/infra': version}}, registry, 'unmanaged').ok,
+        false,
+    );
+    assert.strictEqual(
+        enforce(
+            {devDependencies: {'@diplodoc/infra': '2.3.0-transform5.0'}},
+            registry,
+            'notes-extension',
+        ).ok,
+        false,
+    );
+});
+
+test('managed infra scope covers distribution and reviewed notes-only preparation', () => {
     const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
     const distribution = yaml.load(readFile(join(__dirname, '../..'), 'distribution.yml'));
     const managed = registry.entries.find((entry) => entry['pin-policy'] === 'managed-infra');
     assert.deepStrictEqual(
         [...managed.repositories].sort(),
-        Object.keys(distribution.repos).sort(),
+        [...Object.keys(distribution.repos), 'notes-extension'].sort(),
     );
     for (const directory of ['.github', 'scaffolding/.github']) {
         const workflow = yaml.load(
