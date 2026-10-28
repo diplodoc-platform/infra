@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {OWNER, SECTIONS, digest, read, write, validatePlan, buildOrder} = require('./common');
+const {assertDependencyDelta, assertSourceBaselines} = require('./dependency-delta');
 
 function run(command, args, cwd, capture = false) {
     return execFileSync(command, args, {
@@ -206,6 +207,7 @@ function buildCandidate(plan, output) {
     fs.mkdirSync(path.join(output, 'dependency-train', 'payload'), {recursive: true});
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'diplodoc-candidate-build-'));
     const archives = new Map();
+    const sourceLocks = new Map();
     const proof = {schema: 1, trainId: plan.id, toolSha: plan.toolSha, packages: []};
 
     for (const node of buildOrder(plan.graph, plan.selected)) {
@@ -215,6 +217,8 @@ function buildCandidate(plan, output) {
         assert.deepEqual(manifest, node.manifest);
         const lock = read(path.join(directory, 'package-lock.json'));
         assert.equal(lock.lockfileVersion, 3);
+        if (node.repo !== 'cli') sourceLocks.set(node.repo, lock);
+        else assertSourceBaselines(plan, lock, sourceLocks);
         const sourceLockDigest = digest(JSON.stringify(lock));
         let effective = withArchives(
             manifest,
@@ -238,11 +242,7 @@ function buildCandidate(plan, output) {
                 `Build dependency fallback for ${name}`,
             );
         }
-        run('npm', ['run', 'build', '--if-present'], directory);
-
         if (node.repo === 'cli') {
-            run('npm', ['run', 'typecheck', '--if-present'], directory);
-            run('npm', ['test', '--', '--update=false'], directory);
             const relative = withArchives(manifest, archives);
             relative.files = [...new Set([...(manifest.files || []), 'dependency-train'])];
             write(path.join(directory, 'package.json'), relative);
@@ -256,9 +256,25 @@ function buildCandidate(plan, output) {
                 ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'],
                 directory,
             );
+            // Compare against the original frozen CLI lock, not a regenerated
+            // lock that already contains the candidate's unrelated resolutions.
+            assertDependencyDelta(
+                plan,
+                lock,
+                read(path.join(directory, 'package-lock.json')),
+                sourceLocks,
+            );
             // Reinstall with the actual relocatable specs, not the build-only paths.
             run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], directory);
+            assertDependencyDelta(
+                plan,
+                lock,
+                read(path.join(directory, 'package-lock.json')),
+                sourceLocks,
+            );
             run('npm', ['run', 'build'], directory);
+            run('npm', ['run', 'typecheck', '--if-present'], directory);
+            run('npm', ['test', '--', '--update=false'], directory);
 
             for (const [name, archive] of archives) {
                 const actual = installed(directory, directory, name);
@@ -317,6 +333,8 @@ function buildCandidate(plan, output) {
             return proof;
         }
 
+        run('npm', ['run', 'build', '--if-present'], directory);
+
         // The CLI root carries exact scoped lock overrides; dependency locks
         // inside published tarballs are not a reliable resolution mechanism.
         effective = {
@@ -356,5 +374,6 @@ module.exports = {
     installed,
     runtimeVersions,
     verifyLockedTree,
+    assertDependencyDelta,
     buildCandidate,
 };

@@ -13,6 +13,9 @@ The owner requested Action version tags and a reusable testpack caller at
 Exact candidate and trusted policy/publisher source SHAs remain required.
 Keep workflow JavaScript in the tested `scripts/` helpers, not large YAML blocks.
 Morning candidate trains are opt-in; see `docs/dependency-candidate-train.md`.
+Inventory may cover all supported packages, but only one low-risk wave is built.
+Keep canonical source proofs and independently reject unplanned CLI dependency
+drift in both builder and publisher; never repair a proof by changing its meaning.
 GitHub only prepares candidates. Internal observation and existing notifications
 belong to Viewer ops; never add internal credentials/endpoints to GitHub Actions.
 Keep package execution secretless and publication data-only. A standalone

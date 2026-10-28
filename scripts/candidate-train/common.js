@@ -56,8 +56,75 @@ function validatePlan(plan) {
         assert.match(item.baseSha, SHA);
         assert.ok(plan.graph.some((node) => node.repo === item.repo && node.sha === item.sha));
     }
+    if (plan.selection !== undefined || plan.inventory !== undefined || plan.waves !== undefined)
+        validateWaves(plan);
     assert.equal(plan.id, planId(plan));
     return plan;
+}
+
+/** Validate diagnostic wave metadata without changing schema 1 source identities. */
+function validateWaves(plan) {
+    const {selection, inventory, waves} = plan;
+    assert.ok(selection && Array.isArray(inventory) && Array.isArray(waves));
+    assert.ok(inventory.length <= 2000 && waves.length <= 2000, 'Wave inventory is too large');
+    assert.equal(selection.waveSize, 3);
+    assert.equal(selection.totalWaves, waves.length);
+    assert.equal(selection.eligibleCount, inventory.length);
+    assert.ok(Number.isSafeInteger(selection.wave) && selection.wave > 0);
+    assert.ok(selection.wave <= Math.max(1, waves.length), 'Selected wave is out of range');
+    assert.ok(Array.isArray(selection.repositories) && selection.repositories.length <= 40);
+    assert.equal(new Set(selection.repositories).size, selection.repositories.length);
+
+    for (const repo of selection.repositories) {
+        assert.match(repo, REPO);
+        assert.notEqual(repo, 'cli');
+        assert.ok(
+            plan.graph.some((node) => node.repo === repo),
+            `Unknown wave repository ${repo}`,
+        );
+    }
+
+    const identity = ({repo, number, sha, baseSha, risk, profile}) => ({
+        repo,
+        number,
+        sha,
+        baseSha,
+        risk,
+        profile,
+    });
+    const bySource = (left, right) =>
+        left.repo.localeCompare(right.repo) || left.number - right.number;
+    const flattened = waves.flat();
+    assert.equal(flattened.length, inventory.length);
+    assert.equal(
+        new Set(inventory.map((item) => `${item.repo}#${item.number}`)).size,
+        inventory.length,
+    );
+
+    for (const item of inventory) {
+        assert.ok(
+            selection.repositories.includes(item.repo),
+            'Candidate is outside the requested repositories',
+        );
+        assert.ok(Number.isSafeInteger(item.number) && item.number > 0);
+        assert.match(item.sha, SHA);
+        assert.match(item.baseSha, SHA);
+        assert.equal(item.risk, 'low', 'Only low-risk candidates may enter a wave');
+        assert.equal(typeof item.profile, 'string');
+    }
+    for (const wave of waves) {
+        assert.ok(Array.isArray(wave) && wave.length > 0 && wave.length <= 3);
+        assert.equal(
+            new Set(wave.map((item) => item.repo)).size,
+            wave.length,
+            'A wave repeats a repository',
+        );
+    }
+    assert.deepEqual(
+        flattened.map(identity).sort(bySource),
+        inventory.map(identity).sort(bySource),
+    );
+    assert.deepEqual(plan.selected.map(identity), waves[selection.wave - 1] || []);
 }
 
 async function github(route, {token = process.env.GH_TOKEN, method = 'GET', body} = {}) {
