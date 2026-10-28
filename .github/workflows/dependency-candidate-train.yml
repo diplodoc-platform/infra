@@ -57,7 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
           DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
-          DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && toJSON(inputs.wave) || '1' }}
+          DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
         run: node scripts/candidate-train/plan.js
       - uses: actions/upload-artifact@v4
         id: plan-artifact
