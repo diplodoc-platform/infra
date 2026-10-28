@@ -6,6 +6,7 @@ const {createHash} = require('node:crypto');
 const {digest, planId, write} = require('../../scripts/candidate-train/common');
 const {withArchives} = require('../../scripts/candidate-train/build');
 const {publish} = require('../../scripts/candidate-train/publish');
+const {expectedIntegrationEvidence} = require('../../scripts/candidate-train/integration-smoke');
 
 const tests = [];
 const test = (name, fn) => tests.push({name, fn});
@@ -19,14 +20,16 @@ const blobSha = (bytes) =>
 
 function fixture(options = {}) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-publication-'));
-    const source = {repo: 'utils', sha: SHA, manifest: {name: '@diplodoc/utils', version: '1.0.0'}};
+    const repo = options.optIn ? 'html-extension' : 'utils';
+    const source = {repo, sha: SHA, manifest: {name: `@diplodoc/${repo}`, version: '1.0.0'}};
+    const name = source.manifest.name;
     const cli = {
         repo: 'cli',
         sha: SHA,
         manifest: {
             name: '@diplodoc/cli',
             version: '1.0.0',
-            dependencies: {'@diplodoc/utils': '^1.0.0'},
+            dependencies: options.optIn ? {} : {[name]: '^1.0.0'},
         },
     };
     if (options.unplannedDrift) cli.manifest.dependencies.parser = '^1.0.0';
@@ -51,10 +54,10 @@ function fixture(options = {}) {
         lockfileVersion: 3,
         packages: {
             '': cli.manifest,
-            'node_modules/@diplodoc/utils': registry('@diplodoc/utils', '1.0.0'),
+            ...(options.optIn ? {} : {[`node_modules/${name}`]: registry(name, '1.0.0')}),
         },
     };
-    const manifest = withArchives(cli.manifest, new Map([['@diplodoc/utils', {...source, lock}]]));
+    const manifest = withArchives(cli.manifest, new Map([[name, {...source, lock}]]));
     manifest.files = ['dependency-train'];
     write(path.join(directory, 'package.json'), manifest);
     const archive = Buffer.from('packed utils');
@@ -62,9 +65,9 @@ function fixture(options = {}) {
         lockfileVersion: 3,
         packages: {
             '': manifest,
-            'node_modules/@diplodoc/utils': {
+            [`node_modules/${name}`]: {
                 version: '1.0.0',
-                resolved: 'file:dependency-train/payload/utils.tgz',
+                resolved: `file:dependency-train/payload/${repo}.tgz`,
                 integrity: `sha512-${createHash('sha512').update(archive).digest('base64')}`,
             },
         },
@@ -75,7 +78,7 @@ function fixture(options = {}) {
     }
     write(path.join(directory, 'package-lock.json'), candidateLock);
     fs.mkdirSync(path.join(directory, 'dependency-train/payload'), {recursive: true});
-    fs.writeFileSync(path.join(directory, 'dependency-train/payload/utils.tgz'), archive);
+    fs.writeFileSync(path.join(directory, `dependency-train/payload/${repo}.tgz`), archive);
     write(path.join(directory, 'dependency-train/proof.json'), {
         schema: 1,
         trainId: plan.id,
@@ -83,20 +86,23 @@ function fixture(options = {}) {
         cliBaseSha: SHA,
         packages: [
             {
-                repo: 'utils',
-                name: '@diplodoc/utils',
+                repo,
+                name,
                 sourceSha: SHA,
                 sourceLockSha256: digest(JSON.stringify(lock)),
                 archiveSha256: digest(archive),
                 resolutions: [],
             },
         ],
+        ...(options.optIn && !options.missingActivation
+            ? {integrations: expectedIntegrationEvidence(plan)}
+            : {}),
     });
     const files = [
         'package.json',
         'package-lock.json',
         'dependency-train/proof.json',
-        'dependency-train/payload/utils.tgz',
+        `dependency-train/payload/${repo}.tgz`,
     ];
     const entries = files.map((file) => ({
         path: file,
@@ -149,22 +155,22 @@ function fixture(options = {}) {
             assert.equal(token, env.TRAIN_BOT_TOKEN);
             return {login: 'diplodoc-bot'};
         }
-        if (route === '/repos/diplodoc-platform/utils/pulls/3') {
+        if (route === `/repos/diplodoc-platform/${repo}/pulls/3`) {
             remote.sourceReads++;
             return {
                 state: 'open',
                 user: {login: 'dependabot[bot]'},
                 head: {
-                    repo: {full_name: 'diplodoc-platform/utils'},
+                    repo: {full_name: `diplodoc-platform/${repo}`},
                     sha: remote.sourceReads === options.changedSourceAt ? HEAD : SHA,
                 },
                 base: {sha: SHA},
             };
         }
-        if (route === `/repos/diplodoc-platform/utils/git/trees/${SHA}`) {
+        if (route === `/repos/diplodoc-platform/${repo}/git/trees/${SHA}`) {
             return {truncated: false, tree: [{path: 'package-lock.json', type: 'blob', sha: SHA}]};
         }
-        if (route === `/repos/diplodoc-platform/utils/git/blobs/${SHA}`) {
+        if (route === `/repos/diplodoc-platform/${repo}/git/blobs/${SHA}`) {
             const content = Buffer.from(JSON.stringify(lock));
             return {encoding: 'base64', content: content.toString('base64'), size: content.length};
         }
@@ -246,6 +252,29 @@ test('publisher independently rejects unrelated lock drift before any remote wri
     try {
         await assert.rejects(context.run(), /drift|unplanned|baseline/i);
         assert.equal(context.remote.writes.length, 0);
+    } finally {
+        context.close();
+    }
+});
+
+test('publisher requires activation evidence before publishing a new opt-in root', async () => {
+    const context = fixture({optIn: true, missingActivation: true});
+
+    try {
+        await assert.rejects(context.run(), /activation evidence/);
+        assert.equal(context.remote.writes.length, 0);
+    } finally {
+        context.close();
+    }
+});
+
+test('publisher accepts only the modeled opt-in delta with fixture activation evidence', async () => {
+    const context = fixture({optIn: true});
+
+    try {
+        const result = await context.run();
+        assert.equal(result.sha, HEAD);
+        assert.equal(result.plan.selected[0].repo, 'html-extension');
     } finally {
         context.close();
     }

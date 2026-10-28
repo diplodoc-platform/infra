@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {createHash} = require('node:crypto');
+const {buildEdges} = require('./model');
 
 const OWNER = 'diplodoc-platform';
 const SHA = /^[a-f0-9]{40}$/;
@@ -179,12 +180,7 @@ async function fileAt(repo, sha, file, request = github) {
 
 function buildOrder(graph, selected) {
     const byName = new Map(graph.map((item) => [item.manifest.name, item]));
-    const edges = (item) =>
-        Object.keys({
-            ...item.manifest.dependencies,
-            ...item.manifest.optionalDependencies,
-            ...(item.repo === 'client' ? item.manifest.devDependencies : {}),
-        }).filter((name) => byName.has(name));
+    const edges = buildEdges(graph, selected);
     const reachable = new Set();
     const visit = (name) => {
         if (reachable.has(name)) return;

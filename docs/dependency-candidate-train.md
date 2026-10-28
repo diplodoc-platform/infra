@@ -6,12 +6,22 @@ notifications, observe document checks, merge PRs or publish npm packages.
 
 ## Supported repositories and waves
 
-`DEPENDENCY_TRAIN_REPOSITORIES=all` inventories every registered package under
-`packages/` and `extensions/` that reaches the CLI build graph, including client
-asset build dependencies. An explicit comma-separated allowlist remains valid
-without the old three-repository limit. This is not every organization repository:
-infrastructure-only repositories and direct CLI updates require their own paths.
-The selection report lists registered packages outside the supported graph.
+`DEPENDENCY_TRAIN_REPOSITORIES=all` inventories registered packages under
+`packages/` and `extensions/` using the explicit build model in
+`scripts/candidate-train/model.js`. The current metapackage has 25 registered
+packages/extensions: **23 are supported; direct CLI and VSC updates remain
+excluded**. This is not every organization repository or every npm dependency.
+Infrastructure-only repositories require their own verification paths.
+An explicit comma-separated allowlist remains valid without the old
+three-repository limit.
+
+The model includes ordinary runtime dependencies, client asset build inputs,
+and six packages bundled or copied during CLI build: latex, mermaid, openapi,
+page-constructor, search and yfmlint. It does not treat every development tool
+as a shipped dependency. The model also declares four opt-in integration roots:
+algolia, folding-headings, html and quote-link. Only selected opt-ins add virtual
+CLI edges and exact candidate-only archive dependencies; other waves do not
+silently acquire these extensions. Canonical source manifests remain unchanged.
 
 Only **low policy-risk** patch/minor updates qualify. This is output-impact risk,
 not CVSS; a patch or minor is not automatically low risk. Other risks and
@@ -42,6 +52,8 @@ PRs is an explicit error, not a silently partial inventory.
    including CLI tooling dependencies. Unselected consumer package versions and
    registry identities, dependency edges and resolutions may not drift merely
    because an archive was rebuilt. Hoisting alone is not a version change.
+   Only selected, model-declared opt-in roots may add an exact archive dependency;
+   their subtrees must still match canonical source locks.
    Incompatible or ambiguous source locks require an explicit baseline refresh;
    never replace versions while claiming the original schema 1 source-lock proof.
 4. On a fresh publisher, independently validate the dependency delta and data against canonical source
@@ -50,6 +62,38 @@ PRs is an explicit error, not a silently partial inventory.
 5. Stop at **prepared, not verified**. The existing internal webhook prepares its
    Internal check. Hand off the CLI PR number, full head SHA and infrastructure
    tooling SHA to the separately reviewed internal operations observer.
+
+## Opt-in activation coverage
+
+An installed archive is not proof that its feature ran. Preparation builds
+separate temporary HTML and Markdown configurations for each selected opt-in.
+All selected archives remain installed in the same candidate CLI. Checks require
+folding sections, quote-link blocks, sandboxed HTML
+iframes, or Algolia provider/local search artifacts as appropriate. Runtime
+assets must be attached and match bytes from the installed candidate package.
+Algolia smoke does not upload an index: inherited Algolia settings are cleared,
+index upload is disabled and the CLI subprocess has a network guard.
+
+Successful fixture checks are recorded separately in `proof.integrations` with
+scope `generated-fixture`. The publisher requires the exact selected coverage.
+The schema 1 `resolutions` field retains its runtime-chain meaning. Fixtures,
+adapters and temporary host links are not published into the CLI source tree.
+
+These checks do not force opt-ins into arbitrary internal documents. That corpus
+uses its own configuration; a green generated fixture does not certify a feature
+inside every internal document. A full manual downstream pilot remains required
+for the expanded build model before relying on its Internal Check handoff.
+
+Published-package probes on 2026-10-28 passed Algolia 0.7.2, folding-headings
+0.2.5 and quote-link 0.1.8 against CLI 5.64.0. HTML 2.9.14 fails its default
+srcdoc scenario because the CLI's outer sanitizer removes iframe content. The
+train retains this failure; it does not disable sanitization to obtain success.
+Package support means a runnable check, not a guarantee of a passing baseline.
+
+Independent fixtures do not certify same-page composition. A separate published
+folding-headings + quote-link probe found a shared runtime-copy cache key that
+drops quote-link assets. Neither existing package integration defect is repaired
+by the infrastructure build model.
 
 Internal observation belongs to Viewer operations. Internal API credentials,
 endpoints, review links, CA configuration and notification credentials stay

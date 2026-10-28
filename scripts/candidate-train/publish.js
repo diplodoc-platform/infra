@@ -18,6 +18,7 @@ const {
     fileAt,
 } = require('./common');
 const {withArchives, assertDependencyDelta} = require('./build');
+const {expectedIntegrationEvidence} = require('./integration-smoke');
 
 function validatePayload(plan, directory, locks, baselineLock) {
     validatePlan(plan);
@@ -46,6 +47,12 @@ function validatePayload(plan, directory, locks, baselineLock) {
     assert.equal(proof.toolSha, plan.toolSha);
     assert.equal(proof.cliBaseSha, plan.cli.sha);
     assert.equal(proof.packages.length, order.length);
+    const integrations = expectedIntegrationEvidence(plan);
+    assert.deepEqual(
+        proof.integrations ?? (integrations.length ? undefined : []),
+        integrations,
+        'Selected opt-in extensions require exact generated-fixture activation evidence',
+    );
     const files = [
         'package.json',
         'package-lock.json',

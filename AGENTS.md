@@ -14,6 +14,8 @@ Exact candidate and trusted policy/publisher source SHAs remain required.
 Keep workflow JavaScript in the tested `scripts/` helpers, not large YAML blocks.
 Morning candidate trains are opt-in; see `docs/dependency-candidate-train.md`.
 Inventory may cover all supported packages, but only one low-risk wave is built.
+Model bundled build inputs and opt-in activation explicitly; direct CLI and VSC
+updates remain excluded. Installing an archive alone is not activation evidence.
 Keep canonical source proofs and independently reject unplanned CLI dependency
 drift in both builder and publisher; never repair a proof by changing its meaning.
 GitHub only prepares candidates. Internal observation and existing notifications

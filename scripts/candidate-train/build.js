@@ -7,6 +7,9 @@ const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {OWNER, SECTIONS, digest, read, write, validatePlan, buildOrder} = require('./common');
 const {assertDependencyDelta, assertSourceBaselines} = require('./dependency-delta');
+const {optInExtension} = require('./model');
+const {runIntegrationSmoke} = require('./integration-smoke');
+const {modeledRuntimeLock} = require('./build-inputs');
 
 function run(command, args, cwd, capture = false) {
     return execFileSync(command, args, {
@@ -64,6 +67,16 @@ function withArchives(
     result.overrides ||= {};
     for (const [name, {repo, lock}] of archives) {
         const value = spec(repo);
+        const profile = optInExtension(name);
+
+        // An opt-in fixture is a deliberate candidate-only root. Source
+        // manifests stay frozen; the publisher independently derives this delta.
+        const declared = SECTIONS.some((section) => Object.hasOwn(manifest[section] || {}, name));
+        if (manifest.name === '@diplodoc/cli' && profile?.repo === repo && !declared) {
+            result.dependencies ||= {};
+            result.dependencies[name] = value;
+        }
+
         for (const section of SECTIONS.filter((item) => item !== 'peerDependencies')) {
             if (Object.hasOwn(result[section] || {}, name)) result[section][name] = value;
         }
@@ -94,7 +107,7 @@ function installed(boundary, context, name) {
     }
 }
 
-function runtimeVersions(lock, replacementNames) {
+function runtimeVersions(lock, replacementNames, includeReplacements = false) {
     assert.equal(lock.lockfileVersion, 3);
     const resolutions = [];
 
@@ -120,7 +133,8 @@ function runtimeVersions(lock, replacementNames) {
 
         for (const name of Object.keys(dependencies).sort()) {
             assert.match(name, /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/);
-            if (replacementNames.has(name)) continue;
+            const replacement = replacementNames.has(name);
+            if (replacement && !includeReplacements) continue;
 
             const isOptional =
                 optional ||
@@ -144,7 +158,10 @@ function runtimeVersions(lock, replacementNames) {
                 path,
                 version: metadata.version,
                 ...(optionalPath ? {optional: true} : {}),
+                ...(replacement ? {replacement: name} : {}),
             });
+
+            if (replacement) continue;
 
             // Check the closing edge too, but never recurse forever through a cycle.
             if (!active.has(target))
@@ -179,6 +196,44 @@ function verifyLockedTree(boundary, directory, lock, replacementNames) {
         proof.push({path: expected.path, version: expected.version});
     }
     return proof;
+}
+
+function verifyModeledRuntimeInputs(boundary, directory, node, lock, archives) {
+    const modeled = modeledRuntimeLock(node, lock);
+    if (!modeled) return;
+    const replacements = new Set(archives.keys());
+    const seen = new Set();
+
+    function verify(context, source) {
+        if (seen.has(context)) return;
+        assert.ok(seen.size < 2000, 'Modeled runtime archive contexts exceed the limit');
+        seen.add(context);
+        verifyLockedTree(boundary, context, source, replacements);
+
+        for (const expected of runtimeVersions(source, replacements, true)) {
+            if (!expected.replacement) continue;
+            const replacement = archives.get(expected.replacement);
+            const names = expected.path.slice('node_modules/'.length).split('/node_modules/');
+            let cursor = context;
+            let actual;
+
+            for (const name of names) {
+                actual = installed(boundary, cursor, name);
+                if (!actual) break;
+                cursor = actual.directory;
+            }
+            if (!actual && expected.optional) continue;
+            assert.equal(
+                actual?.manifest.dependencyTrain?.sourceSha,
+                replacement.sha,
+                `Modeled runtime input fell back to a registry package: ${expected.path}`,
+            );
+            assert.equal(actual.manifest.version, replacement.lock.packages[''].version);
+            verify(actual.directory, replacement.lock);
+        }
+    }
+
+    verify(directory, modeled);
 }
 
 function cloneAt(node, destination) {
@@ -289,6 +344,13 @@ function buildCandidate(plan, output) {
                     archive.lock,
                     new Set(archives.keys()),
                 );
+                verifyModeledRuntimeInputs(
+                    directory,
+                    actual.directory,
+                    plan.graph.find((item) => item.repo === archive.repo),
+                    archive.lock,
+                    archives,
+                );
                 proof.packages.push({
                     repo: archive.repo,
                     name,
@@ -298,28 +360,7 @@ function buildCandidate(plan, output) {
                     resolutions,
                 });
             }
-            const docs = path.join(scratch, 'input');
-            fs.mkdirSync(docs);
-            fs.writeFileSync(path.join(docs, 'index.md'), '# Candidate smoke\n\nVerified build.\n');
-            run(
-                'node',
-                ['build/index.js', 'build', '-i', docs, '-o', path.join(scratch, 'html')],
-                directory,
-            );
-            run(
-                'node',
-                [
-                    'build/index.js',
-                    'build',
-                    '-i',
-                    docs,
-                    '-o',
-                    path.join(scratch, 'md'),
-                    '--output-format',
-                    'md',
-                ],
-                directory,
-            );
+            proof.integrations = runIntegrationSmoke(plan, directory, scratch, run);
             proof.cliBaseSha = node.sha;
             write(path.join(output, 'dependency-train', 'proof.json'), proof);
             fs.copyFileSync(
@@ -374,6 +415,7 @@ module.exports = {
     installed,
     runtimeVersions,
     verifyLockedTree,
+    verifyModeledRuntimeInputs,
     assertDependencyDelta,
     buildCandidate,
 };

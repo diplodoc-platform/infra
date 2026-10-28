@@ -311,6 +311,9 @@ function renderSelection(plan) {
             : 'No eligible waves; ';
         lines.push(
             '',
+            `Inventory scope: **${plan.selection.repositories.length} repositories** ` +
+                `(${plan.selection.repositories.join(', ')}). Direct CLI and VSC updates are excluded.`,
+            '',
             waveLabel +
                 `${plan.selection.eligibleCount} eligible low-risk PR(s) in the full inventory.`,
             '',
