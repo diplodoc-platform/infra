@@ -286,20 +286,20 @@ entries:
       - Accept the exact subscript grammar with native parser types and real CLI/viewer rendering
       - Revalidate delimiter, escaping and protected-content behavior before widening the range
 
-  # Approved published archive SHA256: 880926fc1a559c746fc12533842cc8b9eefb617282b3daa368faed4bde000ff6
+  # Approved published archive SHA256: 0df223a5233f9b9afff72f444f147d7409a06910beb4e727f5ed7205263b9443
   - id: DEP-0011
     dependency: '@diplodoc/directive'
     repositories: [transform]
-    allowed-version: 0.5.0-transform5.0
+    allowed-version: 0.5.0-transform5.2
     ignored-versions: []
     risk: critical
     category: prerelease-compatibility
     verification-profile: ecosystem
-    reason: 'Transform 5 requires the approved directive scanner and portable declarations from the public parser API for strict browser types; the published prerelease remains isolated from stable consumers while this parser boundary is accepted.'
+    reason: 'Transform 5 requires the reviewed scanner and finite public host ports for native and coexisting Markdown-it 13 and 15; this exact published artifact passed strict CJS/ESM declarations, runtime matrices and two post-CI reviews. Final combined consumer acceptance remains required.'
     evidence:
-      portability: https://github.com/diplodoc-platform/directive/pull/60
+      portability: https://github.com/diplodoc-platform/directive/pull/62
       task: https://st.yandex-team.ru/DOCSTOOLS-6943
-      registry-archive: https://registry.npmjs.org/@diplodoc/directive/-/directive-0.5.0-transform5.0.tgz
+      registry-archive: https://registry.npmjs.org/@diplodoc/directive/-/directive-0.5.0-transform5.2.tgz
     owner: diplodoc-platform/team
     introduced-at: 2026-10-28
     review-after: 2026-11-17
@@ -390,14 +390,16 @@ entries:
   - id: DEP-0008
     dependency: '@diplodoc/tabs-extension'
     repositories: [transform]
-    allowed-version: 3.10.8-transform5.0
+    allowed-version: 3.10.8-transform5.2
     ignored-versions: []
-    risk: high
+    risk: critical
     category: prerelease-compatibility
-    verification-profile: document-transform
-    reason: 'Transform 5 needs the reviewed public Token constructor and native parser declarations, with the matching Utils prerelease instead of the stable dependency graph.'
+    verification-profile: ecosystem
+    reason: 'Transform 5 needs finite mixed-host parser ports, portable callback re-exports and valid runtime declarations; the exact published Tabs artifact passed all-shipped declarations, native/mixed execution and two post-CI reviews. Final combined consumer acceptance remains required.'
     evidence:
-      parser-contract: https://github.com/diplodoc-platform/tabs-extension/pull/171
+      parser-contract: https://github.com/diplodoc-platform/tabs-extension/pull/172
+      runtime-declarations: https://github.com/diplodoc-platform/tabs-extension/pull/173
+      sha256: a21e1539da1a47af30efff5ebd6528ca1497892e18877fc6649fc03c5eefb883
       native-types: https://github.com/diplodoc-platform/utils/pull/81
     owner: diplodoc-platform/team
     introduced-at: 2026-10-27
@@ -406,6 +408,27 @@ entries:
     exit-criteria:
       - Accept the exact registry prerelease and matching Utils in Transform and real consumers
       - Agree a compatible stable release and replace the prerelease pin
+
+  - id: DEP-0023
+    dependency: '@diplodoc/cut-extension'
+    repositories: [transform]
+    allowed-version: 1.1.9-transform5.1
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform 5 needs the reviewed finite Cut host ports, portable callback declarations and typed collect contract; this exact published artifact passed native and mixed installed checks and two post-CI reviews. Final combined consumer acceptance remains required.'
+    evidence:
+      review: https://github.com/diplodoc-platform/cut-extension/pull/102
+      sha256: 146bdea316deeb4dd14e5bbbac372ee3a14ee392440c16ce549bedaef3b1e2a7
+      task: https://st.yandex-team.ru/DOCSTOOLS-6941
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-29
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete actual combined CLI, Viewer, Translation, SDK and VSC migration checks
+      - Agree a compatible stable release and revalidate before replacing the prerelease pin
 
   - id: DEP-0003
     dependency: '@diplodoc/infra'

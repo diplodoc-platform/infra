@@ -297,19 +297,26 @@ test('real registry accepts the pilot infra pin without permitting runtime or un
         assert.strictEqual(enforceChanges({}, pkg, registry, 'tabs-extension').ok, false);
 });
 
-test('real registry accepts only the reviewed Transform inline and directive pins', () => {
+test('real registry accepts only the reviewed Transform inline and extension pins', () => {
     const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
     const pins = {
         'markdown-it-ins': '4.0.0',
         'markdown-it-sub': '2.0.0',
-        '@diplodoc/directive': '0.5.0-transform5.0',
+        '@diplodoc/directive': '0.5.0-transform5.2',
+        '@diplodoc/tabs-extension': '3.10.8-transform5.2',
+        '@diplodoc/cut-extension': '1.1.9-transform5.1',
     };
     const result = enforceChanges({}, {dependencies: pins}, registry, 'transform');
     assert.strictEqual(result.ok, true);
-    assert.strictEqual(result.checked, 3);
-    assert.strictEqual(registry.entries.length, 22);
+    assert.strictEqual(result.checked, 5);
+    assert.strictEqual(registry.entries.length, 23);
     for (const [name, version] of Object.entries(pins)) {
-        const entry = findRegistryEntry(registry.entries, name, version);
+        const entry = findRegistryEntry(
+            filterEntriesForRepo(registry.entries, 'transform'),
+            name,
+            version,
+        );
         assert.deepStrictEqual(entry.repositories, ['transform']);
         assert.strictEqual(entry.risk, 'critical');
         assert.strictEqual(entry['verification-profile'], 'ecosystem');
@@ -327,7 +334,7 @@ test('real registry rejects different inline and directive versions', () => {
             dependencies: {
                 'markdown-it-ins': '4.0.1',
                 'markdown-it-sub': '2.0.1',
-                '@diplodoc/directive': '0.5.0-transform5.2',
+                '@diplodoc/directive': '0.5.0-transform5.3',
             },
         },
         registry,
@@ -350,7 +357,7 @@ test('real registry rejects the reviewed Transform pins in CLI scope', () => {
             dependencies: {
                 'markdown-it-ins': '4.0.0',
                 'markdown-it-sub': '2.0.0',
-                '@diplodoc/directive': '0.5.0-transform5.0',
+                '@diplodoc/directive': '0.5.0-transform5.2',
             },
         },
         registry,
@@ -377,6 +384,9 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
+        ['@diplodoc/tabs-extension', '3.10.8-transform5.2', 'transform'],
+        ['@diplodoc/cut-extension', '1.1.9-transform5.1', 'transform'],
     ];
     for (const [name, version, repo] of pins) {
         const section = name.startsWith('@diplodoc/') ? 'dependencies' : 'devDependencies';
@@ -395,7 +405,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
                 item['allowed-version'] === version,
         );
         assert.ok(entry, name);
-        if (name === '@diplodoc/directive') {
+        if (name === '@diplodoc/directive' && repo !== 'transform') {
             assert.strictEqual(entry.id, 'DEP-0022');
             assert.strictEqual(
                 enforce({dependencies: {[name]: '0.5.0-transform5.1'}}, registry, repo).ok,
@@ -410,7 +420,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         );
         assert.deepStrictEqual(
             entry.repositories,
-            name === '@diplodoc/directive'
+            name === '@diplodoc/directive' && repo !== 'transform'
                 ? ['cut-extension', 'notes-extension', 'tabs-extension']
                 : [repo],
         );
@@ -425,6 +435,26 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
             undefined,
             `expired ${name}`,
         );
+    }
+});
+
+test('Transform extension pins reject superseded versions and do not duplicate repository scope', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
+    const entries = filterEntriesForRepo(registry.entries, 'transform');
+    for (const [name, versions] of [
+        ['@diplodoc/directive', ['0.5.0-transform5.0', '0.5.0-transform5.1']],
+        ['@diplodoc/tabs-extension', ['3.10.8-transform5.0', '3.10.8-transform5.1']],
+        ['@diplodoc/cut-extension', ['1.1.6', '1.1.9-transform5.0']],
+    ]) {
+        assert.strictEqual(entries.filter((entry) => entry.dependency === name).length, 1);
+        for (const version of versions) {
+            assert.strictEqual(
+                enforce({dependencies: {[name]: version}}, registry, 'transform').ok,
+                false,
+                `${name}@${version}`,
+            );
+        }
     }
 });
 
