@@ -297,6 +297,70 @@ test('real registry accepts the pilot infra pin without permitting runtime or un
         assert.strictEqual(enforceChanges({}, pkg, registry, 'tabs-extension').ok, false);
 });
 
+test('real registry accepts only the reviewed Transform inline and directive pins', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const pins = {
+        'markdown-it-ins': '4.0.0',
+        'markdown-it-sub': '2.0.0',
+        '@diplodoc/directive': '0.5.0-transform5.0',
+    };
+    const result = enforceChanges({}, {dependencies: pins}, registry, 'transform');
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.checked, 3);
+    assert.strictEqual(registry.entries.length, 11);
+    for (const [name, version] of Object.entries(pins)) {
+        const entry = findRegistryEntry(registry.entries, name, version);
+        assert.deepStrictEqual(entry.repositories, ['transform']);
+        assert.strictEqual(entry.risk, 'critical');
+        assert.strictEqual(entry['verification-profile'], 'ecosystem');
+        assert.deepStrictEqual(entry['ignored-versions'], []);
+        assert.ok(entry['review-after']);
+        assert.ok(entry['expires-at']);
+    }
+});
+
+test('real registry rejects different inline and directive versions', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const result = enforceChanges(
+        {},
+        {
+            dependencies: {
+                'markdown-it-ins': '4.0.1',
+                'markdown-it-sub': '2.0.1',
+                '@diplodoc/directive': '0.5.0-transform5.1',
+            },
+        },
+        registry,
+        'transform',
+    );
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.checked, 3);
+    assert.deepStrictEqual(result.violations.map(({name}) => name).sort(), [
+        '@diplodoc/directive',
+        'markdown-it-ins',
+        'markdown-it-sub',
+    ]);
+});
+
+test('real registry rejects the reviewed Transform pins in CLI scope', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const result = enforceChanges(
+        {},
+        {
+            dependencies: {
+                'markdown-it-ins': '4.0.0',
+                'markdown-it-sub': '2.0.0',
+                '@diplodoc/directive': '0.5.0-transform5.0',
+            },
+        },
+        registry,
+        'cli',
+    );
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.checked, 3);
+    assert.strictEqual(result.violations.length, 3);
+});
+
 test('managed infra registry scope stays aligned with distribution targets', () => {
     const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
     const distribution = yaml.load(readFile(join(__dirname, '../..'), 'distribution.yml'));
