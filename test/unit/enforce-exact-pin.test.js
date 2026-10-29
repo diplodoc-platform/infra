@@ -375,6 +375,8 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
         ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
     ];
     for (const [name, version, repo] of pins) {
         const section = name.startsWith('@diplodoc/') ? 'dependencies' : 'devDependencies';
@@ -398,7 +400,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
             assert.strictEqual(
                 enforce({dependencies: {[name]: '0.5.0-transform5.1'}}, registry, repo).ok,
                 false,
-                'The current registry supersedes the previous Cut prerelease pin',
+                'The current registry supersedes the previous adapter prerelease pin',
             );
         }
         assert.strictEqual(
@@ -406,7 +408,12 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
             entry,
             `live ${name}`,
         );
-        assert.deepStrictEqual(entry.repositories, [repo]);
+        assert.deepStrictEqual(
+            entry.repositories,
+            name === '@diplodoc/directive'
+                ? ['cut-extension', 'notes-extension', 'tabs-extension']
+                : [repo],
+        );
         assert.deepStrictEqual(entry['ignored-versions'], []);
         assert.strictEqual(
             new Date(entry['review-after']).toISOString().slice(0, 10),

@@ -797,6 +797,8 @@ test('new scoped pins retain registry risk and no ignored versions on changes', 
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
         ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
     ];
     for (const [name, version, repo] of pins) {
         const change = {
@@ -824,7 +826,7 @@ test('new scoped pins retain registry risk and no ignored versions on changes', 
     }
 });
 
-test('notes and cut prerelease changes require critical ecosystem verification', () => {
+test('notes and directive adapter prerelease changes require critical ecosystem verification', () => {
     const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
     const registry = require('js-yaml').load(
         readFile(join(__dirname, '../..'), 'dependency-policy.yml'),
@@ -832,6 +834,8 @@ test('notes and cut prerelease changes require critical ecosystem verification',
     for (const [name, version, repo] of [
         ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
     ]) {
         const change = {
             name,

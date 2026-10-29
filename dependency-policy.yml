@@ -227,13 +227,13 @@ entries:
 
   - id: DEP-0022
     dependency: '@diplodoc/directive'
-    repositories: [cut-extension]
+    repositories: [cut-extension, notes-extension, tabs-extension]
     allowed-version: 0.5.0-transform5.2
     ignored-versions: []
     risk: critical
     category: parser-migration
     verification-profile: ecosystem
-    reason: 'The cut adapter needs finite public host/state ports for real coexisting Markdown-it 13 and 15; the exact candidate passed native and mixed installed gates and two post-CI reviews, while publication and downstream acceptance remain separately gated.'
+    reason: 'The cut, note and tabs adapters use finite public host/state ports for real coexisting Markdown-it 13 and 15; this exact published artifact passed native and mixed installed gates and two post-CI reviews. Adapter publication and actual downstream acceptance remain separately gated.'
     evidence:
       review: https://github.com/diplodoc-platform/directive/pull/62
       sha256: '0df223a5233f9b9afff72f444f147d7409a06910beb4e727f5ed7205263b9443'
@@ -243,8 +243,8 @@ entries:
     review-after: 2026-11-17
     expires-at: 2026-12-01
     exit-criteria:
-      - Publish only with explicit approval and verify the exact registry artifact
-      - Complete actual Cut, CLI and Viewer mixed-host integration before widening the pin
+      - Retain the reviewed exact registry artifact; publication approval does not cover new versions
+      - Complete actual Cut, Notes, Tabs, CLI and Viewer mixed-host integration before widening the pin
 
   - id: DEP-0009
     dependency: markdown-it-ins
