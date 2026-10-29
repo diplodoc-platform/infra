@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.4.0](https://github.com/diplodoc-platform/infra/compare/v2.3.0...v2.4.0) (2026-10-29)
+
+
+### Features
+
+* model CLI build inputs and opt-in extension checks ([4bb8608](https://github.com/diplodoc-platform/infra/commit/4bb8608486942471d4a3fa7e1212c5836dda1d7c))
+* prepare low-risk dependency waves without resolution drift ([642da6c](https://github.com/diplodoc-platform/infra/commit/642da6c5c086edc384f31431180e2a8271c25079))
+
+
+### Bug Fixes
+
+* preserve numeric wave inputs in manual candidate runs ([40e1daa](https://github.com/diplodoc-platform/infra/commit/40e1daa1ad5ddcf7ff22bca01b7d90407fc333ae))
+
 ## [2.3.0](https://github.com/diplodoc-platform/infra/compare/v2.2.3...v2.3.0) (2026-10-23)
 
 
