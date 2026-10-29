@@ -178,6 +178,7 @@ test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001',
             'DEP-0011',
             'DEP-0019',
             'DEP-0020',
+            'DEP-0021',
         ]);
     } finally {
         await removeTempDir(tempDir);
@@ -191,6 +192,7 @@ test('CLI: generates only scoped notes and directive policies', async () => {
             ['DEP-0003', 'DEP-0012', 'DEP-0013', 'DEP-0014', 'DEP-0015', 'DEP-0016', 'DEP-0017'],
         ],
         ['directive', ['DEP-0003', 'DEP-0018']],
+        ['cut-extension', ['DEP-0003', 'DEP-0006', 'DEP-0022']],
     ]) {
         const tempDir = await createTempDir();
         try {
@@ -249,6 +251,7 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json derivation', async () 
             'DEP-0011',
             'DEP-0019',
             'DEP-0020',
+            'DEP-0021',
         ]);
     } finally {
         await removeTempDir(tempDir);

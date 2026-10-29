@@ -30,7 +30,7 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-10-28
+last-updated: 2026-10-29
 
 entries:
   - id: DEP-0012
@@ -204,6 +204,48 @@ entries:
     exit-criteria:
       - Complete real CLI and Viewer consumer acceptance and revalidate upstream token shapes and owned mutations before widening the pin
 
+  - id: DEP-0021
+    dependency: '@diplodoc/notes-extension'
+    repositories: [transform]
+    allowed-version: 0.1.0-transform5.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The Transform notes bridge uses the reviewed published prerelease and its native parser contract; actual consumer integration remains pending.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      artifact: https://registry.npmjs.org/@diplodoc/notes-extension/-/notes-extension-0.1.0-transform5.0.tgz
+      sha256: eeb91f83f88d52569bcc8ccdb082db0dd148ef9e8eff68f566a630172013d518
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-29
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete actual CLI, Viewer and Translation integration checks and revalidate the exact notes artifact before widening the pin
+
+  - id: DEP-0022
+    dependency: '@diplodoc/directive'
+    repositories: [cut-extension]
+    allowed-version: 0.5.0-transform5.1
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The cut directive adapter requires the published patched parser and opt-in collision guard; native parser checks passed while actual downstream consumer integration remains pending.'
+    evidence:
+      review: https://github.com/diplodoc-platform/directive/pull/61
+      artifact: https://registry.npmjs.org/@diplodoc/directive/-/directive-0.5.0-transform5.1.tgz
+      sha256: '408ca8e4169929cd3cb15f7ff13d4e55149e54959b702b1405b70ef83ca327da'
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-29
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete actual CLI and Viewer integration checks and revalidate the parser and collision behavior before widening the pin
+
   - id: DEP-0009
     dependency: markdown-it-ins
     repositories: [transform]
@@ -306,22 +348,23 @@ entries:
 
   - id: DEP-0006
     dependency: '@diplodoc/utils'
-    repositories: [transform, tabs-extension]
+    repositories: [transform, tabs-extension, cut-extension]
     allowed-version: 2.3.7-transform5.0
     ignored-versions: []
     risk: high
     category: prerelease-compatibility
     verification-profile: document-transform
-    reason: 'The Transform 5 prerelease train requires the reviewed native markdown-it 15 declarations; these types are not compatible with TypeScript 5.2 and must not reach stable consumers yet.'
+    reason: 'The Transform 5 prerelease train requires the reviewed native markdown-it 15 declarations; Cut was checked with installed native Markdown-it 13, 14 and 15. These types are not compatible with TypeScript 5.2 and must not reach stable consumers yet.'
     evidence:
       native-types: https://github.com/diplodoc-platform/utils/pull/81
       consumers: https://github.com/diplodoc-platform/transform/pull/1126
+      cut-task: https://st.yandex-team.ru/DOCSTOOLS-6943
     owner: diplodoc-platform/team
     introduced-at: 2026-10-27
     review-after: 2026-11-17
     expires-at: 2026-12-01
     exit-criteria:
-      - Accept the exact registry prerelease in Transform and Tabs with strict consumer declarations
+      - Accept the exact registry prerelease in Transform, Tabs and Cut with strict consumer declarations
       - Agree a compatible stable release and replace the prerelease pin
 
   - id: DEP-0007

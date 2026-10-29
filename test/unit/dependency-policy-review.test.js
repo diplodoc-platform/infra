@@ -795,6 +795,8 @@ test('new scoped pins retain registry risk and no ignored versions on changes', 
         ['markdown-it-directive', '2.0.6', 'directive'],
         ['markdown-it-footnote', '4.0.0', 'transform'],
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
+        ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+        ['@diplodoc/directive', '0.5.0-transform5.1', 'cut-extension'],
     ];
     for (const [name, version, repo] of pins) {
         const change = {
@@ -819,6 +821,34 @@ test('new scoped pins retain registry risk and no ignored versions on changes', 
         assert.notStrictEqual(scoped.autoMergePermission, 'permitted', name);
         const other = buildAssessment([change], [], filterEntriesForRepo(registry.entries, 'cli'));
         assert.strictEqual(other.direct[0].inRegistry, false, `cli:${name}`);
+    }
+});
+
+test('notes and cut prerelease changes require critical ecosystem verification', () => {
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
+    const registry = require('js-yaml').load(
+        readFile(join(__dirname, '../..'), 'dependency-policy.yml'),
+    );
+    for (const [name, version, repo] of [
+        ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+        ['@diplodoc/directive', '0.5.0-transform5.1', 'cut-extension'],
+    ]) {
+        const change = {
+            name,
+            section: 'dependencies',
+            from: null,
+            to: version,
+            changeType: 'added',
+        };
+        const assessment = buildAssessment(
+            [change],
+            [],
+            filterEntriesForRepo(registry.entries, repo),
+        );
+        assert.strictEqual(assessment.maxRisk, 'critical', name);
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem', name);
+        assert.notStrictEqual(assessment.autoMergePermission, 'permitted', name);
+        assert.deepStrictEqual(assessment.direct[0].entry['ignored-versions'], [], name);
     }
 });
 

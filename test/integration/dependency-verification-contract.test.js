@@ -98,6 +98,31 @@ function classifyAndDecide(before, after, options = {}) {
     }
 }
 
+for (const [name, version, repo] of [
+    ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+    ['@diplodoc/directive', '0.5.0-transform5.1', 'cut-extension'],
+]) {
+    test(`${repo} ${name} addition exports critical ecosystem deep verification`, () => {
+        const before = {name: `@diplodoc/${repo}`, version: '1.0.0'};
+        const after = {...before, dependencies: {[name]: version}};
+        const {assessment, outputs} = classifyAndDecide(before, after, {repo});
+        assert.strictEqual(assessment.maxRisk, 'critical');
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem');
+        assert.strictEqual(outputs['run-deep'], 'true');
+        assert.strictEqual(outputs.profile, 'ecosystem');
+        assert.strictEqual(outputs.risk, 'critical');
+    });
+}
+
+test('cut Utils prerelease requires the existing document-transform deep profile', () => {
+    const before = {name: '@diplodoc/cut-extension', version: '1.0.0'};
+    const after = {...before, dependencies: {'@diplodoc/utils': '2.3.7-transform5.0'}};
+    const {assessment, outputs} = classifyAndDecide(before, after, {repo: 'cut-extension'});
+    assert.strictEqual(assessment.maxRisk, 'high');
+    assert.strictEqual(assessment.verificationProfile, 'document-transform');
+    assert.strictEqual(outputs['run-deep'], 'true');
+});
+
 test('unrelated manifest edits successfully export no-change instead of failing', () => {
     const before = manifest('@types/node', '22.0.0', 'devDependencies');
     const after = {...before, scripts: {test: 'node other-test.js'}};

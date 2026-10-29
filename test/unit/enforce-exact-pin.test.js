@@ -307,7 +307,7 @@ test('real registry accepts only the reviewed Transform inline and directive pin
     const result = enforceChanges({}, {dependencies: pins}, registry, 'transform');
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.checked, 3);
-    assert.strictEqual(registry.entries.length, 20);
+    assert.strictEqual(registry.entries.length, 22);
     for (const [name, version] of Object.entries(pins)) {
         const entry = findRegistryEntry(registry.entries, name, version);
         assert.deepStrictEqual(entry.repositories, ['transform']);
@@ -373,13 +373,16 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['markdown-it-directive', '2.0.6', 'directive'],
         ['markdown-it-footnote', '4.0.0', 'transform'],
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
+        ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+        ['@diplodoc/directive', '0.5.0-transform5.1', 'cut-extension'],
     ];
     for (const [name, version, repo] of pins) {
-        const pkg = {devDependencies: {[name]: version}};
+        const section = name.startsWith('@diplodoc/') ? 'dependencies' : 'devDependencies';
+        const pkg = {[section]: {[name]: version}};
         assert.strictEqual(enforce(pkg, registry, repo).ok, true, `${repo}:${name}`);
         assert.strictEqual(enforce(pkg, registry, 'cli').ok, false, `cli:${name}`);
         assert.strictEqual(
-            enforce({devDependencies: {[name]: '99.0.0'}}, registry, repo).ok,
+            enforce({[section]: {[name]: '99.0.0'}}, registry, repo).ok,
             false,
             `wrong version ${name}`,
         );
@@ -395,18 +398,41 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         );
         assert.strictEqual(new Date(entry['expires-at']).toISOString().slice(0, 10), '2026-12-01');
         assert.strictEqual(
-            findRegistryEntry(
-                [entry],
-                name,
-                version,
-                'devDependencies',
-                repo,
-                new Date('2026-12-01'),
-            ),
+            findRegistryEntry([entry], name, version, section, repo, new Date('2026-12-01')),
             undefined,
             `expired ${name}`,
         );
     }
+});
+
+test('Utils prerelease is restricted to the three reviewed repositories and expires', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const entry = registry.entries.find((item) => item.id === 'DEP-0006');
+    assert.deepStrictEqual(entry.repositories, ['transform', 'tabs-extension', 'cut-extension']);
+    assert.deepStrictEqual(entry['ignored-versions'], []);
+    const pkg = {dependencies: {'@diplodoc/utils': '2.3.7-transform5.0'}};
+    for (const repo of entry.repositories)
+        assert.strictEqual(enforce(pkg, registry, repo).ok, true, repo);
+    assert.strictEqual(enforce(pkg, registry, 'cli').ok, false);
+    assert.strictEqual(
+        enforce(
+            {dependencies: {'@diplodoc/utils': '2.3.7-transform5.1'}},
+            registry,
+            'cut-extension',
+        ).ok,
+        false,
+    );
+    assert.strictEqual(
+        findRegistryEntry(
+            [entry],
+            '@diplodoc/utils',
+            '2.3.7-transform5.0',
+            'dependencies',
+            'cut-extension',
+            new Date('2026-12-01'),
+        ),
+        undefined,
+    );
 });
 
 test('notes managed infra pin remains dev-only and scope-bound', () => {
