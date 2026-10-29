@@ -220,7 +220,7 @@ When `@diplodoc/infra` is used as a standalone npm package:
 - `check-pat-expiry.yml` — two scheduled reminders (~2 weeks and ~3 days before the current `INFRA_APPROVER_PAT` expiry) + `workflow_dispatch`; opens/updates a `pat-rotation` issue assigned to `@diplodoc-platform/team` when rotation is due (ADR-002). Cron dates are expiry-relative and must be updated on rotation.
 - `integration-test.yml` — pre-release smoke tests: applies scaffolding to 3 reference packages, runs their full CI
 - `dependency-risk-assessment.yml` — emits both a human-readable comment and a machine-readable risk/profile decision for actual dependency changes
-- `scaffolding/.github/workflows/dependency-deep-verification.yml` — distributed to repositories whose candidate package reaches the CLI/testpack build graph; uses their dependency-diff decision to call testpack's exact-SHA reusable workflow for deep profiles. `distribution.yml` excludes `algolia-extension`, `html-extension`, `vsc`, `package-template`, and `testpack` until they have non-duplicated, real integration coverage.
+- `scaffolding/.github/workflows/dependency-risk-assessment.yml` also invokes the exact-SHA testpack caller for Dependabot deep profiles, reusing its assessment. Legacy deep-workflow exclusions in `distribution.yml` / `.infrarc.yml` still disable that optional job. Scaffolding removes only the recognized unmodified predecessor; custom workflows require manual migration.
 - `tests.yml`, `release.yml`, `release-please.yml`, etc. — standard CI for this package itself
 
 ### GitHub Tokens
