@@ -382,6 +382,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
         ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
@@ -421,7 +422,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         assert.deepStrictEqual(
             entry.repositories,
             name === '@diplodoc/directive' && repo !== 'transform'
-                ? ['cut-extension', 'notes-extension', 'tabs-extension']
+                ? ['cut-extension', 'file-extension', 'notes-extension', 'tabs-extension']
                 : [repo],
         );
         assert.deepStrictEqual(entry['ignored-versions'], []);
