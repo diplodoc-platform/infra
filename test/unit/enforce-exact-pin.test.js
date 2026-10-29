@@ -376,6 +376,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['@typescript-eslint/eslint-plugin', '8.72.1', 'notes-extension'],
         ['@typescript-eslint/parser', '8.72.1', 'notes-extension'],
         ['markdown-it', '15.0.3', 'notes-extension'],
+        ['markdown-it', '15.0.3', 'tabs-extension'],
         ['typescript', '6.0.3', 'notes-extension'],
         ['esbuild', '0.25.12', 'notes-extension'],
         ['sass', '1.97.3', 'notes-extension'],
@@ -422,12 +423,18 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
             entry,
             `live ${name}`,
         );
-        assert.deepStrictEqual(
-            entry.repositories,
-            name === '@diplodoc/directive' && repo !== 'transform'
-                ? ['cut-extension', 'file-extension', 'notes-extension', 'tabs-extension']
-                : [repo],
-        );
+        let expectedRepositories = [repo];
+        if (name === '@diplodoc/directive' && repo !== 'transform') {
+            expectedRepositories = [
+                'cut-extension',
+                'file-extension',
+                'notes-extension',
+                'tabs-extension',
+            ];
+        } else if (name === 'markdown-it' && version === '15.0.3') {
+            expectedRepositories = ['notes-extension', 'tabs-extension'];
+        }
+        assert.deepStrictEqual(entry.repositories, expectedRepositories);
         assert.deepStrictEqual(entry['ignored-versions'], []);
         assert.strictEqual(
             new Date(entry['review-after']).toISOString().slice(0, 10),

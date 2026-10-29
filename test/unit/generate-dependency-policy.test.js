@@ -204,7 +204,7 @@ test('CLI: generates only scoped notes and directive policies', async () => {
         ['directive', ['DEP-0003', 'DEP-0018']],
         ['cut-extension', ['DEP-0003', 'DEP-0006', 'DEP-0022']],
         ['file-extension', ['DEP-0003', 'DEP-0022']],
-        ['tabs-extension', ['DEP-0003', 'DEP-0006', 'DEP-0022']],
+        ['tabs-extension', ['DEP-0003', 'DEP-0006', 'DEP-0014', 'DEP-0022']],
     ]) {
         const tempDir = await createTempDir();
         try {

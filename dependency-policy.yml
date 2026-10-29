@@ -73,15 +73,17 @@ entries:
 
   - id: DEP-0014
     dependency: 'markdown-it'
-    repositories: [notes-extension]
+    repositories: [notes-extension, tabs-extension]
     allowed-version: 15.0.3
     ignored-versions: []
     risk: high
     category: parser-migration
     verification-profile: ecosystem
-    reason: 'The notes package tests its accepted native parser stack while separately exercising installed MarkdownIt 13, 14 and 15 with strict declarations and browser behavior.'
+    reason: 'Notes and Tabs use the patched native 15 default source host; Tabs no longer coalesces vulnerable 13 into its Directive production peer graph. Real native 13 and 14 remain isolated installed compatibility fixtures with their known upstream advisories disclosed.'
     evidence:
       review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      tabs: https://github.com/diplodoc-platform/tabs-extension/pull/174
+      advisory: https://github.com/advisories/GHSA-r7fv-28h4-cvq7
       task: https://st.yandex-team.ru/DOCSTOOLS-6942
     owner: diplodoc-platform/team
     introduced-at: 2026-10-28
