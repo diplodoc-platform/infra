@@ -327,7 +327,7 @@ test('real registry rejects different inline and directive versions', () => {
             dependencies: {
                 'markdown-it-ins': '4.0.1',
                 'markdown-it-sub': '2.0.1',
-                '@diplodoc/directive': '0.5.0-transform5.1',
+                '@diplodoc/directive': '0.5.0-transform5.2',
             },
         },
         registry,
@@ -374,7 +374,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['markdown-it-footnote', '4.0.0', 'transform'],
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
         ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
-        ['@diplodoc/directive', '0.5.0-transform5.1', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
     ];
     for (const [name, version, repo] of pins) {
         const section = name.startsWith('@diplodoc/') ? 'dependencies' : 'devDependencies';
@@ -387,9 +387,25 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
             `wrong version ${name}`,
         );
         const entry = registry.entries.find(
-            (item) => item.dependency === name && item.repositories.includes(repo),
+            (item) =>
+                item.dependency === name &&
+                item.repositories.includes(repo) &&
+                item['allowed-version'] === version,
         );
         assert.ok(entry, name);
+        if (name === '@diplodoc/directive') {
+            assert.strictEqual(entry.id, 'DEP-0022');
+            assert.strictEqual(
+                enforce({dependencies: {[name]: '0.5.0-transform5.1'}}, registry, repo).ok,
+                false,
+                'The current registry supersedes the previous Cut prerelease pin',
+            );
+        }
+        assert.strictEqual(
+            findRegistryEntry([entry], name, version, section, repo, new Date('2026-11-01')),
+            entry,
+            `live ${name}`,
+        );
         assert.deepStrictEqual(entry.repositories, [repo]);
         assert.deepStrictEqual(entry['ignored-versions'], []);
         assert.strictEqual(

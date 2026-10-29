@@ -796,7 +796,7 @@ test('new scoped pins retain registry risk and no ignored versions on changes', 
         ['markdown-it-footnote', '4.0.0', 'transform'],
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
         ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
-        ['@diplodoc/directive', '0.5.0-transform5.1', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
     ];
     for (const [name, version, repo] of pins) {
         const change = {
@@ -831,7 +831,7 @@ test('notes and cut prerelease changes require critical ecosystem verification',
     );
     for (const [name, version, repo] of [
         ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
-        ['@diplodoc/directive', '0.5.0-transform5.1', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
     ]) {
         const change = {
             name,
