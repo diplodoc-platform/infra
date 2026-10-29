@@ -305,11 +305,13 @@ test('real registry accepts only the reviewed Transform inline and extension pin
         'markdown-it-sub': '2.0.0',
         '@diplodoc/directive': '0.5.0-transform5.2',
         '@diplodoc/tabs-extension': '3.10.8-transform5.2',
-        '@diplodoc/cut-extension': '1.1.9-transform5.1',
+        '@diplodoc/cut-extension': '1.1.9-transform5.2',
+        '@diplodoc/file-extension': '0.2.7-transform5.1',
+        '@diplodoc/notes-extension': '0.1.0-transform5.1',
     };
     const result = enforceChanges({}, {dependencies: pins}, registry, 'transform');
     assert.strictEqual(result.ok, true);
-    assert.strictEqual(result.checked, 5);
+    assert.strictEqual(result.checked, 7);
     assert.strictEqual(registry.entries.length, 23);
     for (const [name, version] of Object.entries(pins)) {
         const entry = findRegistryEntry(
@@ -380,14 +382,15 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['markdown-it-directive', '2.0.6', 'directive'],
         ['markdown-it-footnote', '4.0.0', 'transform'],
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
-        ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+        ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+        ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
         ['@diplodoc/tabs-extension', '3.10.8-transform5.2', 'transform'],
-        ['@diplodoc/cut-extension', '1.1.9-transform5.1', 'transform'],
+        ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
     ];
     for (const [name, version, repo] of pins) {
         const section = name.startsWith('@diplodoc/') ? 'dependencies' : 'devDependencies';
@@ -446,7 +449,9 @@ test('Transform extension pins reject superseded versions and do not duplicate r
     for (const [name, versions] of [
         ['@diplodoc/directive', ['0.5.0-transform5.0', '0.5.0-transform5.1']],
         ['@diplodoc/tabs-extension', ['3.10.8-transform5.0', '3.10.8-transform5.1']],
-        ['@diplodoc/cut-extension', ['1.1.6', '1.1.9-transform5.0']],
+        ['@diplodoc/cut-extension', ['1.1.6', '1.1.9-transform5.0', '1.1.9-transform5.1']],
+        ['@diplodoc/file-extension', ['0.2.7-transform5.0']],
+        ['@diplodoc/notes-extension', ['0.1.0-transform5.0']],
     ]) {
         assert.strictEqual(entries.filter((entry) => entry.dependency === name).length, 1);
         for (const version of versions) {

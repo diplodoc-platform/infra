@@ -795,14 +795,15 @@ test('new scoped pins retain registry risk and no ignored versions on changes', 
         ['markdown-it-directive', '2.0.6', 'directive'],
         ['markdown-it-footnote', '4.0.0', 'transform'],
         ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
-        ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+        ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+        ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
         ['@diplodoc/tabs-extension', '3.10.8-transform5.2', 'transform'],
-        ['@diplodoc/cut-extension', '1.1.9-transform5.1', 'transform'],
+        ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
     ];
     for (const [name, version, repo] of pins) {
         const change = {
@@ -836,14 +837,15 @@ test('notes and directive adapter prerelease changes require critical ecosystem 
         readFile(join(__dirname, '../..'), 'dependency-policy.yml'),
     );
     for (const [name, version, repo] of [
-        ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+        ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+        ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
         ['@diplodoc/tabs-extension', '3.10.8-transform5.2', 'transform'],
-        ['@diplodoc/cut-extension', '1.1.9-transform5.1', 'transform'],
+        ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
     ]) {
         const change = {
             name,

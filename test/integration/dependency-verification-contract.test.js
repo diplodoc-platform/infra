@@ -99,7 +99,9 @@ function classifyAndDecide(before, after, options = {}) {
 }
 
 for (const [name, version, repo] of [
-    ['@diplodoc/notes-extension', '0.1.0-transform5.0', 'transform'],
+    ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+    ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
+    ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
     ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
 ]) {
     test(`${repo} ${name} addition exports critical ecosystem deep verification`, () => {
