@@ -194,7 +194,7 @@ distribution, auto-merge or an Internal Check: those remain separate gates.
 CLI processes with base/head manifests and v3 lockfiles, then reads the JSON
 artifact and GitHub output files. It covers unrelated edits, low/dev-only,
 medium toolchain, high/critical production, registry overrides, and lockfile-only
-changes. Workflow tests require author guards on both caller jobs. Unknown
+changes. Workflow tests require author guards on the decision export and reusable caller. Unknown
 profiles, malformed evidence, and mismatched SHAs must still fail closed.
 
 After modifying this contract, refresh the caller's immutable trusted policy
@@ -202,6 +202,34 @@ revision to a commit containing both the exporter and the shared profile module.
 Local tests of an unpinned working tree are not evidence that a deployed caller
 uses the fix. Publication, hosted caller validation, and distribution remain
 separate gates; this contract does not enable schedules, merging, or releases.
+
+## Consolidated dependency checks
+
+The distributed `Dependency Risk Assessment` workflow now exports its existing
+assessment to the deep-verification decision helper. It has one optional
+`Run Selected Deep Profile` job, guarded by the Dependabot PR author and the
+validated exact-head decision. There is no separate `Classify Dependency Diff`
+job or duplicate classifier install. Its existing manifest path filters remain,
+so unrelated PRs do not gain additional checks. The root infra workflow retains
+assessment only; it is not a testpack caller target.
+
+The assessment artifact, metadata binding and privileged comment publisher are
+unchanged. Since the comment workflow observes workflow completion, the risk
+comment now waits for any selected deep profile to finish. Assessment results
+remain available in the first job's summary and artifact while tests run.
+
+Scaffolding retires the exact unmodified 2.3.0 standalone deep workflow after
+copying the replacement. Custom files and symlinks are preserved with a warning;
+migrate them manually to avoid duplicate checks. Excluding the replacement
+preserves the predecessor. Legacy exclusions for
+`.github/workflows/dependency-deep-verification.yml` remain compatibility opt-outs
+for the combined workflow's optional deep job, including central and local
+blacklists; risk assessment still runs. This preserves the five previously
+excluded repositories and does not broaden integration coverage.
+
+Merge and release/distribution are separate steps: consumers keep their current
+workflow until infrastructure is updated. No schedule, auto-merge, token scope
+or private integration is enabled by this consolidation.
 
 ## Managed infrastructure pins (2026-10-06 pilot fix)
 

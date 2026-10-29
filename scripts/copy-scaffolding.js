@@ -9,6 +9,10 @@ const {
     realpathSync,
 } = require('node:fs');
 const {readBlacklist, isExcluded} = require('./scaffolding-blacklist');
+const {
+    configureDeepVerification,
+    removeLegacyDeepWorkflow,
+} = require('./consolidate-dependency-workflows');
 
 // Determine package root directory
 // Try multiple strategies to find the package root
@@ -71,6 +75,11 @@ function copyFileWithSubstitution(srcPath, targetPath) {
         copyFileSync(srcPath, targetPath);
         return;
     }
+    content = configureDeepVerification(
+        content,
+        relative(srcDir, srcPath).replace(/\\/g, '/'),
+        infraBlacklist,
+    );
     if (content.includes('{{PACKAGE_NAME}}')) {
         writeFileSync(targetPath, applyTemplate(content), 'utf8');
     } else {
@@ -174,3 +183,6 @@ copyScaffoldingFiles(['.template', '.github/workflows']);
 
 // Copy workflows separately (always overwrite)
 copyWorkflows();
+
+// Retire only the known managed predecessor after the replacement was copied.
+removeLegacyDeepWorkflow(targetDir, infraBlacklist);

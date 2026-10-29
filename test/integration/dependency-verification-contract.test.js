@@ -61,6 +61,8 @@ function classifyAndDecide(before, after, options = {}) {
                 options.repo || 'transform',
                 '--head-sha',
                 SHA,
+                '--pr',
+                '42',
                 '--compatibility-score',
                 '100',
                 '--comment',

@@ -150,19 +150,131 @@ test('unexcluded missing Dependabot input remains an error', () => {
     });
 });
 
-test('root and distributed dependency workflow copies stay byte-identical', () => {
+test('root and distributed policy jobs stay identical; only consumers have the optional deep caller', () => {
     for (const file of [
         'dependency-policy-check.yml',
         'dependency-review.yml',
         'dependency-risk-assessment.yml',
         'dependency-risk-comment.yml',
     ]) {
+        if (file === 'dependency-risk-assessment.yml') {
+            const distributed = yaml.load(
+                fs.readFileSync(path.join(root, 'scaffolding/.github/workflows', file), 'utf8'),
+            );
+            delete distributed.jobs['deep-verification'];
+            assert.deepEqual(
+                yaml.load(fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8')),
+                distributed,
+            );
+            continue;
+        }
         assert.deepEqual(
             fs.readFileSync(path.join(root, '.github/workflows', file)),
             fs.readFileSync(path.join(root, 'scaffolding/.github/workflows', file)),
             file,
         );
     }
+});
+
+const legacyWorkflow = '.github/workflows/dependency-deep-verification.yml';
+const assessmentWorkflow = '.github/workflows/dependency-risk-assessment.yml';
+const legacyTemplate = fs.readFileSync(
+    path.join(root, 'test/fixtures/workflows/dependency-deep-verification-v2.3.0.yml'),
+    'utf8',
+);
+
+function installLegacy(target) {
+    fs.mkdirSync(path.join(target, '.github/workflows'), {recursive: true});
+    fs.writeFileSync(path.join(target, legacyWorkflow), legacyTemplate);
+}
+
+test('sync replaces the stock deep workflow with a single combined assessment workflow idempotently', () => {
+    workspace((context) => {
+        installLegacy(context.target);
+        sync(context);
+        assert.equal(fs.existsSync(path.join(context.target, legacyWorkflow)), false);
+        const file = path.join(context.target, assessmentWorkflow);
+        const first = fs.readFileSync(file, 'utf8');
+        const workflow = yaml.load(first);
+        assert.deepEqual(Object.keys(workflow.jobs), [
+            'dependency-risk-assessment',
+            'deep-verification',
+        ]);
+        assert.ok(!workflow.jobs['classify-dependency-diff']);
+        sync(context);
+        assert.equal(fs.readFileSync(file, 'utf8'), first);
+    });
+});
+
+for (const origin of ['central', 'local']) {
+    test(`sync preserves ${origin} deep opt-outs while retaining risk assessment`, () => {
+        workspace((context) => {
+            installLegacy(context.target);
+            sync(
+                context,
+                origin === 'central' ? [legacyWorkflow] : [],
+                origin === 'local' ? [legacyWorkflow] : [],
+            );
+            assert.equal(
+                fs.readFileSync(path.join(context.target, legacyWorkflow), 'utf8'),
+                legacyTemplate,
+            );
+            const workflow = yaml.load(
+                fs.readFileSync(path.join(context.target, assessmentWorkflow), 'utf8'),
+            );
+            assert.ok(workflow.jobs['dependency-risk-assessment']);
+            assert.equal(workflow.jobs['deep-verification'], undefined);
+        });
+    });
+}
+
+test('excluding the replacement preserves the legacy workflow instead of silently removing verification', () => {
+    workspace((context) => {
+        installLegacy(context.target);
+        sync(context, [assessmentWorkflow]);
+        assert.equal(
+            fs.readFileSync(path.join(context.target, legacyWorkflow), 'utf8'),
+            legacyTemplate,
+        );
+        assert.equal(fs.existsSync(path.join(context.target, assessmentWorkflow)), false);
+    });
+});
+
+test('custom legacy workflows are preserved during sync', () => {
+    workspace((context) => {
+        installLegacy(context.target);
+        const custom = legacyTemplate + '\n# Custom integration\n';
+        fs.writeFileSync(path.join(context.target, legacyWorkflow), custom);
+        sync(context);
+        assert.equal(fs.readFileSync(path.join(context.target, legacyWorkflow), 'utf8'), custom);
+    });
+});
+
+test('migration accepts the stock CRLF template but preserves symlinks and missing replacements', () => {
+    const {removeLegacyDeepWorkflow} = require('../../scripts/consolidate-dependency-workflows');
+    workspace(({target}) => {
+        installLegacy(target);
+        removeLegacyDeepWorkflow(target, []);
+        assert.equal(fs.existsSync(path.join(target, legacyWorkflow)), true);
+
+        const link = path.join(target, legacyWorkflow);
+        const externalDir = path.join(target, 'external');
+        fs.mkdirSync(externalDir);
+        const external = path.join(externalDir, 'workflow.yml');
+        fs.writeFileSync(external, legacyTemplate);
+        fs.unlinkSync(link);
+        fs.symlinkSync(externalDir, link, process.platform === 'win32' ? 'junction' : 'dir');
+        fs.writeFileSync(path.join(target, assessmentWorkflow), 'replacement');
+        removeLegacyDeepWorkflow(target, []);
+        assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+        assert.equal(fs.readFileSync(external, 'utf8'), legacyTemplate);
+
+        fs.rmSync(link, {recursive: true, force: true});
+        assert.equal(fs.readFileSync(external, 'utf8'), legacyTemplate);
+        fs.writeFileSync(link, legacyTemplate.replace(/\n/g, '\r\n'));
+        removeLegacyDeepWorkflow(target, []);
+        assert.equal(fs.existsSync(link), false);
+    });
 });
 
 module.exports = {tests};

@@ -194,10 +194,10 @@ const workflowPath = (name, scaffolding = true) =>
     );
 const readWorkflow = (name, scaffolding = true) =>
     yaml.load(fs.readFileSync(workflowPath(name, scaffolding), 'utf8'));
-const deep = readWorkflow('dependency-deep-verification.yml');
+const deep = readWorkflow('dependency-risk-assessment.yml');
 
 test('extracted workflow helpers are loaded from trusted infra, never from PR or artifact code', () => {
-    const decisionStep = deep.jobs['classify-dependency-diff'].steps.find(
+    const decisionStep = deep.jobs['dependency-risk-assessment'].steps.find(
         (step) => step.id === 'decision',
     );
     assert.ok(
@@ -252,7 +252,6 @@ test('risk publisher rejects malformed artifact files and bindings before making
 
 test('all policy workflows install only trusted infra and leave PR dependency code unexecuted', () => {
     for (const [name, scaffolding] of [
-        ['dependency-deep-verification.yml', true],
         ['dependency-risk-assessment.yml', true],
         ['dependency-policy-check.yml', true],
         ['dependency-risk-assessment.yml', false],
@@ -514,7 +513,6 @@ test('shared Node setup preserves safe installs in every hardened root and distr
         ['dependency-risk-assessment.yml', false, 1, 'trusted-infra'],
         ['dependency-policy-check.yml', true, 1, 'trusted-infra'],
         ['dependency-risk-assessment.yml', true, 1, 'trusted-infra'],
-        ['dependency-deep-verification.yml', true, 1, 'trusted-infra'],
     ]) {
         const jobs = Object.values(readWorkflow(name, scaffolding).jobs).filter((job) =>
             job.steps?.some((step) => step.uses?.includes('setup-node')),
@@ -525,7 +523,7 @@ test('shared Node setup preserves safe installs in every hardened root and distr
             checked++;
         }
     }
-    assert.strictEqual(checked, 12);
+    assert.strictEqual(checked, 11);
 });
 
 test('Node setup contract rejects automatic installs, caches, duplicate npm upgrades and wrong roots', () => {
@@ -598,7 +596,7 @@ test('root and distributed risk assessments use the reviewed deep-caller classif
         return checkout.with.ref;
     };
 
-    const deepRef = classifierRef(readWorkflow('dependency-deep-verification.yml', true));
+    const deepRef = classifierRef(readWorkflow('dependency-risk-assessment.yml', true));
     for (const scaffolding of [false, true]) {
         assert.strictEqual(
             classifierRef(readWorkflow('dependency-risk-assessment.yml', scaffolding)),
