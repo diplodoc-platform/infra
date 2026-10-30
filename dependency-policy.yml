@@ -30,9 +30,410 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-10-15
+last-updated: 2026-10-29
 
 entries:
+  - id: DEP-0012
+    dependency: '@typescript-eslint/eslint-plugin'
+    repositories: [notes-extension]
+    allowed-version: 8.72.1
+    ignored-versions: []
+    risk: high
+    category: tooling-compatibility
+    verification-profile: standard
+    reason: 'The isolated notes source lint requires the directly declared ESLint plugin version paired with the supported parser; ancestor workspace resolution previously hid the missing peer.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate normal isolated source lint and plugin/parser peer resolution before widening the pin
+
+  - id: DEP-0013
+    dependency: '@typescript-eslint/parser'
+    repositories: [notes-extension]
+    allowed-version: 8.72.1
+    ignored-versions: []
+    risk: high
+    category: tooling-compatibility
+    verification-profile: standard
+    reason: 'The isolated notes source lint requires the directly declared TypeScript ESLint parser paired with its plugin; an ancestor workspace dependency previously masked the missing peer.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate normal isolated source lint and plugin/parser peer resolution before widening the pin
+
+  - id: DEP-0014
+    dependency: 'markdown-it'
+    repositories: [notes-extension, tabs-extension]
+    allowed-version: 15.0.3
+    ignored-versions: []
+    risk: high
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Notes and Tabs use the patched native 15 default source host; Tabs no longer coalesces vulnerable 13 into its Directive production peer graph. Real native 13 and 14 remain isolated installed compatibility fixtures with their known upstream advisories disclosed.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      tabs: https://github.com/diplodoc-platform/tabs-extension/pull/174
+      advisory: https://github.com/advisories/GHSA-r7fv-28h4-cvq7
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate all three native parser and installed browser matrices before widening the pin
+
+  - id: DEP-0015
+    dependency: 'typescript'
+    repositories: [notes-extension]
+    allowed-version: 6.0.3
+    ignored-versions: []
+    risk: high
+    category: declaration-compatibility
+    verification-profile: ecosystem
+    reason: 'The accepted notes package emits and validates native parser declarations with this TypeScript release; changes require strict CJS and ESM consumer checks.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate native parser declarations and strict installed CJS/ESM consumers before widening the pin
+
+  - id: DEP-0016
+    dependency: 'esbuild'
+    repositories: [notes-extension]
+    allowed-version: 0.25.12
+    ignored-versions: []
+    risk: high
+    category: build-output
+    verification-profile: document-transform
+    reason: 'The accepted notes implementation uses this builder for the actual dual-format parser and browser outputs; output parity is checked against the reviewed archive.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate the actual CJS/ESM/browser build, resources and accepted package outputs before widening the pin
+
+  - id: DEP-0017
+    dependency: 'sass'
+    repositories: [notes-extension]
+    allowed-version: 1.97.3
+    ignored-versions: []
+    risk: high
+    category: build-output
+    verification-profile: document-rendering
+    reason: 'The accepted notes styles and exported Sass are checked against the Transform styling contract; a compiler change needs computed CSS parity validation.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate exported Sass and computed styles across the accepted rendering matrix before widening the pin
+
+  - id: DEP-0018
+    dependency: 'markdown-it-directive'
+    repositories: [directive]
+    allowed-version: 2.0.6
+    ignored-versions: []
+    risk: high
+    category: patched-dependency
+    verification-profile: ecosystem
+    reason: 'The Directive migration patches this exact upstream source so prototype-named attribute keys, including constructor, and repeated attributes parse safely; the patch and generated build shape must be verified together.'
+    evidence:
+      review: https://github.com/diplodoc-platform/directive/pull/61
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Revalidate full patched source and built shape plus constructor, prototype-named and repeated-attribute parsing across supported native MarkdownIt versions before widening the pin
+
+  - id: DEP-0019
+    dependency: 'markdown-it-footnote'
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The Transform footnote adapter depends on specific upstream rule and private environment counter shapes; focused parser and source gates are bounded while actual consumer acceptance remains pending.'
+    evidence:
+      review: https://st.yandex-team.ru/DOCSTOOLS-6948
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete real CLI and Viewer consumer acceptance and revalidate adapted rule and environment shapes before widening the pin
+
+  - id: DEP-0020
+    dependency: '@mdit/plugin-tasklist'
+    repositories: [transform]
+    allowed-version: 1.1.4
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The Transform task-list adapter depends on accepted upstream token shapes and owned token mutations; focused parser and source gates are bounded while actual consumer acceptance remains pending.'
+    evidence:
+      review: https://st.yandex-team.ru/DOCSTOOLS-6948
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete real CLI and Viewer consumer acceptance and revalidate upstream token shapes and owned mutations before widening the pin
+
+  - id: DEP-0021
+    dependency: '@diplodoc/notes-extension'
+    repositories: [transform]
+    allowed-version: 0.1.0-transform5.1
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The exact published Notes prerelease adds opt-in container syntax and pure legacy-boundary recognition while preserving standalone defaults; native/mixed installed declarations, browser resources and two post-CI reviews passed. Final combined consumer acceptance remains required.'
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/3
+      artifact: https://registry.npmjs.org/@diplodoc/notes-extension/-/notes-extension-0.1.0-transform5.1.tgz
+      sha256: 4ffc29527b8427e649331edb726ce6f8ddaecc9eb44abb2a0779db2e2e4ccb19
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-29
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete actual CLI, Viewer and Translation integration checks and revalidate the exact notes artifact before widening the pin
+
+  - id: DEP-0022
+    dependency: '@diplodoc/directive'
+    repositories: [cut-extension, file-extension, notes-extension, tabs-extension]
+    allowed-version: 0.5.0-transform5.2
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The cut, file, note and tabs adapters use finite public host/state ports for real coexisting Markdown-it 13 and 15; this exact published artifact passed native and mixed installed gates and two post-CI reviews. Adapter publication and actual downstream acceptance remain separately gated.'
+    evidence:
+      review: https://github.com/diplodoc-platform/directive/pull/62
+      sha256: '0df223a5233f9b9afff72f444f147d7409a06910beb4e727f5ed7205263b9443'
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-29
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Retain the reviewed exact registry artifact; publication approval does not cover new versions
+      - Complete actual Cut, File, Notes, Tabs, CLI and Viewer mixed-host integration before widening the pin
+
+  - id: DEP-0009
+    dependency: markdown-it-ins
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform 5 adapts the frozen ins tokenizer/postprocessor rule shapes and owned delimiter fields to underline tokens; the exact upstream grammar is accepted with native markdown-it 15 and actual consumers.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1137
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact underline adapter with native parser types and real CLI/viewer rendering
+      - Revalidate upstream rule and delimiter shapes plus protected syntax before widening the range
+
+  - id: DEP-0010
+    dependency: markdown-it-sub
+    repositories: [transform]
+    allowed-version: 2.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform 5 freezes the upstream plain-text subscript delimiter and escaping grammar accepted with native markdown-it 15, strikethrough/linkify interactions and actual consumers.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1137
+      task: https://st.yandex-team.ru/DOCSTOOLS-6948
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact subscript grammar with native parser types and real CLI/viewer rendering
+      - Revalidate delimiter, escaping and protected-content behavior before widening the range
+
+  # Approved published archive SHA256: 0df223a5233f9b9afff72f444f147d7409a06910beb4e727f5ed7205263b9443
+  - id: DEP-0011
+    dependency: '@diplodoc/directive'
+    repositories: [transform]
+    allowed-version: 0.5.0-transform5.2
+    ignored-versions: []
+    risk: critical
+    category: prerelease-compatibility
+    verification-profile: ecosystem
+    reason: 'Transform 5 requires the reviewed scanner and finite public host ports for native and coexisting Markdown-it 13 and 15; this exact published artifact passed strict CJS/ESM declarations, runtime matrices and two post-CI reviews. Final combined consumer acceptance remains required.'
+    evidence:
+      portability: https://github.com/diplodoc-platform/directive/pull/62
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+      registry-archive: https://registry.npmjs.org/@diplodoc/directive/-/directive-0.5.0-transform5.2.tgz
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact published scanner in Transform with native parser and strict browser declarations
+      - Agree a compatible stable release and revalidate scanner behavior before replacing the prerelease pin
+
+  - id: DEP-0004
+    dependency: markdown-it
+    repositories: [transform]
+    allowed-version: 15.0.3
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform 5 freezes its native-type parser migration while HTML, declarations and actual CLI/viewer consumers are accepted together.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1126
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-27
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete the Transform 5 parser and installed-package consumer acceptance
+      - Revalidate parser updates against documented intentional output changes before widening the range
+
+  - id: DEP-0005
+    dependency: markdown-it-deflist
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The Transform 5 definition-list migration is accepted with markdown-it 15 and native public types as one fixed parser stack.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1126
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-27
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete definition-list and consumer rendering acceptance for Transform 5
+      - Revalidate definition-list updates before widening the range
+
+  - id: DEP-0006
+    dependency: '@diplodoc/utils'
+    repositories: [transform, tabs-extension, cut-extension]
+    allowed-version: 2.3.7-transform5.0
+    ignored-versions: []
+    risk: high
+    category: prerelease-compatibility
+    verification-profile: document-transform
+    reason: 'The Transform 5 prerelease train requires the reviewed native markdown-it 15 declarations; Cut was checked with installed native Markdown-it 13, 14 and 15. These types are not compatible with TypeScript 5.2 and must not reach stable consumers yet.'
+    evidence:
+      native-types: https://github.com/diplodoc-platform/utils/pull/81
+      consumers: https://github.com/diplodoc-platform/transform/pull/1126
+      cut-task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-27
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact registry prerelease in Transform, Tabs and Cut with strict consumer declarations
+      - Agree a compatible stable release and replace the prerelease pin
+
+  - id: DEP-0007
+    dependency: '@diplodoc/file-extension'
+    repositories: [transform]
+    allowed-version: 0.2.7-transform5.1
+    ignored-versions: []
+    risk: critical
+    category: prerelease-compatibility
+    verification-profile: ecosystem
+    reason: 'The exact published File prerelease uses Directive 5.2 finite host ports and typed collect, normalizes repeated allowed attributes and repairs runtime declarations. Strict native/mixed 13/15 installed and exact CLI gates passed; final combined consumer acceptance remains required.'
+    evidence:
+      parser-contract: https://github.com/diplodoc-platform/file-extension/pull/51
+      sha256: 65e3f9fe3528721e7ac147da2ac47219a6ee6ed7de6189f0b201c69ccefbcc8d
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-27
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact registry prerelease in Transform and real CLI/viewer consumers
+      - Agree a compatible stable release and replace the prerelease pin
+
+  - id: DEP-0008
+    dependency: '@diplodoc/tabs-extension'
+    repositories: [transform]
+    allowed-version: 3.10.8-transform5.3
+    ignored-versions: []
+    risk: critical
+    category: prerelease-compatibility
+    verification-profile: ecosystem
+    reason: 'Transform 5 needs the canonical colon Tabs container and public legacy-boundary observations with finite mixed-host ports and valid runtime declarations; the exact published Tabs artifact passed installed native/mixed checks, full metapackage E2E and two post-CI reviews. Final combined consumer acceptance remains required.'
+    evidence:
+      parser-contract: https://github.com/diplodoc-platform/tabs-extension/pull/172
+      runtime-declarations: https://github.com/diplodoc-platform/tabs-extension/pull/173
+      block-directives: https://github.com/diplodoc-platform/tabs-extension/pull/174
+      sha256: 403473b15a27b25b0394f0d297f359d267266c7c3e8dd3690950cfbede5d81a9
+      native-types: https://github.com/diplodoc-platform/utils/pull/81
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-27
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Accept the exact registry prerelease and matching Utils in Transform and real consumers
+      - Agree a compatible stable release and replace the prerelease pin
+
+  - id: DEP-0023
+    dependency: '@diplodoc/cut-extension'
+    repositories: [transform]
+    allowed-version: 1.1.9-transform5.2
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform 5 needs the reviewed finite Cut host ports, portable callback declarations, typed collect contract and pure legacy-boundary recognizer; this exact published artifact passed native and mixed installed checks and two post-CI reviews. Final combined consumer acceptance remains required.'
+    evidence:
+      review: https://github.com/diplodoc-platform/cut-extension/pull/103
+      sha256: 4e261b9a5a836395ff93f70969744dbe74d7ed29bad26b093143cd0f1511b3b5
+      task: https://st.yandex-team.ru/DOCSTOOLS-6943
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-29
+    review-after: 2026-11-17
+    expires-at: 2026-12-01
+    exit-criteria:
+      - Complete actual combined CLI, Viewer, Translation, SDK and VSC migration checks
+      - Agree a compatible stable release and revalidate before replacing the prerelease pin
+
   - id: DEP-0003
     dependency: '@diplodoc/infra'
     pin-policy: managed-infra
@@ -57,6 +458,7 @@ entries:
       - html-extension
       - latex-extension
       - mermaid-extension
+      - notes-extension
       - openapi-extension
       - page-constructor-extension
       - quote-link-extension

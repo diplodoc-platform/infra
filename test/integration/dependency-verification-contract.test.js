@@ -100,6 +100,33 @@ function classifyAndDecide(before, after, options = {}) {
     }
 }
 
+for (const [name, version, repo] of [
+    ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+    ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
+    ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
+    ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+]) {
+    test(`${repo} ${name} addition exports critical ecosystem deep verification`, () => {
+        const before = {name: `@diplodoc/${repo}`, version: '1.0.0'};
+        const after = {...before, dependencies: {[name]: version}};
+        const {assessment, outputs} = classifyAndDecide(before, after, {repo});
+        assert.strictEqual(assessment.maxRisk, 'critical');
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem');
+        assert.strictEqual(outputs['run-deep'], 'true');
+        assert.strictEqual(outputs.profile, 'ecosystem');
+        assert.strictEqual(outputs.risk, 'critical');
+    });
+}
+
+test('cut Utils prerelease requires the existing document-transform deep profile', () => {
+    const before = {name: '@diplodoc/cut-extension', version: '1.0.0'};
+    const after = {...before, dependencies: {'@diplodoc/utils': '2.3.7-transform5.0'}};
+    const {assessment, outputs} = classifyAndDecide(before, after, {repo: 'cut-extension'});
+    assert.strictEqual(assessment.maxRisk, 'high');
+    assert.strictEqual(assessment.verificationProfile, 'document-transform');
+    assert.strictEqual(outputs['run-deep'], 'true');
+});
+
 test('unrelated manifest edits successfully export no-change instead of failing', () => {
     const before = manifest('@types/node', '22.0.0', 'devDependencies');
     const after = {...before, scripts: {test: 'node other-test.js'}};
@@ -146,9 +173,9 @@ for (const [name, dependency, from, to, section, risk, profile, runDeep] of [
     ],
     [
         'high parser patch',
-        'markdown-it',
-        '14.1.0',
-        '14.1.1',
+        'markdown-it-container',
+        '3.0.0',
+        '3.0.1',
         'dependencies',
         'high',
         'document-transform',
@@ -186,9 +213,9 @@ for (const [name, dependency, from, to, section, risk, profile, runDeep] of [
     ],
     [
         'critical parser major',
-        'markdown-it',
-        '14.1.0',
-        '15.0.0',
+        'markdown-it-container',
+        '3.0.0',
+        '4.0.0',
         'dependencies',
         'critical',
         'ecosystem',
@@ -221,8 +248,8 @@ for (const [name, dependency, from, to, section, risk, profile, runDeep] of [
 test('lockfile-only parser update is not mistaken for a no-change PR', () => {
     const pkg = manifest('unknown-library', '1.0.0');
     const {assessment, outputs} = classifyAndDecide(pkg, pkg, {
-        beforeLock: lockfile(pkg, {'node_modules/markdown-it': {version: '14.1.0'}}),
-        afterLock: lockfile(pkg, {'node_modules/markdown-it': {version: '14.1.1'}}),
+        beforeLock: lockfile(pkg, {'node_modules/markdown-it-container': {version: '3.0.0'}}),
+        afterLock: lockfile(pkg, {'node_modules/markdown-it-container': {version: '3.0.1'}}),
     });
     assert.strictEqual(assessment.summary.direct, 0);
     assert.strictEqual(assessment.summary.transitive, 1);

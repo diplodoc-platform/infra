@@ -780,6 +780,154 @@ test('renderComment: shows no changes message when empty', () => {
 const SCRIPT = join(__dirname, '../../scripts/dependency-policy-review.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
 
+test('new scoped pins retain registry risk and no ignored versions on changes', () => {
+    const yaml = require('js-yaml');
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
+    const {strongestProfile} = require('../../scripts/dependency-verification-profiles');
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const pins = [
+        ['@typescript-eslint/eslint-plugin', '8.72.1', 'notes-extension'],
+        ['@typescript-eslint/parser', '8.72.1', 'notes-extension'],
+        ['markdown-it', '15.0.3', 'notes-extension'],
+        ['markdown-it', '15.0.3', 'tabs-extension'],
+        ['typescript', '6.0.3', 'notes-extension'],
+        ['esbuild', '0.25.12', 'notes-extension'],
+        ['sass', '1.97.3', 'notes-extension'],
+        ['markdown-it-directive', '2.0.6', 'directive'],
+        ['markdown-it-footnote', '4.0.0', 'transform'],
+        ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
+        ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+        ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
+        ['@diplodoc/tabs-extension', '3.10.8-transform5.3', 'transform'],
+        ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
+    ];
+    for (const [name, version, repo] of pins) {
+        const change = {
+            name,
+            section: 'devDependencies',
+            from: version,
+            to: '99.0.0',
+            changeType: 'changed',
+        };
+        const scoped = buildAssessment([change], [], filterEntriesForRepo(registry.entries, repo));
+        assert.strictEqual(scoped.direct[0].inRegistry, true, name);
+        assert.strictEqual(scoped.direct[0].ignored, false, name);
+        assert.ok(['high', 'critical'].includes(scoped.maxRisk), name);
+        assert.strictEqual(
+            strongestProfile([
+                scoped.verificationProfile,
+                scoped.direct[0].entry['verification-profile'],
+            ]),
+            scoped.verificationProfile,
+            name,
+        );
+        assert.notStrictEqual(scoped.autoMergePermission, 'permitted', name);
+        const other = buildAssessment([change], [], filterEntriesForRepo(registry.entries, 'cli'));
+        assert.strictEqual(other.direct[0].inRegistry, false, `cli:${name}`);
+    }
+});
+
+test('notes and directive adapter prerelease changes require critical ecosystem verification', () => {
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
+    const registry = require('js-yaml').load(
+        readFile(join(__dirname, '../..'), 'dependency-policy.yml'),
+    );
+    for (const [name, version, repo] of [
+        ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+        ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
+        ['@diplodoc/tabs-extension', '3.10.8-transform5.3', 'transform'],
+        ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
+    ]) {
+        const change = {
+            name,
+            section: 'dependencies',
+            from: null,
+            to: version,
+            changeType: 'added',
+        };
+        const assessment = buildAssessment(
+            [change],
+            [],
+            filterEntriesForRepo(registry.entries, repo),
+        );
+        assert.strictEqual(assessment.maxRisk, 'critical', name);
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem', name);
+        assert.notStrictEqual(assessment.autoMergePermission, 'permitted', name);
+        assert.deepStrictEqual(assessment.direct[0].entry['ignored-versions'], [], name);
+    }
+});
+
+test('CLI: parser migration exceptions retain critical ecosystem verification', async () => {
+    const tempDir = await createTempDir();
+    try {
+        writeJson(tempDir, 'before.json', {
+            dependencies: {'markdown-it': '13.0.2', 'markdown-it-deflist': '2.1.0'},
+        });
+        writeJson(tempDir, 'after.json', {
+            dependencies: {'markdown-it': '15.0.3', 'markdown-it-deflist': '4.0.0'},
+        });
+        const jsonPath = join(tempDir, 'assessment.json');
+        execSync(
+            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
+                `--before-pkg "${join(tempDir, 'before.json')}" ` +
+                `--after-pkg "${join(tempDir, 'after.json')}" ` +
+                `--json "${jsonPath}" --quiet --repo transform`,
+            {stdio: 'pipe', env: {...process.env}},
+        );
+        const assessment = JSON.parse(readFile(tempDir, 'assessment.json'));
+        assert.strictEqual(assessment.maxRisk, 'critical');
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem');
+        assert.strictEqual(assessment.summary.total, 2);
+    } finally {
+        await removeTempDir(tempDir);
+    }
+});
+
+test('CLI: inline and directive exceptions cannot downgrade future parser majors', async () => {
+    const tempDir = await createTempDir();
+    try {
+        writeJson(tempDir, 'before.json', {
+            dependencies: {
+                'markdown-it-ins': '4.0.0',
+                'markdown-it-sub': '2.0.0',
+                '@diplodoc/directive': '0.5.0-transform5.0',
+            },
+        });
+        writeJson(tempDir, 'after.json', {
+            dependencies: {
+                'markdown-it-ins': '5.0.0',
+                'markdown-it-sub': '3.0.0',
+                '@diplodoc/directive': '1.0.0',
+            },
+        });
+        const jsonPath = join(tempDir, 'assessment.json');
+        execSync(
+            `node "${SCRIPT}" --registry "${REAL_REGISTRY}" ` +
+                `--before-pkg "${join(tempDir, 'before.json')}" ` +
+                `--after-pkg "${join(tempDir, 'after.json')}" ` +
+                `--json "${jsonPath}" --quiet --repo transform`,
+            {stdio: 'pipe', env: {...process.env}},
+        );
+        const assessment = JSON.parse(readFile(tempDir, 'assessment.json'));
+        assert.strictEqual(assessment.maxRisk, 'critical');
+        assert.strictEqual(assessment.verificationProfile, 'ecosystem');
+        assert.strictEqual(assessment.summary.total, 3);
+        assert.ok(assessment.direct.every(({risk}) => risk === 'critical'));
+    } finally {
+        await removeTempDir(tempDir);
+    }
+});
+
 test('CLI: produces assessment for changed package.json', async () => {
     const tempDir = await createTempDir();
     try {

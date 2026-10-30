@@ -168,9 +168,57 @@ test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001',
         assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
             'DEP-0001',
             'DEP-0003',
+            'DEP-0004',
+            'DEP-0005',
+            'DEP-0006',
+            'DEP-0007',
+            'DEP-0008',
+            'DEP-0009',
+            'DEP-0010',
+            'DEP-0011',
+            'DEP-0019',
+            'DEP-0020',
+            'DEP-0021',
+            'DEP-0023',
         ]);
     } finally {
         await removeTempDir(tempDir);
+    }
+});
+
+test('CLI: generates only scoped notes and directive policies', async () => {
+    for (const [repo, expected] of [
+        [
+            'notes-extension',
+            [
+                'DEP-0003',
+                'DEP-0012',
+                'DEP-0013',
+                'DEP-0014',
+                'DEP-0015',
+                'DEP-0016',
+                'DEP-0017',
+                'DEP-0022',
+            ],
+        ],
+        ['directive', ['DEP-0003', 'DEP-0018']],
+        ['cut-extension', ['DEP-0003', 'DEP-0006', 'DEP-0022']],
+        ['file-extension', ['DEP-0003', 'DEP-0022']],
+        ['tabs-extension', ['DEP-0003', 'DEP-0006', 'DEP-0014', 'DEP-0022']],
+    ]) {
+        const tempDir = await createTempDir();
+        try {
+            writeJson(tempDir, 'package.json', {name: `@diplodoc/${repo}`, version: '1.0.0'});
+            execSync(`node "${SCRIPT}" --registry "${REAL_REGISTRY}" --target "${tempDir}"`, {
+                stdio: 'pipe',
+                env: {...process.env},
+            });
+            const policy = yaml.load(readFile(tempDir, '.github/dependency-policy.yml'));
+            assert.strictEqual(policy['generated-for'], repo);
+            assert.deepStrictEqual(policy.entries.map((entry) => entry.id).sort(), expected);
+        } finally {
+            await removeTempDir(tempDir);
+        }
     }
 });
 
@@ -205,6 +253,18 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json derivation', async () 
         assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
             'DEP-0001',
             'DEP-0003',
+            'DEP-0004',
+            'DEP-0005',
+            'DEP-0006',
+            'DEP-0007',
+            'DEP-0008',
+            'DEP-0009',
+            'DEP-0010',
+            'DEP-0011',
+            'DEP-0019',
+            'DEP-0020',
+            'DEP-0021',
+            'DEP-0023',
         ]);
     } finally {
         await removeTempDir(tempDir);

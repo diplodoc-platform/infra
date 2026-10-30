@@ -297,13 +297,242 @@ test('real registry accepts the pilot infra pin without permitting runtime or un
         assert.strictEqual(enforceChanges({}, pkg, registry, 'tabs-extension').ok, false);
 });
 
-test('managed infra registry scope stays aligned with distribution targets', () => {
+test('real registry accepts only the reviewed Transform inline and extension pins', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
+    const pins = {
+        'markdown-it-ins': '4.0.0',
+        'markdown-it-sub': '2.0.0',
+        '@diplodoc/directive': '0.5.0-transform5.2',
+        '@diplodoc/tabs-extension': '3.10.8-transform5.3',
+        '@diplodoc/cut-extension': '1.1.9-transform5.2',
+        '@diplodoc/file-extension': '0.2.7-transform5.1',
+        '@diplodoc/notes-extension': '0.1.0-transform5.1',
+    };
+    const result = enforceChanges({}, {dependencies: pins}, registry, 'transform');
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.checked, 7);
+    assert.strictEqual(registry.entries.length, 23);
+    for (const [name, version] of Object.entries(pins)) {
+        const entry = findRegistryEntry(
+            filterEntriesForRepo(registry.entries, 'transform'),
+            name,
+            version,
+        );
+        assert.deepStrictEqual(entry.repositories, ['transform']);
+        assert.strictEqual(entry.risk, 'critical');
+        assert.strictEqual(entry['verification-profile'], 'ecosystem');
+        assert.deepStrictEqual(entry['ignored-versions'], []);
+        assert.ok(entry['review-after']);
+        assert.ok(entry['expires-at']);
+    }
+});
+
+test('real registry rejects different inline and directive versions', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const result = enforceChanges(
+        {},
+        {
+            dependencies: {
+                'markdown-it-ins': '4.0.1',
+                'markdown-it-sub': '2.0.1',
+                '@diplodoc/directive': '0.5.0-transform5.3',
+            },
+        },
+        registry,
+        'transform',
+    );
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.checked, 3);
+    assert.deepStrictEqual(result.violations.map(({name}) => name).sort(), [
+        '@diplodoc/directive',
+        'markdown-it-ins',
+        'markdown-it-sub',
+    ]);
+});
+
+test('real registry rejects the reviewed Transform pins in CLI scope', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const result = enforceChanges(
+        {},
+        {
+            dependencies: {
+                'markdown-it-ins': '4.0.0',
+                'markdown-it-sub': '2.0.0',
+                '@diplodoc/directive': '0.5.0-transform5.2',
+            },
+        },
+        registry,
+        'cli',
+    );
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.checked, 3);
+    assert.strictEqual(result.violations.length, 3);
+});
+
+test('new exact pins retain version, repository and expiry boundaries', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const pins = [
+        ['@typescript-eslint/eslint-plugin', '8.72.1', 'notes-extension'],
+        ['@typescript-eslint/parser', '8.72.1', 'notes-extension'],
+        ['markdown-it', '15.0.3', 'notes-extension'],
+        ['markdown-it', '15.0.3', 'tabs-extension'],
+        ['typescript', '6.0.3', 'notes-extension'],
+        ['esbuild', '0.25.12', 'notes-extension'],
+        ['sass', '1.97.3', 'notes-extension'],
+        ['markdown-it-directive', '2.0.6', 'directive'],
+        ['markdown-it-footnote', '4.0.0', 'transform'],
+        ['@mdit/plugin-tasklist', '1.1.4', 'transform'],
+        ['@diplodoc/notes-extension', '0.1.0-transform5.1', 'transform'],
+        ['@diplodoc/file-extension', '0.2.7-transform5.1', 'transform'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'cut-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
+        ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
+        ['@diplodoc/tabs-extension', '3.10.8-transform5.3', 'transform'],
+        ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
+    ];
+    for (const [name, version, repo] of pins) {
+        const section = name.startsWith('@diplodoc/') ? 'dependencies' : 'devDependencies';
+        const pkg = {[section]: {[name]: version}};
+        assert.strictEqual(enforce(pkg, registry, repo).ok, true, `${repo}:${name}`);
+        assert.strictEqual(enforce(pkg, registry, 'cli').ok, false, `cli:${name}`);
+        assert.strictEqual(
+            enforce({[section]: {[name]: '99.0.0'}}, registry, repo).ok,
+            false,
+            `wrong version ${name}`,
+        );
+        const entry = registry.entries.find(
+            (item) =>
+                item.dependency === name &&
+                item.repositories.includes(repo) &&
+                item['allowed-version'] === version,
+        );
+        assert.ok(entry, name);
+        if (name === '@diplodoc/directive' && repo !== 'transform') {
+            assert.strictEqual(entry.id, 'DEP-0022');
+            assert.strictEqual(
+                enforce({dependencies: {[name]: '0.5.0-transform5.1'}}, registry, repo).ok,
+                false,
+                'The current registry supersedes the previous adapter prerelease pin',
+            );
+        }
+        assert.strictEqual(
+            findRegistryEntry([entry], name, version, section, repo, new Date('2026-11-01')),
+            entry,
+            `live ${name}`,
+        );
+        let expectedRepositories = [repo];
+        if (name === '@diplodoc/directive' && repo !== 'transform') {
+            expectedRepositories = [
+                'cut-extension',
+                'file-extension',
+                'notes-extension',
+                'tabs-extension',
+            ];
+        } else if (name === 'markdown-it' && version === '15.0.3') {
+            expectedRepositories = ['notes-extension', 'tabs-extension'];
+        }
+        assert.deepStrictEqual(entry.repositories, expectedRepositories);
+        assert.deepStrictEqual(entry['ignored-versions'], []);
+        assert.strictEqual(
+            new Date(entry['review-after']).toISOString().slice(0, 10),
+            '2026-11-17',
+        );
+        assert.strictEqual(new Date(entry['expires-at']).toISOString().slice(0, 10), '2026-12-01');
+        assert.strictEqual(
+            findRegistryEntry([entry], name, version, section, repo, new Date('2026-12-01')),
+            undefined,
+            `expired ${name}`,
+        );
+    }
+});
+
+test('Transform extension pins reject superseded versions and do not duplicate repository scope', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const {filterEntriesForRepo} = require('../../scripts/generate-dependency-policy');
+    const entries = filterEntriesForRepo(registry.entries, 'transform');
+    for (const [name, versions] of [
+        ['@diplodoc/directive', ['0.5.0-transform5.0', '0.5.0-transform5.1']],
+        ['@diplodoc/tabs-extension', ['3.10.8-transform5.0', '3.10.8-transform5.1']],
+        ['@diplodoc/cut-extension', ['1.1.6', '1.1.9-transform5.0', '1.1.9-transform5.1']],
+        ['@diplodoc/file-extension', ['0.2.7-transform5.0']],
+        ['@diplodoc/notes-extension', ['0.1.0-transform5.0']],
+    ]) {
+        assert.strictEqual(entries.filter((entry) => entry.dependency === name).length, 1);
+        for (const version of versions) {
+            assert.strictEqual(
+                enforce({dependencies: {[name]: version}}, registry, 'transform').ok,
+                false,
+                `${name}@${version}`,
+            );
+        }
+    }
+});
+
+test('Utils prerelease is restricted to the three reviewed repositories and expires', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const entry = registry.entries.find((item) => item.id === 'DEP-0006');
+    assert.deepStrictEqual(entry.repositories, ['transform', 'tabs-extension', 'cut-extension']);
+    assert.deepStrictEqual(entry['ignored-versions'], []);
+    const pkg = {dependencies: {'@diplodoc/utils': '2.3.7-transform5.0'}};
+    for (const repo of entry.repositories)
+        assert.strictEqual(enforce(pkg, registry, repo).ok, true, repo);
+    assert.strictEqual(enforce(pkg, registry, 'cli').ok, false);
+    assert.strictEqual(
+        enforce(
+            {dependencies: {'@diplodoc/utils': '2.3.7-transform5.1'}},
+            registry,
+            'cut-extension',
+        ).ok,
+        false,
+    );
+    assert.strictEqual(
+        findRegistryEntry(
+            [entry],
+            '@diplodoc/utils',
+            '2.3.7-transform5.0',
+            'dependencies',
+            'cut-extension',
+            new Date('2026-12-01'),
+        ),
+        undefined,
+    );
+});
+
+test('notes managed infra pin remains dev-only and scope-bound', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const version = '2.3.0';
+    assert.strictEqual(
+        enforce({devDependencies: {'@diplodoc/infra': version}}, registry, 'notes-extension').ok,
+        true,
+    );
+    assert.strictEqual(
+        enforce({peerDependencies: {'@diplodoc/infra': version}}, registry, 'notes-extension').ok,
+        false,
+    );
+    assert.strictEqual(
+        enforce({devDependencies: {'@diplodoc/infra': version}}, registry, 'unmanaged').ok,
+        false,
+    );
+    assert.strictEqual(
+        enforce(
+            {devDependencies: {'@diplodoc/infra': '2.3.0-transform5.0'}},
+            registry,
+            'notes-extension',
+        ).ok,
+        false,
+    );
+});
+
+test('managed infra scope covers distribution and reviewed notes-only preparation', () => {
     const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
     const distribution = yaml.load(readFile(join(__dirname, '../..'), 'distribution.yml'));
     const managed = registry.entries.find((entry) => entry['pin-policy'] === 'managed-infra');
     assert.deepStrictEqual(
         [...managed.repositories].sort(),
-        Object.keys(distribution.repos).sort(),
+        [...Object.keys(distribution.repos), 'notes-extension'].sort(),
     );
     for (const directory of ['.github', 'scaffolding/.github']) {
         const workflow = yaml.load(
