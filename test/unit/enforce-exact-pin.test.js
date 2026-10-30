@@ -304,7 +304,7 @@ test('real registry accepts only the reviewed Transform inline and extension pin
         'markdown-it-ins': '4.0.0',
         'markdown-it-sub': '2.0.0',
         '@diplodoc/directive': '0.5.0-transform5.2',
-        '@diplodoc/tabs-extension': '3.10.8-transform5.2',
+        '@diplodoc/tabs-extension': '3.10.8-transform5.3',
         '@diplodoc/cut-extension': '1.1.9-transform5.2',
         '@diplodoc/file-extension': '0.2.7-transform5.1',
         '@diplodoc/notes-extension': '0.1.0-transform5.1',
@@ -390,7 +390,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
-        ['@diplodoc/tabs-extension', '3.10.8-transform5.2', 'transform'],
+        ['@diplodoc/tabs-extension', '3.10.8-transform5.3', 'transform'],
         ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
     ];
     for (const [name, version, repo] of pins) {
