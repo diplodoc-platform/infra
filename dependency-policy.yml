@@ -30,7 +30,7 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-10-29
+last-updated: 2026-11-03
 
 entries:
   - id: DEP-0012
@@ -288,20 +288,21 @@ entries:
       - Accept the exact subscript grammar with native parser types and real CLI/viewer rendering
       - Revalidate delimiter, escaping and protected-content behavior before widening the range
 
-  # Approved published archive SHA256: 0df223a5233f9b9afff72f444f147d7409a06910beb4e727f5ed7205263b9443
+  # Approved published archive SHA256: 8a39d34a56237cef4a479fdc3218cca3e439722503a94af8c520716b4ce74802
   - id: DEP-0011
     dependency: '@diplodoc/directive'
     repositories: [transform]
-    allowed-version: 0.5.0-transform5.2
+    allowed-version: 0.5.0-transform5.3
     ignored-versions: []
     risk: critical
     category: prerelease-compatibility
     verification-profile: ecosystem
-    reason: 'Transform 5 requires the reviewed scanner and finite public host ports for native and coexisting Markdown-it 13 and 15; this exact published artifact passed strict CJS/ESM declarations, runtime matrices and two post-CI reviews. Final combined consumer acceptance remains required.'
+    reason: 'Transform 5 requires the reviewed block-boundary registry so fenced directive closers inside YFM tables do not close their outer container. This exact published archive passed native Markdown-it 12/13/14/15 and mixed-host gates; Transform integration and actual CLI/Viewer acceptance remain separate requirements.'
     evidence:
-      portability: https://github.com/diplodoc-platform/directive/pull/62
+      portability: https://github.com/diplodoc-platform/directive/pull/64
+      integration: https://github.com/diplodoc-platform/transform/pull/1150
       task: https://st.yandex-team.ru/DOCSTOOLS-6943
-      registry-archive: https://registry.npmjs.org/@diplodoc/directive/-/directive-0.5.0-transform5.2.tgz
+      registry-archive: https://registry.npmjs.org/@diplodoc/directive/-/directive-0.5.0-transform5.3.tgz
     owner: diplodoc-platform/team
     introduced-at: 2026-10-28
     review-after: 2026-11-17

@@ -303,7 +303,7 @@ test('real registry accepts only the reviewed Transform inline and extension pin
     const pins = {
         'markdown-it-ins': '4.0.0',
         'markdown-it-sub': '2.0.0',
-        '@diplodoc/directive': '0.5.0-transform5.2',
+        '@diplodoc/directive': '0.5.0-transform5.3',
         '@diplodoc/tabs-extension': '3.10.8-transform5.3',
         '@diplodoc/cut-extension': '1.1.9-transform5.2',
         '@diplodoc/file-extension': '0.2.7-transform5.1',
@@ -336,7 +336,7 @@ test('real registry rejects different inline and directive versions', () => {
             dependencies: {
                 'markdown-it-ins': '4.0.1',
                 'markdown-it-sub': '2.0.1',
-                '@diplodoc/directive': '0.5.0-transform5.3',
+                '@diplodoc/directive': '0.5.0-transform5.4',
             },
         },
         registry,
@@ -359,7 +359,7 @@ test('real registry rejects the reviewed Transform pins in CLI scope', () => {
             dependencies: {
                 'markdown-it-ins': '4.0.0',
                 'markdown-it-sub': '2.0.0',
-                '@diplodoc/directive': '0.5.0-transform5.2',
+                '@diplodoc/directive': '0.5.0-transform5.3',
             },
         },
         registry,
@@ -389,7 +389,7 @@ test('new exact pins retain version, repository and expiry boundaries', () => {
         ['@diplodoc/directive', '0.5.0-transform5.2', 'file-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'notes-extension'],
         ['@diplodoc/directive', '0.5.0-transform5.2', 'tabs-extension'],
-        ['@diplodoc/directive', '0.5.0-transform5.2', 'transform'],
+        ['@diplodoc/directive', '0.5.0-transform5.3', 'transform'],
         ['@diplodoc/tabs-extension', '3.10.8-transform5.3', 'transform'],
         ['@diplodoc/cut-extension', '1.1.9-transform5.2', 'transform'],
     ];
