@@ -40,9 +40,25 @@ function validatePayload(plan, directory, locks, baselineLock) {
     }
     // Recompute the delta from independently fetched canonical locks, not the
     // build job's proof or its claim that only planned versions have changed.
-    assertDependencyDelta(plan, baselineLock, lock, locks);
+    const hostPeers = new Map();
+    assertDependencyDelta(plan, baselineLock, lock, locks, (name, _before, _after, repo) =>
+        hostPeers.set(`${repo}:${name}`, {repo, name}),
+    );
     const proof = read(path.join(directory, 'dependency-train', 'proof.json'));
-    assert.equal(proof.schema, 1);
+    assert.equal(proof.schema, hostPeers.size ? 2 : 1);
+    if (hostPeers.size) {
+        assert.equal(proof.cliBaseLockSha256, digest(JSON.stringify(baselineLock)));
+        assert.deepEqual(
+            proof.hostPeers,
+            [...hostPeers.values()].sort((a, b) =>
+                `${a.repo}:${a.name}`.localeCompare(`${b.repo}:${b.name}`),
+            ),
+            'Host peer evidence must match independently verified frozen CLI providers',
+        );
+    } else {
+        assert.equal(proof.hostPeers, undefined);
+        assert.equal(proof.cliBaseLockSha256, undefined);
+    }
     assert.equal(proof.trainId, plan.id);
     assert.equal(proof.toolSha, plan.toolSha);
     assert.equal(proof.cliBaseSha, plan.cli.sha);

@@ -107,7 +107,7 @@ function installed(boundary, context, name) {
     }
 }
 
-function runtimeVersions(lock, replacementNames, includeReplacements = false) {
+function runtimeVersions(lock, replacementNames, includeReplacements = false, root = '') {
     assert.equal(lock.lockfileVersion, 3);
     const resolutions = [];
 
@@ -169,15 +169,15 @@ function runtimeVersions(lock, replacementNames, includeReplacements = false) {
         }
     }
 
-    visit('', '', new Set(['']));
+    visit(root, '', new Set([root]));
 
     return resolutions;
 }
 
-function verifyLockedTree(boundary, directory, lock, replacementNames) {
+function verifyLockedTree(boundary, directory, lock, replacementNames, root = '') {
     const proof = [];
 
-    for (const expected of runtimeVersions(lock, replacementNames)) {
+    for (const expected of runtimeVersions(lock, replacementNames, false, root)) {
         const names = expected.path.slice('node_modules/'.length).split('/node_modules/');
         let cursor = directory;
         let actual;
@@ -196,6 +196,18 @@ function verifyLockedTree(boundary, directory, lock, replacementNames) {
         proof.push({path: expected.path, version: expected.version});
     }
     return proof;
+}
+
+function verifyInstalledPeer(boundary, lock, name, expectedKey, actualKey) {
+    const target = path.join(boundary, actualKey);
+    const actual = read(path.join(target, 'package.json'));
+    assert.equal(actual.name, name);
+    assert.equal(
+        actual.version,
+        lock.packages[expectedKey].version,
+        `Frozen CLI peer installation mismatch: ${name}`,
+    );
+    return verifyLockedTree(boundary, target, lock, new Set(), expectedKey);
 }
 
 function verifyModeledRuntimeInputs(boundary, directory, node, lock, archives) {
@@ -331,6 +343,27 @@ function buildCandidate(plan, output) {
             run('npm', ['run', 'typecheck', '--if-present'], directory);
             run('npm', ['test', '--', '--update=false'], directory);
 
+            // Optional peers absent from source locks belong to the frozen CLI
+            // host. Check the actual installed provider and its complete tree too.
+            const hostPeers = new Map();
+            assertDependencyDelta(
+                plan,
+                lock,
+                read(path.join(directory, 'package-lock.json')),
+                sourceLocks,
+                (name, expectedKey, actualKey, repo) => {
+                    verifyInstalledPeer(directory, lock, name, expectedKey, actualKey);
+                    hostPeers.set(`${repo}:${name}`, {repo, name});
+                },
+            );
+            if (hostPeers.size) {
+                proof.schema = 2;
+                proof.hostPeers = [...hostPeers.values()].sort((a, b) =>
+                    `${a.repo}:${a.name}`.localeCompare(`${b.repo}:${b.name}`),
+                );
+                proof.cliBaseLockSha256 = digest(JSON.stringify(lock));
+            }
+
             for (const [name, archive] of archives) {
                 const actual = installed(directory, directory, name);
                 assert.equal(
@@ -415,6 +448,7 @@ module.exports = {
     installed,
     runtimeVersions,
     verifyLockedTree,
+    verifyInstalledPeer,
     verifyModeledRuntimeInputs,
     assertDependencyDelta,
     buildCandidate,
