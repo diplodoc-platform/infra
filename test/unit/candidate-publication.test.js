@@ -103,7 +103,7 @@ function fixture(options = {}) {
         schema: options.hostPeer ? 2 : 1,
         ...(options.hostPeer
             ? {
-                  hostPeers: [{repo, name: 'react'}],
+                  hostPeers: [{repo, context: '', name: 'react'}],
                   cliBaseLockSha256: digest(JSON.stringify(baselineLock)),
               }
             : {}),
