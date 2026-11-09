@@ -111,14 +111,27 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
             );
     }
 
-    function compareHostPeer(name, edge, actualTarget, location) {
-        const original = options.baselineContexts.get(options.hostArchive);
-        if (!original?.size) fail(location, 'optional peer has no frozen CLI archive context');
+    function frozenOwners(trail) {
+        const roots = options.baselineContexts.get(options.hostArchive);
+        if (!roots?.size) return [];
+        return [...roots].map((context) => {
+            let owner = context;
+            for (const dependency of trail ? trail.split(' > ') : []) {
+                owner = lookup(options.baselineLock, owner, dependency);
+                if (!owner) return null;
+            }
+            return owner;
+        });
+    }
+
+    function compareHostPeer(name, edge, actualTarget, location, sourceContext, owners) {
+        if (!owners.length) fail(location, 'optional peer has no frozen CLI archive context');
         const after = actualLock.packages[actualTarget];
 
-        for (const context of original) {
-            const prior = edges(options.baselineLock.packages[context], false).get(name);
-            const provider = lookup(options.baselineLock, context, name);
+        for (const owner of owners) {
+            if (!owner) fail(location, 'optional peer owner has no frozen CLI context');
+            const prior = edges(options.baselineLock.packages[owner], false).get(name);
+            const provider = lookup(options.baselineLock, owner, name);
             if (!isOptionalPeer(prior) || !provider)
                 fail(location, 'optional peer has no frozen CLI provider');
 
@@ -133,12 +146,27 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
                 selected: new Set(),
                 label: `${options.label}: frozen CLI peer ${location}`,
             });
-            options.verifyHostPeer?.(name, provider, actualTarget, options.hostRepo);
+            const binding = `${options.hostRepo}:${sourceContext}:${name}`;
+            const priorProvider = options.hostProviders.get(binding);
+            if (priorProvider) {
+                compareIdentity(
+                    options.baselineLock.packages[priorProvider],
+                    options.baselineLock.packages[provider],
+                    location,
+                );
+                compare(options.baselineLock, priorProvider, options.baselineLock, provider, {
+                    archives: new Map(),
+                    selected: new Set(),
+                    label: `${options.label}: ambiguous frozen CLI peer ${location}`,
+                });
+            } else options.hostProviders.set(binding, provider);
+            options.verifyHostPeer?.(name, provider, actualTarget, options.hostRepo, sourceContext);
         }
     }
 
     function visit(expectedKey, actualKey, trail, depth, includeDev, optional = false) {
-        const state = `${expectedKey}\0${actualKey}\0${includeDev}\0${optional}`;
+        const owners = options.hostArchive ? frozenOwners(trail) : [];
+        const state = JSON.stringify([expectedKey, actualKey, includeDev, optional, owners]);
         if (seen.has(state)) return;
         seen.add(state);
         assert.ok(depth <= MAX_DEPTH, 'Dependency comparison exceeds the depth limit');
@@ -194,13 +222,13 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
             if (!expectedTarget && !actualTarget && optionalEdge) continue;
             if (
                 options.hostArchive &&
-                expectedKey === '' &&
+                !optional &&
                 !expectedTarget &&
                 actualTarget &&
                 !archive &&
                 isOptionalPeer(expected)
             ) {
-                compareHostPeer(name, expected, actualTarget, location);
+                compareHostPeer(name, expected, actualTarget, location, expectedKey, owners);
                 continue;
             }
             if (!expectedTarget || !actualTarget)
@@ -261,7 +289,7 @@ function sourceContext(plan, baselineLock, sourceLocks) {
     );
     const selected = new Set(plan.selected.map((node) => node.manifest.name));
     const baselineContexts = contexts(baselineLock);
-    const settings = {archives, selected, baselineLock, baselineContexts};
+    const settings = {archives, selected, baselineLock, baselineContexts, hostProviders: new Map()};
 
     for (const [name, archive] of archives) {
         const source = sourceLocks.get(archive.repo);

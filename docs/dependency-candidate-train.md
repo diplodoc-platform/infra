@@ -161,15 +161,16 @@ does not alter the cron, add an external dispatcher, or enable any automation.
 
 ## Optional host peers
 
-A root optional peer missing from a package's canonical source lock may use an
-existing CLI provider only when the peer declaration is unchanged from the frozen
+An optional peer at the archive root or in a required runtime dependency, missing
+from its canonical source lock, may use an existing CLI provider only when its
+peer declaration is unchanged from the frozen
 CLI baseline. Every original archive context must resolve the same exact provider
 identity and dependency tree. New providers, declaration changes and ambiguous
 contexts require a separately reviewed baseline update. Ordinary optional and
 required dependencies retain their canonical-lock checks.
 
-Such payloads use proof schema 2: `hostPeers` names the package/peer pairs and
-`cliBaseLockSha256` binds the frozen CLI lock. The publisher independently derives
+Such payloads use proof schema 2: `hostPeers` records each package, canonical owner
+context and peer name; `cliBaseLockSha256` binds the frozen CLI lock. The publisher independently derives
 both from immutable source locks and rejects missing, extra or downgraded evidence.
 The build checks the actual installed providers too. Payloads without host peers
 retain schema 1. Deploy the downstream schema-2 verifier before merging producer

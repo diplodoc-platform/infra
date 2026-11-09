@@ -591,7 +591,9 @@ test('an absent canonical optional peer uses the exact frozen CLI provider witho
         ),
         true,
     );
-    assert.deepEqual(providers, [['react', 'node_modules/react', 'node_modules/react', 'leaf']]);
+    assert.deepEqual(providers, [
+        ['react', 'node_modules/react', 'node_modules/react', 'leaf', ''],
+    ]);
     assert.equal(JSON.stringify([data.baseline, data.candidate, [...data.locks]]), snapshot);
 });
 
@@ -694,6 +696,65 @@ test('every original archive context must agree with the frozen host provider', 
         data.candidate.packages[`node_modules/${LEAF}`],
     );
     data.baseline.packages['node_modules/holder/node_modules/react'] = metadata('react', '17.0.2');
+    assert.throws(() => check(data), /react.*resolution changed/);
+});
+
+function nestedHostPeerFixture() {
+    const data = hostPeerFixture();
+    const nested = metadata('nested', '1.0.0');
+    for (const lock of [data.baseline, data.candidate, data.locks.get('leaf')]) {
+        const root =
+            lock === data.locks.get('leaf')
+                ? lock.packages['']
+                : lock.packages[`node_modules/${LEAF}`];
+        Object.assign(nested, {
+            peerDependencies: root.peerDependencies,
+            peerDependenciesMeta: root.peerDependenciesMeta,
+        });
+        delete root.peerDependencies;
+        delete root.peerDependenciesMeta;
+        root.dependencies.nested = '^1.0.0';
+        lock.packages['node_modules/nested'] = structuredClone(nested);
+    }
+    return data;
+}
+
+test('nested absent optional peers bind to their original logical CLI owner', () => {
+    const data = nestedHostPeerFixture();
+    const bindings = [];
+    assert.equal(
+        assertDependencyDelta(data.plan, data.baseline, data.candidate, data.locks, (...entry) =>
+            bindings.push(entry),
+        ),
+        true,
+    );
+    assert.deepEqual(bindings, [
+        ['react', 'node_modules/react', 'node_modules/react', 'leaf', 'node_modules/nested'],
+    ]);
+    data.candidate.packages['node_modules/nested/node_modules/react'] = metadata('react', '18.3.2');
+    assert.throws(() => check(data), /resolution changed/);
+});
+
+test('nested optional peers require the same owner declaration and frozen tree', () => {
+    const data = nestedHostPeerFixture();
+    delete data.baseline.packages['node_modules/nested'].peerDependencies;
+    assert.throws(() => check(data), /no frozen CLI provider/);
+});
+
+test('shared canonical owners cannot hide a different frozen provider behind another path', () => {
+    const data = nestedHostPeerFixture();
+    for (const lock of [data.baseline, data.candidate, data.locks.get('leaf')]) {
+        const root =
+            lock === data.locks.get('leaf')
+                ? lock.packages['']
+                : lock.packages[`node_modules/${LEAF}`];
+        root.dependencies.wrapper = '^1.0.0';
+        lock.packages['node_modules/wrapper'] = metadata('wrapper', '1.0.0', {nested: '^1.0.0'});
+    }
+    data.baseline.packages['node_modules/wrapper/node_modules/nested'] = structuredClone(
+        data.baseline.packages['node_modules/nested'],
+    );
+    data.baseline.packages['node_modules/wrapper/node_modules/react'] = metadata('react', '17.0.2');
     assert.throws(() => check(data), /react.*resolution changed/);
 });
 
