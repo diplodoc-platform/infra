@@ -168,6 +168,9 @@ test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001',
         assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
             'DEP-0001',
             'DEP-0003',
+            'DEP-0004',
+            'DEP-0005',
+            'DEP-0006',
         ]);
     } finally {
         await removeTempDir(tempDir);
@@ -205,6 +208,9 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json derivation', async () 
         assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
             'DEP-0001',
             'DEP-0003',
+            'DEP-0004',
+            'DEP-0005',
+            'DEP-0006',
         ]);
     } finally {
         await removeTempDir(tempDir);

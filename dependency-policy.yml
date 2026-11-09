@@ -30,7 +30,7 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-10-15
+last-updated: 2026-11-09
 
 entries:
   - id: DEP-0003
@@ -119,3 +119,79 @@ entries:
     exit-criteria:
       - Upgrade @gravity-ui/stylelint-config to 5.x
       - Upgrade stylelint to 16.x
+
+  - id: DEP-0004
+    dependency: cheerio
+    repositories: [transform, translation]
+    allowed-version: 1.2.0
+    ignored-versions: []
+    risk: medium
+    category: runtime-baseline
+    verification-profile: document-transform
+    reason: 'Keep the reviewed candidate-train runtime baseline explicit across library source locks and the CLI consumer lock; upgrades require coordinated validation.'
+    evidence:
+      baseline-pr: https://github.com/diplodoc-platform/transform/pull/1181
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-09
+    review-after: 2026-12-01
+    expires-at: 2027-02-01
+    exit-criteria:
+      - A coordinated dependency update passes canonical lock and installed-version checks
+      - Refresh or remove the pin after reviewing the replacement runtime baseline
+
+  - id: DEP-0005
+    dependency: js-yaml
+    repositories: [cli, transform, translation]
+    allowed-version: 4.3.2
+    ignored-versions: []
+    risk: medium
+    category: runtime-baseline
+    verification-profile: document-transform
+    reason: 'Keep the reviewed candidate-train runtime baseline explicit across library source locks and the CLI consumer lock; upgrades require coordinated validation.'
+    evidence:
+      baseline-pr: https://github.com/diplodoc-platform/cli/pull/2385
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-09
+    review-after: 2026-12-01
+    expires-at: 2027-02-01
+    exit-criteria:
+      - A coordinated dependency update passes canonical lock and installed-version checks
+      - Refresh or remove the pin after reviewing the replacement runtime baseline
+
+  - id: DEP-0006
+    dependency: lodash
+    repositories: [cli, transform, translation]
+    allowed-version: 4.18.1
+    ignored-versions: []
+    risk: medium
+    category: runtime-baseline
+    verification-profile: document-transform
+    reason: 'Keep the reviewed candidate-train runtime baseline explicit across library source locks and the CLI consumer lock; upgrades require coordinated validation.'
+    evidence:
+      baseline-pr: https://github.com/diplodoc-platform/transform/pull/1181
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-09
+    review-after: 2026-12-01
+    expires-at: 2027-02-01
+    exit-criteria:
+      - A coordinated dependency update passes canonical lock and installed-version checks
+      - Refresh or remove the pin after reviewing the replacement runtime baseline
+
+  - id: DEP-0007
+    dependency: ajv
+    repositories: [cli, translation]
+    allowed-version: 8.20.0
+    ignored-versions: []
+    risk: medium
+    category: runtime-baseline
+    verification-profile: document-transform
+    reason: 'Keep the reviewed candidate-train runtime baseline explicit across library source locks and the CLI consumer lock; upgrades require coordinated validation.'
+    evidence:
+      baseline-pr: https://github.com/diplodoc-platform/translation/pull/303
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-09
+    review-after: 2026-12-01
+    expires-at: 2027-02-01
+    exit-criteria:
+      - A coordinated dependency update passes canonical lock and installed-version checks
+      - Refresh or remove the pin after reviewing the replacement runtime baseline
