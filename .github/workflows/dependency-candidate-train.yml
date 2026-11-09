@@ -1,6 +1,6 @@
 name: Verify frozen host-peer train
-on:
-  workflow_dispatch:
+'on':
+  workflow_dispatch: null
 permissions:
   contents: read
   actions: read
@@ -28,7 +28,8 @@ jobs:
       - name: Bind immutable proposed CLI baseline and released sources
         env:
           GH_TOKEN: ${{ github.token }}
-          PROPOSED_{"cli":"23a9c8e4541f58a8e508b255614a1c40930c410c","transform":"9e834f1c74e8222d003e683c9c2422cc4f8263e8","translation":"ae0ad7ee9893a684a86d8a2ae6b75c0f084a21a5"}: '{"cli":"23a9c8e4541f58a8e508b255614a1c40930c410c","transform":"9e834f1c74e8222d003e683c9c2422cc4f8263e8","translation":"ae0ad7ee9893a684a86d8a2ae6b75c0f084a21a5"}'
+          PROPOSED_REVISIONS: >-
+            {"cli":"23a9c8e4541f58a8e508b255614a1c40930c410c","transform":"9e834f1c74e8222d003e683c9c2422cc4f8263e8","translation":"ae0ad7ee9893a684a86d8a2ae6b75c0f084a21a5"}
         run: node scripts/verify-host-peer-train.js
       - name: Build exact schema-2 train without publishing
         run: node scripts/candidate-train/build.js proposed-plan.json "$RUNNER_TEMP/train-payload"
