@@ -351,15 +351,17 @@ function buildCandidate(plan, output) {
                 lock,
                 read(path.join(directory, 'package-lock.json')),
                 sourceLocks,
-                (name, expectedKey, actualKey, repo) => {
+                (name, expectedKey, actualKey, repo, context) => {
                     verifyInstalledPeer(directory, lock, name, expectedKey, actualKey);
-                    hostPeers.set(`${repo}:${name}`, {repo, name});
+                    hostPeers.set(`${repo}:${context}:${name}`, {repo, context, name});
                 },
             );
             if (hostPeers.size) {
                 proof.schema = 2;
                 proof.hostPeers = [...hostPeers.values()].sort((a, b) =>
-                    `${a.repo}:${a.name}`.localeCompare(`${b.repo}:${b.name}`),
+                    `${a.repo}:${a.context}:${a.name}`.localeCompare(
+                        `${b.repo}:${b.context}:${b.name}`,
+                    ),
                 );
                 proof.cliBaseLockSha256 = digest(JSON.stringify(lock));
             }
