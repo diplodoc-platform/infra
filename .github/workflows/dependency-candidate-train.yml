@@ -1,87 +1,16 @@
-name: Morning Dependency Candidate Train
+name: Validate proposed runtime baseline
 
 on:
-  schedule:
-    - cron: '17 3 * * *' # Preparation only; opt-in, disabled by default.
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Selection only; false explicitly approves one preparation run'
-        type: boolean
-        default: true
-      repositories:
-        description: 'Repository allowlist or all supported packages; falls back to organization variable'
-        type: string
-        default: ''
-      pr_number:
-        description: 'Optional exact Dependabot PR; requires one repository'
-        type: number
-        default: 0
-      wave:
-        description: 'Independent wave to prepare; inspect the dry-run inventory first'
-        type: number
-        default: 1
 
 permissions:
   contents: read
-
-concurrency:
-  group: dependency-candidate-train
-  cancel-in-progress: false
+  actions: read
 
 jobs:
-  select:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'schedule' && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      selected: ${{ steps.plan.outputs.selected }}
-      plan-artifact: ${{ steps.plan-artifact.outputs.artifact-id }}
-      preparation-available: ${{ steps.open-candidate.outputs.available }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: diplodoc-platform/setup-node-action@v1
-        with:
-          node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
-          run-install: 'false'
-      - run: npm ci --ignore-scripts
-      - name: Select immutable Dependabot candidates (data only)
-        id: plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
-          DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
-          DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
-        run: node scripts/candidate-train/plan.js
-      - uses: actions/upload-artifact@v4
-        id: plan-artifact
-        with:
-          name: dependency-train-plan
-          path: train-plan.json
-          if-no-files-found: error
-      - name: Check for an open candidate before preparation
-        id: open-candidate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/candidate-train/open-candidate.js
-
   build:
-    needs: select
-    if: >-
-      needs.select.outputs.selected != '0' &&
-      needs.select.outputs['preparation-available'] == 'true' &&
-      ((github.event_name == 'workflow_dispatch' && toJSON(inputs.dry_run) == 'false') ||
-      (github.event_name == 'schedule' && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 80
-    outputs:
-      payload-artifact: ${{ steps.payload.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -89,67 +18,27 @@ jobs:
           persist-credentials: false
       - uses: diplodoc-platform/setup-node-action@v1
         with:
-          node-version: ${{ vars.NODE_VERSION || '24' }}
+          node-version: '24'
           cache: ''
           run-install: 'false'
       - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v7
         with:
-          artifact-ids: ${{ needs.select.outputs.plan-artifact }}
+          name: dependency-train-plan
+          run-id: 42471034476
+          github-token: ${{ github.token }}
           path: selected
-          merge-multiple: true
-      - name: Build locked candidates and affected consumers (no secrets)
-        run: node scripts/candidate-train/build.js selected/train-plan.json train-payload
-      - uses: actions/upload-artifact@v4
-        id: payload
-        with:
-          name: dependency-train-payload
-          path: train-payload
-          if-no-files-found: error
-
-  publish:
-    needs: [select, build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: diplodoc-platform/setup-node-action@v1
-        with:
-          node-version: ${{ vars.NODE_VERSION || '24' }}
-          cache: ''
-          run-install: 'false'
-      - uses: actions/download-artifact@v7
-        with:
-          artifact-ids: ${{ needs.select.outputs.plan-artifact }}
-          path: selected
-          merge-multiple: true
-      - uses: actions/download-artifact@v7
-        with:
-          artifact-ids: ${{ needs.build.outputs.payload-artifact }}
-          path: train-payload
-          merge-multiple: true
-      - name: Generate token scoped only to CLI
-        id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.INFRA_APP_ID }}
-          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
-          owner: diplodoc-platform
-          repositories: cli
-      - name: Validate data and open one immutable temporary CLI PR
+      - name: Bind proposed baseline PRs to exact source commits
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ github.sha }}
-          DEPENDENCY_CANDIDATE_PREPARE_APPROVED: 'true'
-          TRAIN_APP_TOKEN: ${{ steps.app.outputs.token }}
-          TRAIN_BOT_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
-          TRAIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node scripts/candidate-train/publish.js selected/train-plan.json train-payload
+        run: node scripts/runtime-pins-diagnostic.js
+      - name: Run unchanged strict train builder without publishing
+        run: node scripts/candidate-train/build.js proposed-plan.json "$RUNNER_TEMP/train-payload"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: dependency-train-candidate
-          path: train-candidate.json
+          name: proposed-baseline-evidence
+          path: |
+            proposed-plan.json
+            ${{ runner.temp }}/train-payload
           if-no-files-found: error
