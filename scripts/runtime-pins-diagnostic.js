@@ -9,16 +9,16 @@ async function main() {
         {
             repo: 'transform',
             number: 1181,
-            sha: 'd29edcb152df0005a99e3d07492ebd42909147d7',
+            sha: '79cc434ce56f8ae4bcfd19ad4eef06d0d6812d99',
             selected: true,
         },
         {
             repo: 'translation',
             number: 303,
-            sha: 'fd0cd76c65de1c9e8fa22814a50285980174abee',
+            sha: '2de01f937f6d6fc2f748f713eff6d234a9d0a48a',
             selected: true,
         },
-        {repo: 'cli', number: 2385, sha: '16b317fed5c48f56f91ad4ba6d110cfc7303facb'},
+        {repo: 'cli', number: 2385, sha: 'ab168e54e4ad0d3201d2a6fb756764c02cf4a78a'},
     ];
 
     for (const proposal of proposals) {
