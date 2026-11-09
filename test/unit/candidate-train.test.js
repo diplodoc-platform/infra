@@ -587,4 +587,49 @@ test('candidate body is a public handoff and does not certify internal results',
     assert.doesNotMatch(body, /yandex-team|mssngr/);
 });
 
+test('installed host peer checks include the frozen provider and its context-specific children', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-host-peer-'));
+    try {
+        const original = 'node_modules/host/node_modules/react';
+        const actual = 'node_modules/consumer/node_modules/react';
+        const lock = {
+            lockfileVersion: 3,
+            packages: {
+                '': {},
+                [original]: {version: '18.3.1', dependencies: {helper: '^1.0.0'}},
+                [`${original}/node_modules/helper`]: {version: '1.0.0'},
+                'node_modules/helper': {version: '9.0.0'},
+            },
+        };
+        for (const [key, manifest] of Object.entries({
+            [actual]: {name: 'react', version: '18.3.1'},
+            [`${actual}/node_modules/helper`]: {name: 'helper', version: '1.0.0'},
+        })) {
+            fs.mkdirSync(path.join(directory, key), {recursive: true});
+            common.write(path.join(directory, key, 'package.json'), manifest);
+        }
+        assert.deepEqual(builder.verifyInstalledPeer(directory, lock, 'react', original, actual), [
+            {path: 'node_modules/helper', version: '1.0.0'},
+        ]);
+        common.write(path.join(directory, actual, 'node_modules/helper/package.json'), {
+            name: 'helper',
+            version: '1.1.0',
+        });
+        assert.throws(
+            () => builder.verifyInstalledPeer(directory, lock, 'react', original, actual),
+            /Locked resolution mismatch/,
+        );
+        common.write(path.join(directory, actual, 'package.json'), {
+            name: 'react',
+            version: '18.3.2',
+        });
+        assert.throws(
+            () => builder.verifyInstalledPeer(directory, lock, 'react', original, actual),
+            /Frozen CLI peer installation mismatch/,
+        );
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 module.exports = {tests};

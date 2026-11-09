@@ -158,3 +158,19 @@ running jobs or an existing Internal check.
 
 The 08:00 readiness timestamp is metadata, not a deadline guarantee. This change
 does not alter the cron, add an external dispatcher, or enable any automation.
+
+## Optional host peers
+
+A root optional peer missing from a package's canonical source lock may use an
+existing CLI provider only when the peer declaration is unchanged from the frozen
+CLI baseline. Every original archive context must resolve the same exact provider
+identity and dependency tree. New providers, declaration changes and ambiguous
+contexts require a separately reviewed baseline update. Ordinary optional and
+required dependencies retain their canonical-lock checks.
+
+Such payloads use proof schema 2: `hostPeers` names the package/peer pairs and
+`cliBaseLockSha256` binds the frozen CLI lock. The publisher independently derives
+both from immutable source locks and rejects missing, extra or downgraded evidence.
+The build checks the actual installed providers too. Payloads without host peers
+retain schema 1. Deploy the downstream schema-2 verifier before merging producer
+support; an older consumer rejects schema 2 rather than silently ignoring it.

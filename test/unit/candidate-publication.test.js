@@ -33,6 +33,12 @@ function fixture(options = {}) {
         },
     };
     if (options.unplannedDrift) cli.manifest.dependencies.parser = '^1.0.0';
+    if (options.hostPeer) {
+        source.manifest.peerDependencies = {react: '^18.0.0'};
+        source.manifest.peerDependenciesMeta = {react: {optional: true}};
+        cli.manifest.devDependencies = {react: '18.3.1'};
+    }
+
     const plan = {
         schema: 1,
         toolSha: SHA,
@@ -57,6 +63,13 @@ function fixture(options = {}) {
             ...(options.optIn ? {} : {[`node_modules/${name}`]: registry(name, '1.0.0')}),
         },
     };
+    if (options.hostPeer) {
+        Object.assign(baselineLock.packages[`node_modules/${name}`], {
+            peerDependencies: source.manifest.peerDependencies,
+            peerDependenciesMeta: source.manifest.peerDependenciesMeta,
+        });
+        baselineLock.packages['node_modules/react'] = registry('react', '18.3.1');
+    }
     const manifest = withArchives(cli.manifest, new Map([[name, {...source, lock}]]));
     manifest.files = ['dependency-train'];
     write(path.join(directory, 'package.json'), manifest);
@@ -76,11 +89,24 @@ function fixture(options = {}) {
         baselineLock.packages['node_modules/parser'] = registry('parser', '1.1.0');
         candidateLock.packages['node_modules/parser'] = registry('parser', '1.0.0');
     }
+    if (options.hostPeer) {
+        Object.assign(candidateLock.packages[`node_modules/${name}`], {
+            peerDependencies: source.manifest.peerDependencies,
+            peerDependenciesMeta: source.manifest.peerDependenciesMeta,
+        });
+        candidateLock.packages['node_modules/react'] = registry('react', '18.3.1');
+    }
     write(path.join(directory, 'package-lock.json'), candidateLock);
     fs.mkdirSync(path.join(directory, 'dependency-train/payload'), {recursive: true});
     fs.writeFileSync(path.join(directory, `dependency-train/payload/${repo}.tgz`), archive);
     write(path.join(directory, 'dependency-train/proof.json'), {
-        schema: 1,
+        schema: options.hostPeer ? 2 : 1,
+        ...(options.hostPeer
+            ? {
+                  hostPeers: [{repo, name: 'react'}],
+                  cliBaseLockSha256: digest(JSON.stringify(baselineLock)),
+              }
+            : {}),
         trainId: plan.id,
         toolSha: SHA,
         cliBaseSha: SHA,
@@ -241,6 +267,7 @@ function fixture(options = {}) {
     };
     return {
         remote,
+        directory,
         run: () => publish(plan, directory, env, request),
         close: () => fs.rmSync(directory, {recursive: true, force: true}),
     };
@@ -421,6 +448,32 @@ for (const options of [
             if (options.changedSourceAt === 2) {
                 assert.ok(!context.remote.writes.some((item) => item.route === `${prefix}/pulls`));
             }
+        } finally {
+            context.close();
+        }
+    });
+}
+
+test('publisher independently accepts schema 2 host peer evidence', async () => {
+    const context = fixture({hostPeer: true});
+    try {
+        await context.run();
+    } finally {
+        context.close();
+    }
+});
+for (const field of ['schema', 'hostPeers', 'cliBaseLockSha256']) {
+    test(`publisher rejects forged or missing host evidence: ${field}`, async () => {
+        const context = fixture({hostPeer: true});
+        try {
+            const file = path.join(context.directory, 'dependency-train/proof.json');
+            const proof = JSON.parse(fs.readFileSync(file));
+            if (field === 'schema') proof.schema = 1;
+            if (field === 'hostPeers') proof.hostPeers = [];
+            if (field === 'cliBaseLockSha256') proof.cliBaseLockSha256 = '0'.repeat(64);
+            write(file, proof);
+            await assert.rejects(context.run());
+            assert.equal(context.remote.writes.length, 0);
         } finally {
             context.close();
         }

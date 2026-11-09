@@ -98,6 +98,45 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
         );
     };
 
+    function compareIdentity(before, after, location) {
+        const beforeIdentity = identity(before);
+        const afterIdentity = identity(after);
+        const changed = Object.keys(beforeIdentity).filter(
+            (field) => beforeIdentity[field] !== afterIdentity[field],
+        );
+        if (changed.length)
+            fail(
+                location,
+                `resolution changed [${changed.join(', ')}] (${before.version} -> ${after.version})`,
+            );
+    }
+
+    function compareHostPeer(name, edge, actualTarget, location) {
+        const original = options.baselineContexts.get(options.hostArchive);
+        if (!original?.size) fail(location, 'optional peer has no frozen CLI archive context');
+        const after = actualLock.packages[actualTarget];
+
+        for (const context of original) {
+            const prior = edges(options.baselineLock.packages[context], false).get(name);
+            const provider = lookup(options.baselineLock, context, name);
+            if (!isOptionalPeer(prior) || !provider)
+                fail(location, 'optional peer has no frozen CLI provider');
+
+            if (prior.specs.peerDependencies !== edge.specs.peerDependencies)
+                fail(location, 'optional peer declaration changed from the frozen CLI baseline');
+
+            compareIdentity(options.baselineLock.packages[provider], after, location);
+            // The host supplies this tree. None of its children may acquire
+            // selected-source exceptions or fall back to another source lock.
+            compare(options.baselineLock, provider, actualLock, actualTarget, {
+                archives: new Map(),
+                selected: new Set(),
+                label: `${options.label}: frozen CLI peer ${location}`,
+            });
+            options.verifyHostPeer?.(name, provider, actualTarget, options.hostRepo);
+        }
+    }
+
     function visit(expectedKey, actualKey, trail, depth, includeDev, optional = false) {
         const state = `${expectedKey}\0${actualKey}\0${includeDev}\0${optional}`;
         if (seen.has(state)) return;
@@ -153,6 +192,17 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
             const optionalEdge = optional || expected.optional;
             if (!actualTarget && optionalEdge) continue;
             if (!expectedTarget && !actualTarget && optionalEdge) continue;
+            if (
+                options.hostArchive &&
+                expectedKey === '' &&
+                !expectedTarget &&
+                actualTarget &&
+                !archive &&
+                isOptionalPeer(expected)
+            ) {
+                compareHostPeer(name, expected, actualTarget, location);
+                continue;
+            }
             if (!expectedTarget || !actualTarget)
                 fail(location, 'missing canonical or candidate resolution');
 
@@ -180,16 +230,7 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
                         `unselected archive version ${before.version} -> ${after.version}`,
                     );
             } else {
-                const beforeIdentity = identity(before);
-                const afterIdentity = identity(after);
-                const changed = Object.keys(beforeIdentity).filter(
-                    (field) => beforeIdentity[field] !== afterIdentity[field],
-                );
-                if (changed.length)
-                    fail(
-                        location,
-                        `resolution changed [${changed.join(', ')}] (${before.version} -> ${after.version})`,
-                    );
+                compareIdentity(before, after, location);
             }
 
             // Reused hoisted nodes need one comparison per resolution context,
@@ -202,6 +243,14 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
     visit(expectedRoot, actualRoot, '', 0, options.includeDev === true);
 }
 
+function isOptionalPeer(edge) {
+    return (
+        edge?.optional === true &&
+        Object.keys(edge.specs).length === 1 &&
+        Object.hasOwn(edge.specs, 'peerDependencies')
+    );
+}
+
 function sourceContext(plan, baselineLock, sourceLocks) {
     validateLock(baselineLock);
     assert.ok(sourceLocks instanceof Map, 'Canonical source locks are required');
@@ -212,7 +261,7 @@ function sourceContext(plan, baselineLock, sourceLocks) {
     );
     const selected = new Set(plan.selected.map((node) => node.manifest.name));
     const baselineContexts = contexts(baselineLock);
-    const settings = {archives, selected};
+    const settings = {archives, selected, baselineLock, baselineContexts};
 
     for (const [name, archive] of archives) {
         const source = sourceLocks.get(archive.repo);
@@ -250,7 +299,7 @@ function assertSourceBaselines(plan, baselineLock, sourceLocks) {
  * Archive provenance remains schema 1; incompatible consumer locks require a
  * separately reviewed baseline refresh, never rewritten source-lock evidence.
  */
-function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks) {
+function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks, verifyHostPeer) {
     validateLock(candidateLock);
     const settings = sourceContext(plan, baselineLock, sourceLocks);
     const {archives} = settings;
@@ -304,6 +353,9 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks) {
             );
             compare(source, '', candidateLock, context, {
                 ...settings,
+                hostArchive: name,
+                hostRepo: archive.repo,
+                verifyHostPeer,
                 cutArchives: true,
                 label: `Canonical source lock ${archive.repo}`,
                 validateArchives: true,
@@ -323,6 +375,9 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks) {
                 };
                 compare(modeled, '', view, context, {
                     ...settings,
+                    hostArchive: name,
+                    hostRepo: archive.repo,
+                    verifyHostPeer,
                     cutArchives: true,
                     label: `Modeled runtime input ${archive.repo}`,
                     validateArchives: true,

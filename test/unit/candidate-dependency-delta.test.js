@@ -554,4 +554,147 @@ test('dependency comparison rejects excessive distinct edges instead of truncati
     assert.throws(() => check(data), /size limit/);
 });
 
+function hostPeerFixture() {
+    const data = fixture();
+    for (const entry of [
+        data.plan.graph[0].manifest,
+        data.baseline.packages[`node_modules/${LEAF}`],
+        data.candidate.packages[`node_modules/${LEAF}`],
+        data.locks.get('leaf').packages[''],
+    ]) {
+        entry.peerDependencies = {react: '^17.0.0 || ^18.0.0'};
+        entry.peerDependenciesMeta = {react: {optional: true}};
+    }
+    for (const lock of [data.baseline, data.candidate]) {
+        lock.packages[''].devDependencies.react = '18.3.1';
+        lock.packages['node_modules/react'] = metadata('react', '18.3.1', {
+            'host-helper': '^1.0.0',
+        });
+        lock.packages['node_modules/host-helper'] = metadata('host-helper', '1.0.0');
+    }
+    return data;
+}
+
+const shadowPeer = (data) => {
+    const key = `node_modules/${LEAF}/node_modules/react`;
+    data.candidate.packages[key] = structuredClone(data.baseline.packages['node_modules/react']);
+    return key;
+};
+
+test('an absent canonical optional peer uses the exact frozen CLI provider without mutating evidence', () => {
+    const data = hostPeerFixture();
+    const snapshot = JSON.stringify([data.baseline, data.candidate, [...data.locks]]);
+    const providers = [];
+    assert.equal(
+        assertDependencyDelta(data.plan, data.baseline, data.candidate, data.locks, (...binding) =>
+            providers.push(binding),
+        ),
+        true,
+    );
+    assert.deepEqual(providers, [['react', 'node_modules/react', 'node_modules/react', 'leaf']]);
+    assert.equal(JSON.stringify([data.baseline, data.candidate, [...data.locks]]), snapshot);
+});
+
+test('host optional peers may be hoisted or nested when their complete frozen identity matches', () => {
+    const data = hostPeerFixture();
+    shadowPeer(data);
+    assert.equal(check(data), true);
+});
+
+test('host optional peers reject compatible-version changes, repacked content and URL substitution', () => {
+    for (const [field, value] of [
+        ['version', '18.3.2'],
+        ['integrity', 'sha512-repacked'],
+        ['resolved', 'https://example.com/react.tgz'],
+    ]) {
+        const data = hostPeerFixture();
+        data.candidate.packages[shadowPeer(data)][field] = value;
+        assert.throws(() => check(data), /Canonical source lock leaf.*react.*resolution changed/);
+    }
+});
+
+test('host optional peers freeze transitive versions, integrity and dependency declarations', () => {
+    for (const field of ['version', 'integrity', 'declaration']) {
+        const data = hostPeerFixture();
+        const key = shadowPeer(data);
+        const child = `${key}/node_modules/host-helper`;
+        data.candidate.packages[child] = metadata('host-helper', '1.0.0');
+        if (field === 'version') data.candidate.packages[child].version = '1.1.0';
+        if (field === 'integrity') data.candidate.packages[child].integrity = 'sha512-repacked';
+        if (field === 'declaration') data.candidate.packages[key].dependencies['host-helper'] = '*';
+        assert.throws(() => check(data), /frozen CLI peer react.*host-helper/);
+    }
+});
+
+test('an existing frozen host provider must satisfy the selected source peer range', () => {
+    const data = hostPeerFixture();
+    data.locks.get('leaf').packages[''].peerDependencies.react = '^19.0.0';
+    data.candidate.packages[`node_modules/${LEAF}`].peerDependencies.react = '^19.0.0';
+    assert.throws(() => check(data), /optional peer declaration changed/);
+});
+
+test('a newly declared optional peer cannot borrow an unrelated CLI provider', () => {
+    const data = hostPeerFixture();
+    delete data.baseline.packages[`node_modules/${LEAF}`].peerDependencies;
+    assert.throws(() => check(data), /optional peer has no frozen CLI provider/);
+});
+
+test('a host optional peer provider cannot be newly installed by the train', () => {
+    const data = hostPeerFixture();
+    delete data.baseline.packages[''].devDependencies.react;
+    delete data.candidate.packages[''].devDependencies.react;
+    delete data.baseline.packages['node_modules/react'];
+    assert.throws(() => check(data), /optional peer has no frozen CLI provider/);
+});
+
+test('an optional peer may stay absent in both source and CLI without inventing a provider', () => {
+    const data = hostPeerFixture();
+    for (const lock of [data.baseline, data.candidate]) {
+        delete lock.packages[''].devDependencies.react;
+        delete lock.packages['node_modules/react'];
+    }
+    assert.equal(check(data), true);
+});
+
+test('a canonical peer resolution keeps precedence over the host fallback', () => {
+    const data = hostPeerFixture();
+    data.locks.get('leaf').packages['node_modules/react'] = metadata('react', '17.0.2');
+    assert.throws(() => check(data), /Canonical source lock leaf.*react.*resolution changed/);
+});
+
+test('host fallback does not apply to required peers or ordinary optional dependencies', () => {
+    for (const kind of ['required', 'optional-dependency', 'mixed']) {
+        const data = hostPeerFixture();
+        for (const entry of [
+            data.locks.get('leaf').packages[''],
+            data.candidate.packages[`node_modules/${LEAF}`],
+        ]) {
+            if (kind === 'required') entry.peerDependenciesMeta.react.optional = false;
+            if (kind === 'optional-dependency') {
+                delete entry.peerDependencies;
+                entry.optionalDependencies = {react: '^18.0.0'};
+            }
+            if (kind === 'mixed') entry.dependencies.react = '^18.0.0';
+        }
+        assert.throws(() => check(data), /missing canonical or candidate resolution/);
+    }
+});
+
+test('every original archive context must agree with the frozen host provider', () => {
+    const data = hostPeerFixture();
+    for (const lock of [data.baseline, data.candidate]) {
+        lock.packages[''].devDependencies.holder = '*';
+        lock.packages['node_modules/holder'] = metadata('holder', '1.0.0', {[LEAF]: '^1.0.0'});
+    }
+    const nested = `node_modules/holder/node_modules/${LEAF}`;
+    data.baseline.packages[nested] = structuredClone(
+        data.baseline.packages[`node_modules/${LEAF}`],
+    );
+    data.candidate.packages[nested] = structuredClone(
+        data.candidate.packages[`node_modules/${LEAF}`],
+    );
+    data.baseline.packages['node_modules/holder/node_modules/react'] = metadata('react', '17.0.2');
+    assert.throws(() => check(data), /react.*resolution changed/);
+});
+
 module.exports = {tests};
