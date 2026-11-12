@@ -297,6 +297,49 @@ test('real registry accepts the pilot infra pin without permitting runtime or un
         assert.strictEqual(enforceChanges({}, pkg, registry, 'tabs-extension').ok, false);
 });
 
+test('Transform 5 beta exceptions reject other versions, repositories and expired evidence', () => {
+    const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
+    const entries = registry.entries.filter((entry) => entry.category === 'prerelease-graph');
+    assert.strictEqual(entries.length, 6);
+    for (const entry of entries) {
+        const version = entry['allowed-version'];
+        assert.ok(version.endsWith('-beta.1'));
+        assert.ok(entry.repositories.includes('transform'));
+        assert.ok(entry['expires-at']);
+        for (const repo of entry.repositories) {
+            assert.strictEqual(
+                enforceChanges({}, {dependencies: {[entry.dependency]: version}}, registry, repo)
+                    .ok,
+                true,
+            );
+            assert.strictEqual(
+                enforceChanges(
+                    {},
+                    {dependencies: {[entry.dependency]: version.replace('-beta.1', '-beta.2')}},
+                    registry,
+                    repo,
+                ).ok,
+                false,
+            );
+        }
+        assert.strictEqual(
+            enforceChanges({}, {dependencies: {[entry.dependency]: version}}, registry, 'cli').ok,
+            false,
+        );
+        assert.strictEqual(
+            findRegistryEntry(
+                [entry],
+                entry.dependency,
+                version,
+                'dependencies',
+                'transform',
+                new Date('2026-12-16'),
+            ),
+            undefined,
+        );
+    }
+});
+
 test('managed infra registry scope stays aligned with distribution targets', () => {
     const registry = yaml.load(readFile(join(__dirname, '../..'), 'dependency-policy.yml'));
     const distribution = yaml.load(readFile(join(__dirname, '../..'), 'distribution.yml'));

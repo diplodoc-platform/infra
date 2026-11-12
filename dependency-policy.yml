@@ -30,7 +30,7 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-11-09
+last-updated: 2026-11-12
 
 entries:
   - id: DEP-0003
@@ -57,6 +57,7 @@ entries:
       - html-extension
       - latex-extension
       - mermaid-extension
+      - notes-extension
       - openapi-extension
       - page-constructor-extension
       - quote-link-extension
@@ -195,3 +196,117 @@ entries:
     exit-criteria:
       - A coordinated dependency update passes canonical lock and installed-version checks
       - Refresh or remove the pin after reviewing the replacement runtime baseline
+
+  - id: DEP-0030
+    dependency: '@diplodoc/utils'
+    repositories: [cut-extension, tabs-extension, transform]
+    allowed-version: 3.0.0-beta.1
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Freeze the exact Transform 5 beta.1 runtime graph so each reviewed and packed prerequisite is reproduced; this exception does not authorize other beta versions or stable adoption.'
+    evidence:
+      source: https://github.com/diplodoc-platform/utils/commit/60f794a62261c8471fe77662878c88d9ab9c671b
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.1 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review
+
+  - id: DEP-0031
+    dependency: '@diplodoc/directive'
+    repositories: [cut-extension, tabs-extension, file-extension, notes-extension, transform]
+    allowed-version: 1.0.0-beta.1
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Freeze the exact Transform 5 beta.1 runtime graph so each reviewed and packed prerequisite is reproduced; this exception does not authorize other beta versions or stable adoption.'
+    evidence:
+      source: https://github.com/diplodoc-platform/directive/commit/85081dd75402ac1640f411ef00c70375a738ddcf
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.1 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review
+
+  - id: DEP-0032
+    dependency: '@diplodoc/cut-extension'
+    repositories: [transform]
+    allowed-version: 2.0.0-beta.1
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Freeze the exact Transform 5 beta.1 runtime graph so each reviewed and packed prerequisite is reproduced; this exception does not authorize other beta versions or stable adoption.'
+    evidence:
+      source: https://github.com/diplodoc-platform/cut-extension/commit/be96ebb87bdd970c3657b5de0af18de97dd39049
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.1 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review
+
+  - id: DEP-0033
+    dependency: '@diplodoc/tabs-extension'
+    repositories: [transform]
+    allowed-version: 4.0.0-beta.1
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Freeze the exact Transform 5 beta.1 runtime graph so each reviewed and packed prerequisite is reproduced; this exception does not authorize other beta versions or stable adoption.'
+    evidence:
+      source: https://github.com/diplodoc-platform/tabs-extension/commit/e35c63cb691a9095074c012c0b754b0b91301b0b
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.1 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review
+
+  - id: DEP-0034
+    dependency: '@diplodoc/file-extension'
+    repositories: [transform]
+    allowed-version: 1.0.0-beta.1
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Freeze the exact Transform 5 beta.1 runtime graph so each reviewed and packed prerequisite is reproduced; this exception does not authorize other beta versions or stable adoption.'
+    evidence:
+      source: https://github.com/diplodoc-platform/file-extension/commit/cd485ffbd63c860d77e9dcb6444aee62368f2783
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.1 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review
+
+  - id: DEP-0035
+    dependency: '@diplodoc/notes-extension'
+    repositories: [transform]
+    allowed-version: 1.0.0-beta.1
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Freeze the exact Transform 5 beta.1 runtime graph so each reviewed and packed prerequisite is reproduced; this exception does not authorize other beta versions or stable adoption.'
+    evidence:
+      source: https://github.com/diplodoc-platform/notes-extension/commit/22a1de6677f0bc7be0216791a5dfa663a4548eb2
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.1 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review
