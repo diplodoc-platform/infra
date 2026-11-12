@@ -310,3 +310,45 @@ entries:
     exit-criteria:
       - Remove this exception when beta.1 is superseded or the prerelease experiment ends
       - Stable adoption requires a separate dependency and compatibility review
+
+  - id: DEP-0036
+    dependency: '@diplodoc/utils'
+    repositories: [cut-extension, tabs-extension, transform]
+    allowed-version: 3.0.0-beta.2
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Use the corrected Utils prerequisite for the Transform 5 beta graph after strict mixed-consumer declaration validation; freeze only this reviewed beta.2 version without authorizing stable adoption.'
+    evidence:
+      predecessor: https://github.com/diplodoc-platform/utils/commit/76c1a70c6c6672eca8804966ee1c59d919ed361f
+      correction: https://github.com/diplodoc-platform/utils/commit/4128c1b8db081d6b8d00f97cd6fb5fc7fda36729
+      review: https://github.com/diplodoc-platform/utils/pull/84
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.2 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review
+
+  - id: DEP-0037
+    dependency: '@diplodoc/directive'
+    repositories: [cut-extension, tabs-extension, file-extension, notes-extension, transform]
+    allowed-version: 1.0.0-beta.2
+    ignored-versions: []
+    risk: high
+    category: prerelease-graph
+    verification-profile: ecosystem
+    reason: 'Use the corrected Directive prerequisite for the Transform 5 beta graph after workspace preparation validation; freeze only this reviewed beta.2 version without authorizing stable adoption.'
+    evidence:
+      predecessor: https://github.com/diplodoc-platform/directive/pull/68
+      correction: https://github.com/diplodoc-platform/directive/commit/b0937adf95797700eb58228c9f4e46236f17433f
+      review: https://github.com/diplodoc-platform/directive/pull/69
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-12
+    review-after: 2026-12-01
+    expires-at: 2026-12-15
+    exit-criteria:
+      - Remove this exception when beta.2 is superseded or the prerelease experiment ends
+      - Stable adoption requires a separate dependency and compatibility review

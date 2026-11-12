@@ -177,6 +177,8 @@ test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001',
             'DEP-0033',
             'DEP-0034',
             'DEP-0035',
+            'DEP-0036',
+            'DEP-0037',
         ]);
     } finally {
         await removeTempDir(tempDir);
@@ -223,6 +225,8 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json derivation', async () 
             'DEP-0033',
             'DEP-0034',
             'DEP-0035',
+            'DEP-0036',
+            'DEP-0037',
         ]);
     } finally {
         await removeTempDir(tempDir);
