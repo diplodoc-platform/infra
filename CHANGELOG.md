@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.4.0](https://github.com/diplodoc-platform/infra/compare/v2.3.0...v2.4.0) (2026-11-13)
+
+
+### Features
+
+* model CLI build inputs and opt-in extension checks ([4bb8608](https://github.com/diplodoc-platform/infra/commit/4bb8608486942471d4a3fa7e1212c5836dda1d7c))
+* prepare low-risk dependency waves without resolution drift ([642da6c](https://github.com/diplodoc-platform/infra/commit/642da6c5c086edc384f31431180e2a8271c25079))
+* **train:** verify explicit dependency cohorts in one CLI candidate ([873ad44](https://github.com/diplodoc-platform/infra/commit/873ad4445370ac07dc2a262224be1ff680cc9f6c))
+
+
+### Bug Fixes
+
+* **policy:** consume the approved runtime baseline registry revision ([ccff9cb](https://github.com/diplodoc-platform/infra/commit/ccff9cb8496e7d58a8da4fdfc5a468741851b0d8))
+* **policy:** register coordinated runtime baseline pins ([8bd81b8](https://github.com/diplodoc-platform/infra/commit/8bd81b8bd01e89b4ccd6ac1cb95f7d63a6a726b4))
+* preserve numeric wave inputs in manual candidate runs ([40e1daa](https://github.com/diplodoc-platform/infra/commit/40e1daa1ad5ddcf7ff22bca01b7d90407fc333ae))
+* **train:** bind nested optional peers to every frozen owner context ([1880599](https://github.com/diplodoc-platform/infra/commit/18805994952ae6112e0f1b4639a92c94d839460b))
+* **train:** bind optional host peers to the frozen CLI baseline ([1e32a5d](https://github.com/diplodoc-platform/infra/commit/1e32a5d28b30955a5fe88400cfbf7f148afb663e))
+
 ## [2.3.0](https://github.com/diplodoc-platform/infra/compare/v2.2.3...v2.3.0) (2026-10-23)
 
 
