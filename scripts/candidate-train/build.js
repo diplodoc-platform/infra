@@ -65,7 +65,7 @@ function scopedLocks(lock, replacements) {
 function lockedOverrides(pins, globals) {
     const names = new Set(
         Object.keys(globals || {}).map(
-            (selector) => /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*/.exec(selector)?.[0],
+            (selector) => /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*/.exec(selector)?.[0],
         ),
     );
     const visit = (entries) => {
@@ -166,7 +166,7 @@ function runtimeVersions(
         };
 
         for (const name of Object.keys(dependencies).sort()) {
-            assert.match(name, /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/);
+            assert.match(name, /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/);
             const replacement = replacementNames.has(name);
             if (replacement && !includeReplacements) continue;
 

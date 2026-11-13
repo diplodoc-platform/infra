@@ -8,7 +8,7 @@ const {sourceOwnedContexts, purePeer} = require('./peer-policy');
 const SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
 const RUNTIME = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 const MAX_PACKAGES = 20000;
-const NAME = /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 
 function lookup(lock, context, name) {
     for (;;) {

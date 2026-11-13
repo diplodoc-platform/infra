@@ -8,7 +8,7 @@ const {satisfiesStable} = require('./peer-range');
 const {runtimeArtifacts} = require('./artifacts');
 const {sourceOwnedContexts} = require('./peer-policy');
 
-const NAME = /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const RUNTIME = ['dependencies', 'peerDependencies', 'optionalDependencies'];
 const MAX_DEPTH = 100;
 const MAX_EDGES = 20000;

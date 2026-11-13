@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const NAME = /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 function lookup(lock, key, name) {
     for (;;) {
         const target = `${key ? key + '/' : ''}node_modules/${name}`;
