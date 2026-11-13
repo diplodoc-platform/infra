@@ -10,6 +10,7 @@ const {assertDependencyDelta, assertSourceBaselines} = require('./dependency-del
 const {optInExtension} = require('./model');
 const {runIntegrationSmoke} = require('./integration-smoke');
 const {modeledRuntimeLock} = require('./build-inputs');
+const {assembleCliLock, verifyFrozenCli} = require('./cli-lock');
 
 function run(command, args, cwd, capture = false) {
     return execFileSync(command, args, {
@@ -315,12 +316,33 @@ function buildCandidate(plan, output) {
             archives,
             (repo) => `file:${path.join(output, 'dependency-train', 'payload', `${repo}.tgz`)}`,
         );
-        write(path.join(directory, 'package.json'), effective);
-        if (archives.size) {
-            run('npm', ['install', '--include=dev', '--no-audit', '--no-fund'], directory);
-        } else {
-            run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], directory);
+        if (node.repo === 'cli') {
+            effective = withArchives(manifest, archives);
+            effective.files = [...new Set([...(manifest.files || []), 'dependency-train'])];
+            fs.cpSync(
+                path.join(output, 'dependency-train'),
+                path.join(directory, 'dependency-train'),
+                {
+                    recursive: true,
+                },
+            );
+            const assembled = assembleCliLock(lock, effective, archives, (repo) =>
+                fs.readFileSync(path.join(output, 'dependency-train', 'payload', `${repo}.tgz`)),
+            );
+            assertDependencyDelta(plan, lock, assembled, sourceLocks);
+            write(path.join(directory, 'package-lock.json'), assembled);
         }
+        write(path.join(directory, 'package.json'), effective);
+        run(
+            'npm',
+            [
+                node.repo === 'cli' || !archives.size ? 'ci' : 'install',
+                '--include=dev',
+                '--no-audit',
+                '--no-fund',
+            ],
+            directory,
+        );
         verifyCohortInput(plan, node, lock, directory);
 
         for (const [name, archive] of archives) {
@@ -334,38 +356,24 @@ function buildCandidate(plan, output) {
             );
         }
         if (node.repo === 'cli') {
-            const relative = withArchives(manifest, archives);
-            relative.files = [...new Set([...(manifest.files || []), 'dependency-train'])];
-            write(path.join(directory, 'package.json'), relative);
-            fs.cpSync(
-                path.join(output, 'dependency-train'),
-                path.join(directory, 'dependency-train'),
-                {recursive: true},
-            );
-            run(
-                'npm',
-                ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'],
-                directory,
-            );
-            // Compare against the original frozen CLI lock, not a regenerated
-            // lock that already contains the candidate's unrelated resolutions.
+            // npm ci must preserve the assembled lock; compare with the original
+            // baseline again before executing the CLI build or tests.
             assertDependencyDelta(
                 plan,
                 lock,
                 read(path.join(directory, 'package-lock.json')),
                 sourceLocks,
             );
-            // Reinstall with the actual relocatable specs, not the build-only paths.
-            run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], directory);
-            assertDependencyDelta(
-                plan,
-                lock,
-                read(path.join(directory, 'package-lock.json')),
-                sourceLocks,
+            verifyFrozenCli(lock, directory, archives, (context, name) =>
+                installed(directory, context, name),
             );
             run('npm', ['run', 'build'], directory);
             run('npm', ['run', 'typecheck', '--if-present'], directory);
             run('npm', ['test', '--', '--update=false'], directory);
+
+            verifyFrozenCli(lock, directory, archives, (context, name) =>
+                installed(directory, context, name),
+            );
 
             // Optional peers absent from source locks belong to the frozen CLI
             // host. Check the actual installed provider and its complete tree too.
@@ -451,6 +459,7 @@ function buildCandidate(plan, output) {
         archives.set(manifest.name, {
             repo: node.repo,
             sha: node.sha,
+            manifest: node.manifest,
             lock,
             lockDigest: sourceLockDigest,
             digest: digest(fs.readFileSync(archivePath)),

@@ -207,6 +207,17 @@ running jobs or an existing Internal check.
 The 08:00 readiness timestamp is metadata, not a deadline guarantee. This change
 does not alter the cron, add an external dispatcher, or enable any automation.
 
+## Preserving the CLI installation
+
+The build constructs a scratch candidate lock from the frozen CLI lock and the
+canonical archive locks. Unrelated CLI package identities are retained; archive
+runtime dependencies get private contexts where needed. No free `npm install`
+resolution is used for the CLI. The candidate is checked independently against
+both baselines, installed with `npm ci`, and the actual unchanged CLI trees are
+checked before and after its build/tests. Source lockfiles and proof digests are
+never rewritten. Incompatible peer providers fail with an explicit baseline
+conflict; the train does not silently replace a CLI host provider.
+
 ## Optional host peers
 
 An optional peer at the archive root or in a required runtime dependency, missing
