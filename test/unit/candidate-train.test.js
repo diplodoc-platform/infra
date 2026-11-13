@@ -540,6 +540,23 @@ test('manual zero wave remains invalid before any candidate lookup', async () =>
     );
 });
 
+test('publisher installs locked tooling without lifecycle scripts before credentials or validation', () => {
+    const workflow = yaml.load(
+        fs.readFileSync(
+            path.join(root, '.github/workflows/dependency-candidate-train.yml'),
+            'utf8',
+        ),
+    );
+    const steps = workflow.jobs.publish.steps;
+    const install = steps.findIndex((step) => step.run === 'npm ci --ignore-scripts');
+    const credentials = steps.findIndex((step) => JSON.stringify(step).includes('secrets.'));
+    const validation = steps.findIndex((step) => step.run?.includes('candidate-train/publish.js'));
+
+    assert.ok(install >= 0, 'A fresh publisher checkout needs its trusted tooling dependencies');
+    assert.ok(install < credentials && install < validation);
+    assert.ok(!JSON.stringify(steps.slice(0, install + 1)).includes('secrets.'));
+});
+
 test('GitHub preparation cannot access internal APIs or notification credentials', () => {
     const source = fs.readFileSync(
         path.join(root, '.github/workflows/dependency-candidate-train.yml'),
