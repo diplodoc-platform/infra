@@ -417,4 +417,18 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks, v
     return true;
 }
 
-module.exports = {assertDependencyDelta, assertSourceBaselines};
+/** Compare a concrete provider and its full canonical runtime tree. */
+function assertSameLockedTree(expected, expectedRoot, actual, actualRoot) {
+    assert.deepEqual(
+        identity(expected.packages[expectedRoot]),
+        identity(actual.packages[actualRoot]),
+    );
+    compare(expected, expectedRoot, actual, actualRoot, {
+        archives: new Map(),
+        selected: new Set(),
+        label: 'Frozen CLI peer context',
+    });
+    return true;
+}
+
+module.exports = {assertDependencyDelta, assertSourceBaselines, assertSameLockedTree};
