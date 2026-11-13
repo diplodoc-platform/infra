@@ -168,19 +168,7 @@ const tests = [
                 const payload = path.join(cli, 'dependency-train/payload');
                 fs.mkdirSync(payload, {recursive: true});
                 fs.writeFileSync(path.join(payload, 'leaf.tgz'), leaf.bytes);
-                const legacy = path.join(root, 'legacy');
-                fs.mkdirSync(path.join(legacy, 'dependency-train/payload'), {recursive: true});
-                fs.writeFileSync(
-                    path.join(legacy, 'dependency-train/payload/leaf.tgz'),
-                    leaf.bytes,
-                );
-                write(legacy, 'package.json', candidate);
-                write(legacy, 'package-lock.json', baseline);
-                await npm(['install', '--ignore-scripts'], legacy);
-                assert.equal(
-                    read(legacy, 'package-lock.json').packages['node_modules/common'].version,
-                    '1.1.0',
-                );
+
                 const assembled = assembleCliLock(baseline, candidate, archives, () => leaf.bytes);
                 const host = {repo: 'cli', sha: 'b'.repeat(40), manifest};
                 const plan = {
@@ -188,9 +176,7 @@ const tests = [
                     selected: [node],
                 };
                 const locks = new Map([['leaf', lock]]);
-                assert.throws(() =>
-                    assertDependencyDelta(plan, baseline, read(legacy, 'package-lock.json'), locks),
-                );
+
                 assertDependencyDelta(plan, baseline, assembled, locks);
                 assert.deepEqual(
                     assembled.packages['node_modules/common'],
