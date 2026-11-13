@@ -140,6 +140,54 @@ For example, rebuilding translation for a tabs update must not silently carry
 CLI baseline blocks preparation; this change does not repair source lockfiles
 or hide existing baseline vulnerabilities. Dependency review remains required.
 
+## Manual coordinated groups
+
+For an explicit group, dispatch `dependency-candidate-train.yml` with
+`cohort_prs` as comma-separated `repo#PR` identities and `dry_run: true`.
+One PR per supported registered repository is allowed, up to the graph limit
+of 40. Keep `pr_number: 0` and `wave: 1`; independent waves do not apply.
+The explicit list supplies the repository scope without changing organization
+variables. Sources may be human-authored or Dependabot PRs, but must be open,
+same-repository, dependency-only, low-risk patch/minor updates with green checks
+on their exact heads and current master bases. A failure rejects the whole
+group instead of silently dropping a member. No source branches are merged.
+
+Set `cohort_dependency` when updating one dependency across packages. Every
+registered direct consumer must be present, except the existing direct CLI/VSC
+exclusions, and every canonical source lock must resolve one exact stable
+version. An existing direct override may follow only that same dependency's
+manifest requirement. Unrelated override or source changes remain forbidden.
+VSC still requires its separate standalone checks; a CLI candidate does not
+certify the editor extension.
+
+After inspecting the group, repeat the same inputs with `dry_run: false`.
+The publisher independently re-derives the group, graph, source manifests,
+policy and exact-head CI against the dispatch inputs. A changed member or
+baseline requires a new plan. The build checks the common dependency and its
+canonical transitive tree even when it is a dev-only build input.
+This checks selected package builds; it does not overwrite the frozen CLI
+host/tooling dependency tree.
+
+```mermaid
+flowchart LR
+    P[Explicit PR group and exact-head CI] --> F[Freeze all sources and dependency graph]
+    F --> B[Build dependencies before affected consumers]
+    B --> C[One CLI candidate with all reviewed archives]
+    C --> I[Manual downstream document check]
+```
+
+The existing graph includes runtime/optional edges, client asset build inputs,
+CLI-bundled inputs and selected opt-in integrations. Every affected consumer is
+rebuilt in dependency order; cycles in the affected build graph and missing
+graph paths reject preparation.
+This is one combined candidate, not several independent green waves.
+
+Manual groups use **plan schema 2**. This is independent of installed peer-proof
+schemas 1/2, whose version and integrity checks remain unchanged. Merge the
+compatible downstream consumer before relying on this producer mode. Older
+consumers reject these plans. Scheduled selection retains schema 1 and its
+three-PR wave limit; this feature changes no schedule, distribution or merge gate.
+
 ## Scheduled preparation controls
 
 `DEPENDENCY_CANDIDATE_TRAIN_ENABLED` absent/false disables scheduled preparation.

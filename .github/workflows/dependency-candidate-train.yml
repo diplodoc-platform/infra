@@ -5,6 +5,14 @@ on:
     - cron: '17 3 * * *' # Preparation only; opt-in, disabled by default.
   workflow_dispatch:
     inputs:
+      cohort_prs:
+        description: 'Manual indivisible group: repo#PR,repo#PR; one PR per supported repository'
+        type: string
+        default: ''
+      cohort_dependency:
+        description: 'Optional shared dependency; requires every supported direct consumer at one locked version'
+        type: string
+        default: ''
       dry_run:
         description: 'Selection only; false explicitly approves one preparation run'
         type: boolean
@@ -58,6 +66,8 @@ jobs:
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
           DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
           DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
+          DEPENDENCY_TRAIN_COHORT_PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_prs || '' }}
+          DEPENDENCY_TRAIN_COHORT_DEPENDENCY: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_dependency || '' }}
         run: node scripts/candidate-train/plan.js
       - uses: actions/upload-artifact@v4
         id: plan-artifact
@@ -144,6 +154,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
           DEPENDENCY_CANDIDATE_PREPARE_APPROVED: 'true'
+          DEPENDENCY_TRAIN_COHORT_PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_prs || '' }}
+          DEPENDENCY_TRAIN_COHORT_DEPENDENCY: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_dependency || '' }}
           TRAIN_APP_TOKEN: ${{ steps.app.outputs.token }}
           TRAIN_BOT_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
           TRAIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {createHash} = require('node:crypto');
 const {buildEdges} = require('./model');
+const {MAX_COHORT_SIZE, cohortIdentity, validateCohort} = require('./cohort');
 
 const OWNER = 'diplodoc-platform';
 const SHA = /^[a-f0-9]{40}$/;
@@ -26,18 +27,22 @@ function planId(plan) {
                 sha,
                 baseSha,
             })),
+            ...cohortIdentity(plan),
         }),
     ).slice(0, 16);
 }
 
 function validatePlan(plan) {
-    assert.equal(plan.schema, 1);
+    assert.ok(plan.schema === 1 || plan.schema === 2, 'Unsupported candidate plan schema');
     assert.match(plan.toolSha, SHA);
     assert.match(plan.metapackageSha, SHA);
     assert.match(plan.cli.sha, SHA);
     assert.equal(plan.cli.repo, 'cli');
     assert.ok(Number.isFinite(Date.parse(plan.readyBy)), 'Missing 08:00 Moscow readiness target');
-    assert.ok(Array.isArray(plan.selected) && plan.selected.length <= 3);
+    assert.ok(
+        Array.isArray(plan.selected) &&
+            plan.selected.length <= (plan.schema === 2 ? MAX_COHORT_SIZE : 3),
+    );
     assert.ok(Array.isArray(plan.graph) && plan.graph.length <= 40);
 
     for (const item of [...plan.graph, ...plan.selected]) {
@@ -47,6 +52,11 @@ function validatePlan(plan) {
     }
     assert.equal(new Set(plan.graph.map((item) => item.repo)).size, plan.graph.length);
     assert.equal(new Set(plan.graph.map((item) => item.manifest.name)).size, plan.graph.length);
+    assert.equal(
+        new Set(plan.selected.map((item) => item.repo)).size,
+        plan.selected.length,
+        'A selection repeats a repository',
+    );
     assert.deepEqual(
         plan.cli,
         plan.graph.find((item) => item.repo === 'cli'),
@@ -55,8 +65,18 @@ function validatePlan(plan) {
     for (const item of plan.selected) {
         assert.ok(Number.isSafeInteger(item.number) && item.number > 0);
         assert.match(item.baseSha, SHA);
-        assert.ok(plan.graph.some((node) => node.repo === item.repo && node.sha === item.sha));
+        assert.deepEqual(
+            plan.graph.find((node) => node.repo === item.repo),
+            {repo: item.repo, sha: item.sha, manifest: item.manifest},
+        );
     }
+    if (plan.schema === 2) {
+        assert.ok(plan.selected.length > 0);
+        assert.equal(plan.selection, undefined, 'Cohorts cannot carry independent wave metadata');
+        assert.equal(plan.inventory, undefined);
+        assert.equal(plan.waves, undefined);
+        validateCohort(plan);
+    } else assert.equal(plan.cohort, undefined, 'Cohorts require plan schema 2');
     if (plan.selection !== undefined || plan.inventory !== undefined || plan.waves !== undefined)
         validateWaves(plan);
     assert.equal(plan.id, planId(plan));

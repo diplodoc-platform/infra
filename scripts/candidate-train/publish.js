@@ -19,6 +19,8 @@ const {
 } = require('./common');
 const {withArchives, assertDependencyDelta} = require('./build');
 const {expectedIntegrationEvidence} = require('./integration-smoke');
+const {planTrain} = require('./plan');
+const {parseCohort} = require('./cohort');
 
 function validatePayload(plan, directory, locks, baselineLock) {
     validatePlan(plan);
@@ -135,10 +137,51 @@ async function unchangedSources(plan, request = github) {
     for (const item of plan.selected) {
         const pr = await request(`/repos/${OWNER}/${item.repo}/pulls/${item.number}`);
         assert.equal(pr.state, 'open', 'Source PR is no longer open');
-        assert.equal(pr.user.login, 'dependabot[bot]');
+        if (plan.schema === 1) assert.equal(pr.user.login, 'dependabot[bot]');
         assert.equal(pr.head.repo.full_name, `${OWNER}/${item.repo}`);
         assert.equal(pr.head.sha, item.sha, 'Source PR head changed; rebuild the train');
         assert.equal(pr.base.sha, item.baseSha, 'Source PR base changed; rebuild the train');
+    }
+}
+
+/** Re-derive a manual group from canonical sources, fresh CI and dispatch inputs. */
+async function revalidateSources(plan, env, request = github, evidence) {
+    if (plan.schema === 1) {
+        assert.ok(
+            !env.DEPENDENCY_TRAIN_COHORT_PRS?.trim(),
+            'Manual dispatch cannot publish a downgraded wave plan',
+        );
+        return unchangedSources(plan, request);
+    }
+    assert.equal(
+        env.GITHUB_EVENT_NAME,
+        'workflow_dispatch',
+        'Cohort publication requires manual dispatch',
+    );
+    assert.deepEqual(
+        parseCohort(env.DEPENDENCY_TRAIN_COHORT_PRS),
+        plan.cohort.requests,
+        'Publisher dispatch does not approve this exact cohort',
+    );
+    assert.equal(
+        (env.DEPENDENCY_TRAIN_COHORT_DEPENDENCY || '').trim(),
+        plan.cohort.dependency?.name || '',
+    );
+    const canonical = await planTrain(env, request, evidence);
+    for (const key of [
+        'schema',
+        'toolSha',
+        'metapackageSha',
+        'cli',
+        'graph',
+        'selected',
+        'cohort',
+    ]) {
+        assert.deepEqual(
+            plan[key],
+            canonical[key],
+            `Canonical cohort ${key} changed; rebuild the train`,
+        );
     }
 }
 
@@ -241,7 +284,7 @@ async function publish(plan, directory, env = process.env, request = github) {
         request(route, {...options, token: env.TRAIN_APP_TOKEN});
     const bot = await botRequest('/user');
     assert.equal(bot.login, 'diplodoc-bot', 'The PR opener must be the contributor bot');
-    await unchangedSources(plan, request);
+    await revalidateSources(plan, env, request);
     const baselineLock = JSON.parse(
         await fileAt('cli', plan.cli.sha, 'package-lock.json', request),
     );
@@ -391,4 +434,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = {validatePayload, unchangedSources, candidateBody, publish};
+module.exports = {validatePayload, unchangedSources, revalidateSources, candidateBody, publish};

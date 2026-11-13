@@ -267,6 +267,29 @@ function cloneAt(node, destination) {
     assert.equal(run('git', ['rev-parse', 'HEAD'], destination, true).trim(), node.sha);
 }
 
+/** Check the common build input and its canonical tree, including dev-only inputs. */
+function verifyCohortInput(plan, node, lock, directory) {
+    const dependency = plan.cohort?.dependency;
+    if (!dependency || !plan.selected.some((item) => item.repo === node.repo)) return;
+    assert.equal(
+        lock.packages[`node_modules/${dependency.name}`]?.version,
+        dependency.version,
+        'Canonical cohort input changed',
+    );
+    verifyLockedTree(
+        directory,
+        directory,
+        {
+            ...lock,
+            packages: {
+                ...lock.packages,
+                '': {dependencies: {[dependency.name]: dependency.version}},
+            },
+        },
+        new Set(),
+    );
+}
+
 function buildCandidate(plan, output) {
     validatePlan(plan);
     assert.ok(plan.selected.length > 0);
@@ -298,6 +321,7 @@ function buildCandidate(plan, output) {
         } else {
             run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], directory);
         }
+        verifyCohortInput(plan, node, lock, directory);
 
         for (const [name, archive] of archives) {
             if (!Object.hasOwn({...effective.dependencies, ...effective.devDependencies}, name))
@@ -452,6 +476,7 @@ module.exports = {
     verifyLockedTree,
     verifyInstalledPeer,
     verifyModeledRuntimeInputs,
+    verifyCohortInput,
     assertDependencyDelta,
     buildCandidate,
 };
