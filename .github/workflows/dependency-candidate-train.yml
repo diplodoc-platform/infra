@@ -131,6 +131,7 @@ jobs:
           node-version: ${{ vars.NODE_VERSION || '24' }}
           cache: ''
           run-install: 'false'
+      - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v7
         with:
           artifact-ids: ${{ needs.select.outputs.plan-artifact }}
