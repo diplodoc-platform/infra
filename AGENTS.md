@@ -13,7 +13,9 @@ The owner requested Action version tags and a reusable testpack caller at
 Exact candidate and trusted policy/publisher source SHAs remain required.
 Keep workflow JavaScript in the tested `scripts/` helpers, not large YAML blocks.
 Morning candidate trains are opt-in; see `docs/dependency-candidate-train.md`.
-Inventory may cover all supported packages, but only one low-risk wave is built.
+Automatic inventory builds one low-risk wave. Explicit manual cohorts are
+indivisible, use plan schema 2, and must fail if any source or required check is
+missing. Keep the private consumer compatible before using that plan schema.
 Model bundled build inputs and opt-in activation explicitly; direct CLI and VSC
 updates remain excluded. Installing an archive alone is not activation evidence.
 Keep canonical source proofs and independently reject unplanned CLI dependency

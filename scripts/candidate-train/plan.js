@@ -34,6 +34,7 @@ const {
 } = require('./waves');
 
 const SUMMARY_LIMIT = 100;
+const {planCohort} = require('./cohort-plan');
 
 function allowlist(value) {
     const repos = (value || '')
@@ -54,8 +55,17 @@ function allowlist(value) {
     return repos;
 }
 
-function assess(pr, files, before, after, oldLock, newLock, registry) {
-    assert.equal(pr.user?.login, 'dependabot[bot]');
+function assess(
+    pr,
+    files,
+    before,
+    after,
+    oldLock,
+    newLock,
+    registry,
+    {manual = false, dependency = ''} = {},
+) {
+    if (!manual) assert.equal(pr.user?.login, 'dependabot[bot]');
     assert.equal(pr.state, 'open');
     assert.equal(pr.draft, false);
     assert.equal(pr.base.ref, 'master');
@@ -72,7 +82,28 @@ function assess(pr, files, before, after, oldLock, newLock, registry) {
     );
     const strip = (manifest) =>
         Object.fromEntries(Object.entries(manifest).filter(([key]) => !SECTIONS.includes(key)));
-    assert.ok(isDeepStrictEqual(strip(before), strip(after)), 'Non-dependency manifest changes');
+    const strippedAfter = strip(after);
+    if (
+        manual &&
+        dependency &&
+        !isDeepStrictEqual(before.overrides?.[dependency], after.overrides?.[dependency])
+    ) {
+        assert.equal(
+            typeof before.overrides?.[dependency],
+            'string',
+            'Only an existing direct dependency override may follow its cohort update',
+        );
+        assert.ok(
+            SECTIONS.some(
+                (section) =>
+                    Object.hasOwn(before[section] || {}, dependency) &&
+                    after[section]?.[dependency] === after.overrides?.[dependency],
+            ),
+            'Cohort override must match its direct dependency declaration',
+        );
+        strippedAfter.overrides = {...after.overrides, [dependency]: before.overrides[dependency]};
+    }
+    assert.ok(isDeepStrictEqual(strip(before), strippedAfter), 'Non-dependency manifest changes');
     assert.equal(oldLock.lockfileVersion, 3);
     assert.equal(newLock.lockfileVersion, 3);
     for (const [key, entry] of Object.entries(newLock.packages)) {
@@ -144,6 +175,13 @@ async function planTrain(
     request = (route) => github(route, {token: env.GH_TOKEN}),
     evidence = {fetchCheckRuns, fetchRequiredChecks},
 ) {
+    if (env.DEPENDENCY_TRAIN_COHORT_PRS?.trim()) {
+        return planCohort(env, request, evidence, {graphAt, assess});
+    }
+    assert.ok(
+        !env.DEPENDENCY_TRAIN_COHORT_DEPENDENCY?.trim(),
+        'A shared dependency requires explicit cohort PRs',
+    );
     const requested = allowlist(env.DEPENDENCY_TRAIN_REPOSITORIES);
     const prNumber = Number(env.DEPENDENCY_TRAIN_PR_NUMBER || 0);
     const waveNumber = Number(env.DEPENDENCY_TRAIN_WAVE || 1);
@@ -288,6 +326,29 @@ async function planTrain(
 }
 
 function renderSelection(plan) {
+    if (plan.schema === 2) {
+        return [
+            '## Manual dependency cohort',
+            '',
+            `${plan.selected.length} exact source PRs; the group is indivisible and is **not yet verified**.`,
+            ...(plan.cohort.dependency
+                ? [
+                      `Shared dependency: **${plan.cohort.dependency.name}@${plan.cohort.dependency.version}**.`,
+                      '',
+                  ]
+                : []),
+            '| Source | Exact head |',
+            '| --- | --- |',
+            ...plan.selected.map((node) => `| ${node.repo}#${node.number} | \`${node.sha}\` |`),
+            '',
+            `Build order: ${buildOrder(plan.graph, plan.selected)
+                .map((node) => node.repo)
+                .join(' → ')}.`,
+            '',
+            'All selected packages and affected consumers share one candidate. Direct CLI and VSC updates retain their separate verification paths. No merge, release or schedule is enabled.',
+            '',
+        ].join('\n');
+    }
     const clean = (value) => String(value).replace(/[|\r\n]/g, ' ');
     const lines = [
         '## Morning candidate selection',
