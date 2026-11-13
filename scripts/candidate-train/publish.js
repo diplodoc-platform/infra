@@ -21,14 +21,18 @@ const {withArchives, assertDependencyDelta} = require('./build');
 const {expectedIntegrationEvidence} = require('./integration-smoke');
 const {planTrain} = require('./plan');
 const {parseCohort} = require('./cohort');
+const {runtimeArtifacts, buildReceipts} = require('./artifacts');
 
 function validatePayload(plan, directory, locks, baselineLock) {
     validatePlan(plan);
-    const order = buildOrder(plan.graph, plan.selected).filter((item) => item.repo !== 'cli');
+    const proof = read(path.join(directory, 'dependency-train', 'proof.json'));
+    const modern = proof.schema === 3;
+    const allOrder = buildOrder(plan.graph, plan.selected).filter((item) => item.repo !== 'cli');
+    const order = modern ? runtimeArtifacts(plan) : allOrder;
     const names = new Map(
         order.map((item) => [item.manifest.name, {...item, lock: locks.get(item.repo)}]),
     );
-    const expected = withArchives(plan.cli.manifest, names);
+    const expected = withArchives(plan.cli.manifest, names, undefined, modern);
     expected.files = [...new Set([...(plan.cli.manifest.files || []), 'dependency-train'])];
     assert.deepEqual(
         read(path.join(directory, 'package.json')),
@@ -43,12 +47,17 @@ function validatePayload(plan, directory, locks, baselineLock) {
     // Recompute the delta from independently fetched canonical locks, not the
     // build job's proof or its claim that only planned versions have changed.
     const hostPeers = new Map();
-    assertDependencyDelta(plan, baselineLock, lock, locks, (name, _before, _after, repo, context) =>
-        hostPeers.set(`${repo}:${context}:${name}`, {repo, context, name}),
+    assertDependencyDelta(
+        plan,
+        baselineLock,
+        lock,
+        locks,
+        (name, _before, _after, repo, context) =>
+            hostPeers.set(`${repo}:${context}:${name}`, {repo, context, name}),
+        modern,
     );
-    const proof = read(path.join(directory, 'dependency-train', 'proof.json'));
-    assert.equal(proof.schema, hostPeers.size ? 2 : 1);
-    if (hostPeers.size) {
+    if (!modern) assert.equal(proof.schema, hostPeers.size ? 2 : 1);
+    if (modern || hostPeers.size) {
         assert.equal(proof.cliBaseLockSha256, digest(JSON.stringify(baselineLock)));
         assert.deepEqual(
             proof.hostPeers,
@@ -77,7 +86,7 @@ function validatePayload(plan, directory, locks, baselineLock) {
         'package.json',
         'package-lock.json',
         'dependency-train/proof.json',
-        ...order.map((item) => `dependency-train/payload/${item.repo}.tgz`),
+        ...allOrder.map((item) => `dependency-train/payload/${item.repo}.tgz`),
     ];
     const actualFiles = [];
     let total = 0;
@@ -98,6 +107,23 @@ function validatePayload(plan, directory, locks, baselineLock) {
     visit(directory);
     assert.ok(total < 100 * 1024 * 1024, 'Payload exceeds the bounded train size');
     assert.deepEqual(actualFiles.sort(), files.sort(), 'Unexpected payload files');
+    const hashes = new Map(
+        allOrder.map((node) => [
+            node.repo,
+            digest(
+                fs.readFileSync(
+                    path.join(directory, 'dependency-train', 'payload', `${node.repo}.tgz`),
+                ),
+            ),
+        ]),
+    );
+    if (modern)
+        assert.deepEqual(
+            proof.builds,
+            buildReceipts(plan, locks, hashes),
+            'Build receipts must match canonical sources and archive bytes',
+        );
+    else assert.equal(proof.builds, undefined);
     for (const node of order) {
         const item = proof.packages.find((entry) => entry.repo === node.repo);
         assert.equal(item?.name, node.manifest.name);

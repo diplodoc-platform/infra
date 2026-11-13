@@ -46,8 +46,8 @@ PRs is an explicit error, not a silently partial inventory.
    HTML/Markdown smoke builds. Do not update baselines.
    Resolution proof paths describe runtime dependency chains, not physical
    lockfile directories. Resolve each edge from its installed parent and require
-   its exact source-lock version, including peer dependencies and cycle-closing
-   edges. Optional branches may be absent; present versions must still match.
+   its exact source-lock version, including source-owned peers and cycle-closing
+   edges. External peers use a compatible frozen CLI provider with its exact tree. Optional branches may be absent; present versions must still match.
    Independently compare logical dependency chains with the frozen CLI lock,
    including CLI tooling dependencies. Unselected consumer package versions and
    registry identities, dependency edges and resolutions may not drift merely
@@ -215,10 +215,26 @@ runtime dependencies get private contexts where needed. No free `npm install`
 resolution is used for the CLI. The candidate is checked independently against
 both baselines, installed with `npm ci`, and the actual unchanged CLI trees are
 checked before and after its build/tests. Source lockfiles and proof digests are
-never rewritten. Incompatible peer providers fail with an explicit baseline
-conflict; the train does not silently replace a CLI host provider.
+never rewritten. Proof schema 3 distinguishes ordinary source-owned dependencies
+from external peers: ordinary trees stay canonical, while an external peer uses
+a range-compatible provider from the frozen CLI, including its exact identity
+and complete tree. An ambiguous, missing or incompatible provider fails closed.
+A new selected opt-in may use an existing CLI root provider, never a new provider.
 
-## Optional host peers
+Schema 3 separately records `builds` receipts for every packed package, including
+packages used only to build client assets. Receipts bind source and lock hashes,
+archive bytes, direct rebuilt inputs and the exact cohort build dependency.
+`packages` covers only archives actually installed in CLI runtime. A components
+build receipt is not evidence that components is installed in CLI.
+
+The downstream schema-3 consumer installs the unchanged public candidate lock
+with `npm ci` in an isolated CLI package rather than a builder workspace. It
+independently derives the graph, verifies actual installed identities and checks
+them again before packaging. Deploy that consumer before relying on schema-3
+Internal Check; older consumers reject the new evidence. Legacy proof schemas
+1 and 2 retain their original validation.
+
+## Legacy optional host peers
 
 An optional peer at the archive root or in a required runtime dependency, missing
 from its canonical source lock, may use an existing CLI provider only when its
