@@ -376,7 +376,7 @@ function buildCandidate(plan, output) {
             manifest,
             installArchives,
             (repo) => `file:${path.join(output, 'dependency-train', 'payload', `${repo}.tgz`)}`,
-            true,
+            node.repo === 'cli',
         );
         if (node.repo === 'cli') {
             effective = withArchives(manifest, installArchives, undefined, true);
@@ -389,7 +389,7 @@ function buildCandidate(plan, output) {
                 },
             );
         }
-        if (installArchives.size) {
+        if (node.repo === 'cli' && installArchives.size) {
             const assembled = assembleCliLock(
                 lock,
                 effective,
@@ -400,15 +400,26 @@ function buildCandidate(plan, output) {
                     ),
                 true,
             );
-            if (node.repo === 'cli')
-                assertDependencyDelta(plan, lock, assembled, sourceLocks, undefined, true);
+            assertDependencyDelta(plan, lock, assembled, sourceLocks, undefined, true);
             write(path.join(directory, 'package-lock.json'), assembled);
         }
         write(path.join(directory, 'package.json'), effective);
-        run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], directory);
-        verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
-            installed(directory, context, name, expectedName),
+        // Source builds keep their established archive installation procedure.
+        // Only the final CLI uses the frozen host lock and provider proof.
+        run(
+            'npm',
+            [
+                node.repo !== 'cli' && installArchives.size ? 'install' : 'ci',
+                '--include=dev',
+                '--no-audit',
+                '--no-fund',
+            ],
+            directory,
         );
+        if (node.repo === 'cli')
+            verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
+                installed(directory, context, name, expectedName),
+            );
         verifyCohortInput(plan, node, lock, directory);
 
         for (const [name, archive] of installArchives) {
@@ -516,9 +527,7 @@ function buildCandidate(plan, output) {
         }
 
         run('npm', ['run', 'build', '--if-present'], directory);
-        verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
-            installed(directory, context, name, expectedName),
-        );
+        verifyCohortInput(plan, node, lock, directory);
 
         // The CLI root carries exact scoped lock overrides; dependency locks
         // inside published tarballs are not a reliable resolution mechanism.
