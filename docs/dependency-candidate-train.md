@@ -209,7 +209,11 @@ does not alter the cron, add an external dispatcher, or enable any automation.
 
 ## Preserving the CLI installation
 
-The build constructs a scratch candidate lock from the frozen CLI lock and the
+Intermediate source builds retain scoped canonical runtime overrides and their
+existing installation procedure. The exact cohort dependency and its complete
+source-lock tree are verified before and after each selected package build.
+
+The final CLI build constructs a scratch candidate lock from the frozen CLI lock and the
 canonical archive locks. Unrelated CLI package identities are retained; archive
 runtime dependencies get private contexts where needed. No free `npm install`
 resolution is used for the CLI. The candidate is checked independently against
