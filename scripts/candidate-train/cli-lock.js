@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const {createHash} = require('node:crypto');
 const {assertSameLockedTree} = require('./dependency-delta');
+const {sourceOwnedContexts, purePeer} = require('./peer-policy');
 
 const SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
 const RUNTIME = ['dependencies', 'optionalDependencies', 'peerDependencies'];
@@ -23,10 +24,12 @@ function dependencies(entry, sections = RUNTIME) {
     return [...new Set(sections.flatMap((section) => Object.keys(entry[section] || {})))];
 }
 
-function optional(entry, name) {
+function optional(entry, name, includeDev = false) {
     return (
         Object.hasOwn(entry.optionalDependencies || {}, name) ||
-        entry.peerDependenciesMeta?.[name]?.optional === true
+        (!Object.hasOwn(entry.dependencies || {}, name) &&
+            !(includeDev && Object.hasOwn(entry.devDependencies || {}, name)) &&
+            entry.peerDependenciesMeta?.[name]?.optional === true)
     );
 }
 
@@ -68,7 +71,7 @@ function checkPeers(baseline, archive, context, replacements) {
  * Substitute archives in a scratch v3 lock without asking npm to re-resolve
  * unrelated packages. Canonical source locks and the CLI baseline stay unchanged.
  */
-function assembleCliLock(baseline, manifest, archives, archiveBytes) {
+function assembleCliLock(baseline, manifest, archives, archiveBytes, freezePeers = false) {
     assert.equal(baseline.lockfileVersion, 3);
     assert.ok(Object.keys(baseline.packages || {}).length <= MAX_PACKAGES);
     for (const key of Object.keys(baseline.packages || {})) {
@@ -105,7 +108,10 @@ function assembleCliLock(baseline, manifest, archives, archiveBytes) {
         (item) => !contexts.some((parent) => item.key.startsWith(parent.key + '/node_modules/')),
     );
     const inherited = new Map(
-        top.map(({key, archive}) => [key, checkPeers(baseline, archive, key, archives)]),
+        top.map(({key, archive}) => [
+            key,
+            freezePeers ? new Set() : checkPeers(baseline, archive, key, archives),
+        ]),
     );
     for (const {key} of top) {
         for (const current of Object.keys(packages)) {
@@ -118,6 +124,45 @@ function assembleCliLock(baseline, manifest, archives, archiveBytes) {
     );
     for (const {key, name, archive} of top) {
         const source = archive.lock;
+        const owned = freezePeers ? sourceOwnedContexts(source, new Set(archives.keys())) : null;
+        const compatible = (beforeKey, afterKey, visited = new Set(), depth = 0) => {
+            if (!afterKey) return false;
+            const state = `${beforeKey}\0${afterKey}`;
+            if (visited.has(state)) return true;
+            assert.ok(
+                depth <= 100 && visited.size <= 20000,
+                'Source reuse comparison exceeds limits',
+            );
+            visited.add(state);
+            const before = source.packages[beforeKey],
+                after = packages[afterKey];
+            if (
+                !after ||
+                ['version', 'resolved', 'integrity', 'name'].some(
+                    (field) => before[field] !== after[field],
+                )
+            )
+                return false;
+            if (
+                RUNTIME.some(
+                    (section) =>
+                        JSON.stringify(before[section] || {}) !==
+                        JSON.stringify(after[section] || {}),
+                )
+            )
+                return false;
+            for (const child of dependencies(before)) {
+                if (archives.has(child)) continue;
+                const expected = lookup(source, beforeKey, child);
+                if (freezePeers && purePeer(before, child) && !owned.has(expected)) continue;
+                const actual = lookup(lock, afterKey, child);
+                if (!expected && optional(before, child)) continue;
+                if (!actual && optional(before, child)) continue;
+                if (!expected || !actual || !compatible(expected, actual, visited, depth + 1))
+                    return false;
+            }
+            return true;
+        };
         const seen = new Set();
         const visit = (sourceKey, depth = 0) => {
             if (seen.has(sourceKey)) return;
@@ -137,7 +182,11 @@ function assembleCliLock(baseline, manifest, archives, archiveBytes) {
                     value?.startsWith('file:'),
                 );
                 packages[target].resolved =
-                    spec || `file:dependency-train/payload/${archive.repo}.tgz`;
+                    spec ||
+                    (typeof manifest.overrides?.[name] === 'string'
+                        ? manifest.overrides[name]
+                        : manifest.overrides?.[name]?.['.']) ||
+                    `file:dependency-train/payload/${archive.repo}.tgz`;
                 packages[target].integrity =
                     `sha512-${createHash('sha512').update(archiveBytes(archive.repo)).digest('base64')}`;
             }
@@ -145,7 +194,10 @@ function assembleCliLock(baseline, manifest, archives, archiveBytes) {
                 Object.keys(packages).length <= MAX_PACKAGES,
                 'Assembled CLI lock exceeds the package limit',
             );
-            for (const child of dependencies(entry)) {
+            for (const child of dependencies(
+                entry,
+                freezePeers ? ['dependencies', 'optionalDependencies'] : RUNTIME,
+            )) {
                 assert.match(child, NAME);
                 if (roots.has(child) || inherited.get(key).has(child)) continue;
                 assert.ok(
@@ -155,11 +207,27 @@ function assembleCliLock(baseline, manifest, archives, archiveBytes) {
                 const next = lookup(source, sourceKey, child);
                 if (!next && optional(entry, child)) continue;
                 assert.ok(next, `Missing canonical dependency ${child} in ${archive.repo}`);
+                const existing = lookup(lock, target, child);
+                if (compatible(next, existing)) continue;
                 visit(next, depth + 1);
             }
         };
         visit('');
     }
+    // Old registry nodes used solely by replaced archives are not immutable
+    // consumers. Remove these orphans so npm cannot reuse and prune stale nodes.
+    const reachable = new Set();
+    const visit = (key, depth = 0) => {
+        if (reachable.has(key)) return;
+        assert.ok(depth <= 100 && reachable.size <= MAX_PACKAGES);
+        reachable.add(key);
+        for (const child of dependencies(packages[key], key ? RUNTIME : SECTIONS)) {
+            const target = lookup(lock, key, child);
+            if (target) visit(target, depth + 1);
+        }
+    };
+    visit('');
+    for (const key of Object.keys(packages)) if (!reachable.has(key)) delete packages[key];
     return lock;
 }
 
@@ -177,8 +245,10 @@ function verifyFrozenCli(baseline, directory, archives, resolveInstalled) {
         for (const name of names) {
             assert.ok(++edges <= 20000, 'Frozen CLI installation exceeds the edge limit');
             assert.match(name, NAME);
-            const actual = resolveInstalled(context, name);
-            const isOptional = inheritedOptional || optional(entry, name);
+            const expectedKey = lookup(baseline, key, name);
+            const expectedName = baseline.packages[expectedKey]?.name || name;
+            const actual = resolveInstalled(context, name, expectedName);
+            const isOptional = inheritedOptional || optional(entry, name, key === '');
             if (!actual && isOptional) continue;
             assert.ok(actual, `Missing frozen CLI dependency ${name}`);
             const replacement = archives.get(name);
@@ -191,8 +261,9 @@ function verifyFrozenCli(baseline, directory, archives, resolveInstalled) {
                 );
                 continue;
             }
-            const expected = lookup(baseline, key, name);
+            const expected = expectedKey;
             assert.ok(expected, `Unexpected installed CLI provider ${name}`);
+            assert.equal(actual.manifest.name, expectedName);
             assert.equal(
                 actual.manifest.version,
                 baseline.packages[expected].version,

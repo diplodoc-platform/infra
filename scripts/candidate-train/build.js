@@ -11,6 +11,8 @@ const {optInExtension} = require('./model');
 const {runIntegrationSmoke} = require('./integration-smoke');
 const {modeledRuntimeLock} = require('./build-inputs');
 const {assembleCliLock, verifyFrozenCli} = require('./cli-lock');
+const {sourceOwnedContexts, purePeer, lookup: lookupLocked} = require('./peer-policy');
+const {runtimeArtifacts, buildReceipts} = require('./artifacts');
 
 function run(command, args, cwd, capture = false) {
     return execFileSync(command, args, {
@@ -59,10 +61,33 @@ function scopedLocks(lock, replacements) {
     return visit('', new Set(['']));
 }
 
+/** Keep only source exceptions to existing root overrides; the lock pins everything else. */
+function lockedOverrides(pins, globals) {
+    const names = new Set(
+        Object.keys(globals || {}).map(
+            (selector) => /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*/.exec(selector)?.[0],
+        ),
+    );
+    const visit = (entries) => {
+        const kept = {};
+        for (const [name, value] of Object.entries(entries)) {
+            if (name === '.') continue;
+            if (names.has(name)) kept[name] = value;
+            else if (value && typeof value === 'object') {
+                const children = visit(value);
+                if (Object.keys(children).length) kept[name] = {'.': value['.'], ...children};
+            }
+        }
+        return kept;
+    };
+    return visit(pins);
+}
+
 function withArchives(
     manifest,
     archives,
     spec = (repo) => `file:dependency-train/payload/${repo}.tgz`,
+    locked = false,
 ) {
     const result = structuredClone(manifest);
     result.overrides ||= {};
@@ -83,7 +108,8 @@ function withArchives(
         }
         // Retain existing nested security overrides, changing only this package.
         const prior = result.overrides[name];
-        const pinned = scopedLocks(lock, new Set(archives.keys()));
+        const allPins = scopedLocks(lock, new Set(archives.keys()));
+        const pinned = locked ? lockedOverrides(allPins, manifest.overrides) : allPins;
         result.overrides[name] =
             (typeof prior === 'object' && prior !== null) || Object.keys(pinned).length
                 ? {...(typeof prior === 'object' ? prior : {}), '.': value, ...pinned}
@@ -92,12 +118,12 @@ function withArchives(
     return result;
 }
 
-function installed(boundary, context, name) {
+function installed(boundary, context, name, expectedName = name) {
     for (let current = context; ; current = path.dirname(current)) {
         const file = path.join(current, 'node_modules', name, 'package.json');
         if (path.basename(current) !== 'node_modules' && fs.existsSync(file)) {
             const manifest = read(file);
-            assert.equal(manifest.name, name);
+            assert.equal(manifest.name, expectedName);
             return {directory: path.dirname(file), manifest};
         }
         if (current === boundary) return null;
@@ -108,9 +134,16 @@ function installed(boundary, context, name) {
     }
 }
 
-function runtimeVersions(lock, replacementNames, includeReplacements = false, root = '') {
+function runtimeVersions(
+    lock,
+    replacementNames,
+    includeReplacements = false,
+    root = '',
+    frozenPeers = false,
+) {
     assert.equal(lock.lockfileVersion, 3);
     const resolutions = [];
+    const owned = frozenPeers ? sourceOwnedContexts(lock, replacementNames) : null;
 
     const lookup = (context, name) => {
         for (;;) {
@@ -140,8 +173,10 @@ function runtimeVersions(lock, replacementNames, includeReplacements = false, ro
             const isOptional =
                 optional ||
                 Object.hasOwn(entry.optionalDependencies || {}, name) ||
-                entry.peerDependenciesMeta?.[name]?.optional === true;
+                (!Object.hasOwn(entry.dependencies || {}, name) &&
+                    entry.peerDependenciesMeta?.[name]?.optional === true);
             const target = lookup(key, name);
+            if (frozenPeers && purePeer(entry, name) && !owned.has(target)) continue;
             if (!target && isOptional) continue;
             assert.ok(target, `Missing locked runtime dependency ${name}`);
 
@@ -175,15 +210,29 @@ function runtimeVersions(lock, replacementNames, includeReplacements = false, ro
     return resolutions;
 }
 
-function verifyLockedTree(boundary, directory, lock, replacementNames, root = '') {
+function verifyLockedTree(
+    boundary,
+    directory,
+    lock,
+    replacementNames,
+    root = '',
+    frozenPeers = false,
+) {
     const proof = [];
 
-    for (const expected of runtimeVersions(lock, replacementNames, false, root)) {
+    for (const expected of runtimeVersions(lock, replacementNames, false, root, frozenPeers)) {
         const names = expected.path.slice('node_modules/'.length).split('/node_modules/');
         let cursor = directory;
         let actual;
+        let expectedContext = root;
         for (const name of names) {
-            actual = installed(boundary, cursor, name);
+            expectedContext = lookupLocked(lock, expectedContext, name);
+            actual = installed(
+                boundary,
+                cursor,
+                name,
+                lock.packages[expectedContext]?.name || name,
+            );
             if (!actual) break;
             cursor = actual.directory;
         }
@@ -202,7 +251,7 @@ function verifyLockedTree(boundary, directory, lock, replacementNames, root = ''
 function verifyInstalledPeer(boundary, lock, name, expectedKey, actualKey) {
     const target = path.join(boundary, actualKey);
     const actual = read(path.join(target, 'package.json'));
-    assert.equal(actual.name, name);
+    assert.equal(actual.name, lock.packages[expectedKey].name || name);
     assert.equal(
         actual.version,
         lock.packages[expectedKey].version,
@@ -211,7 +260,14 @@ function verifyInstalledPeer(boundary, lock, name, expectedKey, actualKey) {
     return verifyLockedTree(boundary, target, lock, new Set(), expectedKey);
 }
 
-function verifyModeledRuntimeInputs(boundary, directory, node, lock, archives) {
+function verifyModeledRuntimeInputs(
+    boundary,
+    directory,
+    node,
+    lock,
+    archives,
+    frozenPeers = false,
+) {
     const modeled = modeledRuntimeLock(node, lock);
     if (!modeled) return;
     const replacements = new Set(archives.keys());
@@ -221,9 +277,9 @@ function verifyModeledRuntimeInputs(boundary, directory, node, lock, archives) {
         if (seen.has(context)) return;
         assert.ok(seen.size < 2000, 'Modeled runtime archive contexts exceed the limit');
         seen.add(context);
-        verifyLockedTree(boundary, context, source, replacements);
+        verifyLockedTree(boundary, context, source, replacements, '', frozenPeers);
 
-        for (const expected of runtimeVersions(source, replacements, true)) {
+        for (const expected of runtimeVersions(source, replacements, true, '', frozenPeers)) {
             if (!expected.replacement) continue;
             const replacement = archives.get(expected.replacement);
             const names = expected.path.slice('node_modules/'.length).split('/node_modules/');
@@ -299,7 +355,8 @@ function buildCandidate(plan, output) {
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'diplodoc-candidate-build-'));
     const archives = new Map();
     const sourceLocks = new Map();
-    const proof = {schema: 1, trainId: plan.id, toolSha: plan.toolSha, packages: []};
+    const proof = {schema: 3, trainId: plan.id, toolSha: plan.toolSha, packages: []};
+    const runtimeNames = new Set(runtimeArtifacts(plan).map((item) => item.manifest.name));
 
     for (const node of buildOrder(plan.graph, plan.selected)) {
         const directory = path.join(scratch, node.repo);
@@ -309,15 +366,20 @@ function buildCandidate(plan, output) {
         const lock = read(path.join(directory, 'package-lock.json'));
         assert.equal(lock.lockfileVersion, 3);
         if (node.repo !== 'cli') sourceLocks.set(node.repo, lock);
-        else assertSourceBaselines(plan, lock, sourceLocks);
+        else assertSourceBaselines(plan, lock, sourceLocks, true);
         const sourceLockDigest = digest(JSON.stringify(lock));
+        const installArchives =
+            node.repo === 'cli'
+                ? new Map([...archives].filter(([name]) => runtimeNames.has(name)))
+                : archives;
         let effective = withArchives(
             manifest,
-            archives,
+            installArchives,
             (repo) => `file:${path.join(output, 'dependency-train', 'payload', `${repo}.tgz`)}`,
+            true,
         );
         if (node.repo === 'cli') {
-            effective = withArchives(manifest, archives);
+            effective = withArchives(manifest, installArchives, undefined, true);
             effective.files = [...new Set([...(manifest.files || []), 'dependency-train'])];
             fs.cpSync(
                 path.join(output, 'dependency-train'),
@@ -326,26 +388,30 @@ function buildCandidate(plan, output) {
                     recursive: true,
                 },
             );
-            const assembled = assembleCliLock(lock, effective, archives, (repo) =>
-                fs.readFileSync(path.join(output, 'dependency-train', 'payload', `${repo}.tgz`)),
+        }
+        if (installArchives.size) {
+            const assembled = assembleCliLock(
+                lock,
+                effective,
+                installArchives,
+                (repo) =>
+                    fs.readFileSync(
+                        path.join(output, 'dependency-train', 'payload', `${repo}.tgz`),
+                    ),
+                true,
             );
-            assertDependencyDelta(plan, lock, assembled, sourceLocks);
+            if (node.repo === 'cli')
+                assertDependencyDelta(plan, lock, assembled, sourceLocks, undefined, true);
             write(path.join(directory, 'package-lock.json'), assembled);
         }
         write(path.join(directory, 'package.json'), effective);
-        run(
-            'npm',
-            [
-                node.repo === 'cli' || !archives.size ? 'ci' : 'install',
-                '--include=dev',
-                '--no-audit',
-                '--no-fund',
-            ],
-            directory,
+        run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], directory);
+        verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
+            installed(directory, context, name, expectedName),
         );
         verifyCohortInput(plan, node, lock, directory);
 
-        for (const [name, archive] of archives) {
+        for (const [name, archive] of installArchives) {
             if (!Object.hasOwn({...effective.dependencies, ...effective.devDependencies}, name))
                 continue;
             const actual = installed(directory, directory, name);
@@ -363,20 +429,22 @@ function buildCandidate(plan, output) {
                 lock,
                 read(path.join(directory, 'package-lock.json')),
                 sourceLocks,
+                undefined,
+                true,
             );
-            verifyFrozenCli(lock, directory, archives, (context, name) =>
-                installed(directory, context, name),
+            verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
+                installed(directory, context, name, expectedName),
             );
             run('npm', ['run', 'build'], directory);
             run('npm', ['run', 'typecheck', '--if-present'], directory);
             run('npm', ['test', '--', '--update=false'], directory);
 
-            verifyFrozenCli(lock, directory, archives, (context, name) =>
-                installed(directory, context, name),
+            verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
+                installed(directory, context, name, expectedName),
             );
 
-            // Optional peers absent from source locks belong to the frozen CLI
-            // host. Check the actual installed provider and its complete tree too.
+            // External peers use the compatible frozen CLI provider. Verify its
+            // exact installed identity and complete dependency tree too.
             const hostPeers = new Map();
             assertDependencyDelta(
                 plan,
@@ -387,18 +455,16 @@ function buildCandidate(plan, output) {
                     verifyInstalledPeer(directory, lock, name, expectedKey, actualKey);
                     hostPeers.set(`${repo}:${context}:${name}`, {repo, context, name});
                 },
+                true,
             );
-            if (hostPeers.size) {
-                proof.schema = 2;
-                proof.hostPeers = [...hostPeers.values()].sort((a, b) =>
-                    `${a.repo}:${a.context}:${a.name}`.localeCompare(
-                        `${b.repo}:${b.context}:${b.name}`,
-                    ),
-                );
-                proof.cliBaseLockSha256 = digest(JSON.stringify(lock));
-            }
+            proof.hostPeers = [...hostPeers.values()].sort((a, b) =>
+                `${a.repo}:${a.context}:${a.name}`.localeCompare(
+                    `${b.repo}:${b.context}:${b.name}`,
+                ),
+            );
+            proof.cliBaseLockSha256 = digest(JSON.stringify(lock));
 
-            for (const [name, archive] of archives) {
+            for (const [name, archive] of installArchives) {
                 const actual = installed(directory, directory, name);
                 assert.equal(
                     actual?.manifest.dependencyTrain?.sourceSha,
@@ -409,7 +475,9 @@ function buildCandidate(plan, output) {
                     directory,
                     actual.directory,
                     archive.lock,
-                    new Set(archives.keys()),
+                    new Set(installArchives.keys()),
+                    '',
+                    true,
                 );
                 verifyModeledRuntimeInputs(
                     directory,
@@ -417,6 +485,7 @@ function buildCandidate(plan, output) {
                     plan.graph.find((item) => item.repo === archive.repo),
                     archive.lock,
                     archives,
+                    true,
                 );
                 proof.packages.push({
                     repo: archive.repo,
@@ -427,6 +496,11 @@ function buildCandidate(plan, output) {
                     resolutions,
                 });
             }
+            proof.builds = buildReceipts(
+                plan,
+                sourceLocks,
+                new Map([...archives.values()].map((item) => [item.repo, item.digest])),
+            );
             proof.integrations = runIntegrationSmoke(plan, directory, scratch, run);
             proof.cliBaseSha = node.sha;
             write(path.join(output, 'dependency-train', 'proof.json'), proof);
@@ -442,6 +516,9 @@ function buildCandidate(plan, output) {
         }
 
         run('npm', ['run', 'build', '--if-present'], directory);
+        verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
+            installed(directory, context, name, expectedName),
+        );
 
         // The CLI root carries exact scoped lock overrides; dependency locks
         // inside published tarballs are not a reliable resolution mechanism.
@@ -479,6 +556,7 @@ if (require.main === module) {
 
 module.exports = {
     scopedLocks,
+    lockedOverrides,
     withArchives,
     installed,
     runtimeVersions,
