@@ -114,3 +114,24 @@ test('missing canonical packages, links and unsafe locations are rejected before
     }
 });
 module.exports = {tests};
+
+test('valid dotted npm scopes remain accepted without permitting path traversal', () => {
+    const f = fixture();
+    f.archive.lock.packages[''].dependencies = {'@jsonjoy.com/base64': '^1'};
+    f.archive.lock.packages['node_modules/@jsonjoy.com/base64'] = pkg('1.0.0');
+    const candidate = assembleCliLock(
+        f.baseline,
+        f.manifest,
+        f.archives,
+        () => Buffer.from('archive'),
+        true,
+    );
+    assert.equal(
+        candidate.packages['node_modules/@diplodoc/leaf/node_modules/@jsonjoy.com/base64'].version,
+        '1.0.0',
+    );
+    f.archive.lock.packages[''].dependencies = {'@scope/../../outside': '1.0.0'};
+    assert.throws(() =>
+        assembleCliLock(f.baseline, f.manifest, f.archives, () => Buffer.from('archive'), true),
+    );
+});
