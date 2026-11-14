@@ -108,7 +108,7 @@ function smokeDefinition(profiles, input, output) {
                 ':::',
                 '',
             );
-            options = {runtimeJsPath: '_candidate-smoke/html.js'};
+            options = {runtimeJsPath: '_candidate-smoke/html.js', sandbox: 'allow-same-origin'};
         } else {
             assert.fail(`Unsupported opt-in smoke: ${profile.repo}`);
         }
@@ -324,6 +324,7 @@ function verifySmokeArtifacts(profiles, artifacts) {
             const iframe = tags(html, 'iframe').find(
                 ({attrs}) =>
                     attrs['data-yfm-sandbox-mode'] === 'srcdoc' &&
+                    attrs.sandbox === 'allow-same-origin' &&
                     tags(attrs.srcdoc || '', 'p').some(
                         (paragraph) =>
                             paragraph.attrs.id === 'candidate-html-marker' &&
