@@ -4,8 +4,11 @@ const assert = require('node:assert/strict');
 const {buildOrder} = require('./common');
 const {optInExtension} = require('./model');
 const {modeledRuntimeLock} = require('./build-inputs');
+const {satisfiesStable} = require('./peer-range');
+const {runtimeArtifacts} = require('./artifacts');
+const {sourceOwnedContexts} = require('./peer-policy');
 
-const NAME = /^(?:@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const RUNTIME = ['dependencies', 'peerDependencies', 'optionalDependencies'];
 const MAX_DEPTH = 100;
 const MAX_EDGES = 20000;
@@ -40,7 +43,9 @@ function edges(entry, includeDev) {
     for (const [name, edge] of result) {
         edge.optional =
             Object.hasOwn(entry.optionalDependencies || {}, name) ||
-            entry.peerDependenciesMeta?.[name]?.optional === true;
+            (!Object.hasOwn(entry.dependencies || {}, name) &&
+                !(includeDev && Object.hasOwn(entry.devDependencies || {}, name)) &&
+                entry.peerDependenciesMeta?.[name]?.optional === true);
     }
 
     return result;
@@ -125,18 +130,41 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
     }
 
     function compareHostPeer(name, edge, actualTarget, location, sourceContext, owners) {
-        if (!owners.length) fail(location, 'optional peer has no frozen CLI archive context');
+        const integrationRoot =
+            options.freezePeers &&
+            !owners.length &&
+            options.selected.has(options.hostArchive) &&
+            optInExtension(options.hostArchive)?.repo === options.hostRepo;
+        if (integrationRoot) owners = [''];
+        if (!owners.length) fail(location, 'peer has no frozen CLI archive context');
         const after = actualLock.packages[actualTarget];
 
-        for (const owner of owners) {
-            if (!owner) fail(location, 'optional peer owner has no frozen CLI context');
+        for (const originalOwner of owners) {
+            const owner = options.freezePeers && originalOwner === null ? '' : originalOwner;
+            if (owner === null) fail(location, 'peer owner has no frozen CLI context');
             const prior = edges(options.baselineLock.packages[owner], false).get(name);
             const provider = lookup(options.baselineLock, owner, name);
-            if (!isOptionalPeer(prior) || !provider)
-                fail(location, 'optional peer has no frozen CLI provider');
-
-            if (prior.specs.peerDependencies !== edge.specs.peerDependencies)
-                fail(location, 'optional peer declaration changed from the frozen CLI baseline');
+            if (!provider) fail(location, 'optional peer has no frozen CLI provider');
+            if (options.freezePeers) {
+                if (
+                    !satisfiesStable(
+                        options.baselineLock.packages[provider].version,
+                        edge.specs.peerDependencies,
+                    )
+                )
+                    fail(
+                        location,
+                        `peer range ${edge.specs.peerDependencies} does not accept frozen CLI ${options.baselineLock.packages[provider].version}`,
+                    );
+            } else {
+                if (!isOptionalPeer(prior))
+                    fail(location, 'optional peer has no frozen CLI provider or declaration');
+                if (prior.specs.peerDependencies !== edge.specs.peerDependencies)
+                    fail(
+                        location,
+                        'optional peer declaration changed from the frozen CLI baseline',
+                    );
+            }
 
             compareIdentity(options.baselineLock.packages[provider], after, location);
             // The host supplies this tree. None of its children may acquire
@@ -215,18 +243,27 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
                     fail(location, `${section} declaration changed`);
             }
 
+            if (options.peerDeclarationsOnly && isPeer(expected)) continue;
             const expectedTarget = lookup(expectedLock, expectedKey, name);
             const actualTarget = lookup(actualLock, actualKey, name);
             const optionalEdge = optional || expected.optional;
+            if (
+                options.freezePeers &&
+                archive &&
+                isPeer(expected) &&
+                !satisfiesStable(archive.manifest.version, expected.specs.peerDependencies)
+            )
+                fail(location, 'peer range does not accept the planned archive version');
             if (!actualTarget && optionalEdge) continue;
             if (!expectedTarget && !actualTarget && optionalEdge) continue;
             if (
                 options.hostArchive &&
-                !optional &&
-                !expectedTarget &&
+                (options.freezePeers || !optional) &&
                 actualTarget &&
                 !archive &&
-                isOptionalPeer(expected)
+                (options.freezePeers
+                    ? isPeer(expected) && !options.sourceOwned?.has(expectedTarget)
+                    : !expectedTarget && isOptionalPeer(expected))
             ) {
                 compareHostPeer(name, expected, actualTarget, location, expectedKey, owners);
                 continue;
@@ -271,6 +308,14 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
     visit(expectedRoot, actualRoot, '', 0, options.includeDev === true);
 }
 
+function isPeer(edge) {
+    return (
+        edge &&
+        Object.keys(edge.specs).length === 1 &&
+        Object.hasOwn(edge.specs, 'peerDependencies')
+    );
+}
+
 function isOptionalPeer(edge) {
     return (
         edge?.optional === true &&
@@ -279,17 +324,25 @@ function isOptionalPeer(edge) {
     );
 }
 
-function sourceContext(plan, baselineLock, sourceLocks) {
+function sourceContext(plan, baselineLock, sourceLocks, freezePeers = false) {
     validateLock(baselineLock);
     assert.ok(sourceLocks instanceof Map, 'Canonical source locks are required');
     const archives = new Map(
-        buildOrder(plan.graph, plan.selected)
-            .filter((node) => node.repo !== 'cli')
-            .map((node) => [node.manifest.name, node]),
+        (freezePeers
+            ? runtimeArtifacts(plan)
+            : buildOrder(plan.graph, plan.selected).filter((node) => node.repo !== 'cli')
+        ).map((node) => [node.manifest.name, node]),
     );
     const selected = new Set(plan.selected.map((node) => node.manifest.name));
     const baselineContexts = contexts(baselineLock);
-    const settings = {archives, selected, baselineLock, baselineContexts, hostProviders: new Map()};
+    const settings = {
+        archives,
+        selected,
+        baselineLock,
+        baselineContexts,
+        hostProviders: new Map(),
+        freezePeers,
+    };
 
     for (const [name, archive] of archives) {
         const source = sourceLocks.get(archive.repo);
@@ -309,6 +362,7 @@ function sourceContext(plan, baselineLock, sourceLocks) {
                 ...settings,
                 cutArchives: true,
                 label: `Unselected consumer ${archive.repo}`,
+                peerDeclarationsOnly: freezePeers,
             });
         }
     }
@@ -317,8 +371,8 @@ function sourceContext(plan, baselineLock, sourceLocks) {
 }
 
 /** Check immutable consumer lock compatibility before installing CLI dependencies. */
-function assertSourceBaselines(plan, baselineLock, sourceLocks) {
-    sourceContext(plan, baselineLock, sourceLocks);
+function assertSourceBaselines(plan, baselineLock, sourceLocks, freezePeers = false) {
+    sourceContext(plan, baselineLock, sourceLocks, freezePeers);
     return true;
 }
 
@@ -327,9 +381,16 @@ function assertSourceBaselines(plan, baselineLock, sourceLocks) {
  * Archive provenance remains schema 1; incompatible consumer locks require a
  * separately reviewed baseline refresh, never rewritten source-lock evidence.
  */
-function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks, verifyHostPeer) {
+function assertDependencyDelta(
+    plan,
+    baselineLock,
+    candidateLock,
+    sourceLocks,
+    verifyHostPeer,
+    freezePeers = false,
+) {
     validateLock(candidateLock);
-    const settings = sourceContext(plan, baselineLock, sourceLocks);
+    const settings = sourceContext(plan, baselineLock, sourceLocks, freezePeers);
     const {archives} = settings;
     const additionalEdges = new Map();
 
@@ -383,6 +444,9 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks, v
                 ...settings,
                 hostArchive: name,
                 hostRepo: archive.repo,
+                sourceOwned: freezePeers
+                    ? sourceOwnedContexts(source, new Set(archives.keys()))
+                    : undefined,
                 verifyHostPeer,
                 cutArchives: true,
                 label: `Canonical source lock ${archive.repo}`,
@@ -405,6 +469,9 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks, v
                     ...settings,
                     hostArchive: name,
                     hostRepo: archive.repo,
+                    sourceOwned: freezePeers
+                        ? sourceOwnedContexts(modeled, new Set(archives.keys()))
+                        : undefined,
                     verifyHostPeer,
                     cutArchives: true,
                     label: `Modeled runtime input ${archive.repo}`,
@@ -417,4 +484,18 @@ function assertDependencyDelta(plan, baselineLock, candidateLock, sourceLocks, v
     return true;
 }
 
-module.exports = {assertDependencyDelta, assertSourceBaselines};
+/** Compare a concrete provider and its full canonical runtime tree. */
+function assertSameLockedTree(expected, expectedRoot, actual, actualRoot) {
+    assert.deepEqual(
+        identity(expected.packages[expectedRoot]),
+        identity(actual.packages[actualRoot]),
+    );
+    compare(expected, expectedRoot, actual, actualRoot, {
+        archives: new Map(),
+        selected: new Set(),
+        label: 'Frozen CLI peer context',
+    });
+    return true;
+}
+
+module.exports = {assertDependencyDelta, assertSourceBaselines, assertSameLockedTree};

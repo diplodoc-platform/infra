@@ -759,3 +759,53 @@ test('shared canonical owners cannot hide a different frozen provider behind ano
 });
 
 module.exports = {tests};
+
+test('schema 3 freezes compatible external peers and rejects identity or descendant drift', () => {
+    const f = fixture();
+    f.plan.cli = f.plan.graph.at(-1);
+    const leaf = f.locks.get('leaf');
+    leaf.packages[''].peerDependencies = {react: '>=18 <20'};
+    f.plan.graph[0].manifest.peerDependencies = {react: '>=18 <20'};
+    for (const lock of [f.baseline, f.candidate]) {
+        lock.packages[`node_modules/${LEAF}`].peerDependencies = {react: '>=18 <20'};
+        lock.packages['node_modules/react'] = metadata('react', '18.3.1', {scheduler: '^1.0.0'});
+        lock.packages['node_modules/scheduler'] = metadata('scheduler', '1.0.0');
+    }
+    leaf.packages['node_modules/react'] = metadata('react', '19.2.7');
+    const checkModern = () =>
+        assertDependencyDelta(f.plan, f.baseline, f.candidate, f.locks, undefined, true);
+    assert.equal(checkModern(), true);
+    f.candidate.packages['node_modules/react'].integrity = 'sha512-tampered';
+    assert.throws(checkModern, /integrity/);
+    f.candidate.packages['node_modules/react'] = structuredClone(
+        f.baseline.packages['node_modules/react'],
+    );
+    f.candidate.packages['node_modules/scheduler'].version = '1.0.1';
+    assert.throws(checkModern, /resolution changed/);
+    f.candidate.packages['node_modules/scheduler'] = structuredClone(
+        f.baseline.packages['node_modules/scheduler'],
+    );
+    leaf.packages[''].peerDependencies.react = '^19.0.0';
+    f.candidate.packages[`node_modules/${LEAF}`].peerDependencies.react = '^19.0.0';
+    assert.throws(checkModern, /does not accept frozen CLI/);
+});
+
+test('schema 3 never treats an ordinary dependency overlapping an optional peer as host-owned', () => {
+    const f = fixture();
+    f.plan.cli = f.plan.graph.at(-1);
+    for (const lock of [f.locks.get('leaf'), f.candidate]) {
+        const root =
+            lock === f.candidate ? lock.packages[`node_modules/${LEAF}`] : lock.packages[''];
+        root.peerDependencies = {changed: '*'};
+        root.peerDependenciesMeta = {changed: {optional: true}};
+    }
+    assert.equal(
+        assertDependencyDelta(f.plan, f.baseline, f.candidate, f.locks, undefined, true),
+        true,
+    );
+    delete f.candidate.packages['node_modules/changed'];
+    assert.throws(
+        () => assertDependencyDelta(f.plan, f.baseline, f.candidate, f.locks, undefined, true),
+        /missing|Missing/,
+    );
+});
