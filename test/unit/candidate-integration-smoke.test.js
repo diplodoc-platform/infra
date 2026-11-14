@@ -81,7 +81,7 @@ function artifactsFor(items) {
     }
     if (enabled.has('html-extension')) {
         const srcdoc = `<html><body><p id="candidate-html-marker">${smoke.MARKERS.html}</p></body></html>`;
-        html += `<iframe data-yfm-sandbox-mode="srcdoc" srcdoc="${srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}"></iframe>`;
+        html += `<iframe data-yfm-sandbox-mode="srcdoc" sandbox="allow-same-origin" srcdoc="${srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}"></iframe>`;
     }
     for (const profile of items) {
         for (const runtime of profile.runtimes) {
@@ -178,6 +178,8 @@ test('fixture conditionally activates every opt-in through the real extension AP
             let applied = false;
             const factory = (options) => {
                 configured = true;
+                if (profile.repo === 'html-extension')
+                    assert.equal(options.sandbox, 'allow-same-origin');
                 assert.ok(
                     !Object.values(options).some(
                         (value) => typeof value === 'string' && value.startsWith('_assets/'),
@@ -540,3 +542,20 @@ test('offline preload clears inherited Algolia configuration and blocks HTTP, fe
     }));
 
 module.exports = {tests};
+
+test('HTML smoke rejects content preserved without the required passive sandbox', () => {
+    const selected = profiles().filter((profile) => profile.repo === 'html-extension');
+    for (const sandbox of ['', 'sandbox="allow-same-origin allow-scripts"']) {
+        const artifacts = artifactsFor(selected);
+        const before = artifacts.html;
+        artifacts.html = before.replace(
+            JSON.stringify('sandbox="allow-same-origin"').slice(1, -1),
+            JSON.stringify(sandbox).slice(1, -1),
+        );
+        assert.notEqual(artifacts.html, before);
+        assert.throws(
+            () => smoke.verifySmokeArtifacts(selected, artifacts),
+            /HTML extension was not activated/,
+        );
+    }
+});
