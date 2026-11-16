@@ -13,15 +13,20 @@ const env = {
     DEPENDENCY_TRAIN_SELECTION_MODE: 'cohort',
     DEPENDENCY_TRAIN_REPOSITORIES: 'all',
 };
-async function select(api, variables = env) {
+async function inRepository(run) {
     const cwd = process.cwd();
     process.chdir(path.join(__dirname, '../..'));
     try {
-        return await planTrain(variables, api.request, api.evidence);
+        return await run();
     } finally {
         process.chdir(cwd);
     }
 }
+
+const select = (api, variables = env) =>
+    inRepository(() => planTrain(variables, api.request, api.evidence));
+const revalidate = (plan, variables, api) =>
+    inRepository(() => revalidateSources(plan, variables, api.request, api.evidence));
 
 test('automatic groups use the complete shared input across more than three repositories', async () => {
     const api = apiFixture();
@@ -30,9 +35,9 @@ test('automatic groups use the complete shared input across more than three repo
     assert.equal(plan.schema, 2);
     assert.equal(plan.selected.length, 4);
     assert.deepEqual(plan.cohort.dependency, {name: '@types/example', version: '1.1.0'});
-    await revalidateSources(plan, env, api.request, api.evidence);
+    await revalidate(plan, env, api);
     const changed = {...env, DEPENDENCY_TRAIN_REPOSITORIES: 'alpha,beta,gamma'};
-    await assert.rejects(revalidateSources(plan, changed, api.request, api.evidence));
+    await assert.rejects(revalidate(plan, changed, api));
 });
 
 test('a missing or conflicting consumer blocks the entire automatic group', async () => {
@@ -110,7 +115,7 @@ test('already updated consumers remain frozen in a complete automatic group', as
     assert.equal(plan.schema, 2);
     assert.equal(plan.selected.length, 3);
     assert.deepEqual(plan.cohort.baseline, [{repo: 'delta', sha: delta.sha}]);
-    await revalidateSources(plan, env, api.request, api.evidence);
+    await revalidate(plan, env, api);
     api.addFiles('delta', delta.sha, {
         'package.json': manifest,
         'package-lock.json': {
@@ -118,7 +123,7 @@ test('already updated consumers remain frozen in a complete automatic group', as
             packages: {'': manifest, 'node_modules/@types/example': {version: '1.0.0', dev: true}},
         },
     });
-    await assert.rejects(revalidateSources(plan, env, api.request, api.evidence));
+    await assert.rejects(revalidate(plan, env, api));
 });
 
 test('unchanged consumers cannot hide missing target versions or stale master snapshots', () => {
