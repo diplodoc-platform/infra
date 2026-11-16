@@ -51,7 +51,11 @@ function validateCohort(plan) {
     assert.ok(cohort && typeof cohort === 'object' && !Array.isArray(cohort));
     assert.deepEqual(
         Object.keys(cohort).sort(),
-        cohort.dependency ? ['dependency', 'requests'] : ['requests'],
+        [
+            ...(cohort.dependency ? ['dependency'] : []),
+            ...(cohort.baseline ? ['baseline'] : []),
+            'requests',
+        ].sort(),
     );
     const requests = parseCohort(
         cohort.requests.map(({repo, number}) => `${repo}#${number}`).join(','),
@@ -71,15 +75,35 @@ function validateCohort(plan) {
         assert.deepEqual(Object.keys(cohort.dependency).sort(), ['name', 'version']);
         assert.match(name, PACKAGE);
         assert.match(version, VERSION, 'Missing stable exact cohort dependency version');
+        const baseline = cohort.baseline || [];
+        assert.ok(Array.isArray(baseline) && baseline.length <= MAX_COHORT_SIZE);
+        assert.deepEqual(
+            baseline,
+            [...baseline].sort((a, b) => a.repo.localeCompare(b.repo)),
+        );
+        assert.equal(
+            new Set([...requests, ...baseline].map((node) => node.repo)).size,
+            requests.length + baseline.length,
+        );
+        for (const item of baseline) {
+            assert.deepEqual(Object.keys(item).sort(), ['repo', 'sha']);
+            assert.match(item.sha, /^[a-f0-9]{40}$/);
+            assert.equal(graph.find((node) => node.repo === item.repo)?.sha, item.sha);
+        }
         const consumers = graph.filter(
             (node) => !['cli', 'vsc'].includes(node.repo) && declares(node.manifest, name),
         );
         assert.deepEqual(
             consumers.map((node) => node.repo).sort(),
-            requests.map((node) => node.repo),
+            [...requests, ...baseline].map((node) => node.repo).sort(),
             'Include every registered consumer of the cohort dependency (CLI and VSC excluded)',
         );
-    }
+    } else
+        assert.equal(
+            cohort.baseline,
+            undefined,
+            'Baseline consumers require an exact shared dependency',
+        );
 }
 
 module.exports = {MAX_COHORT_SIZE, PACKAGE, parseCohort, cohortIdentity, validateCohort, declares};

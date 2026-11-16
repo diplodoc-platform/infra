@@ -1,0 +1,144 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const {apiFixture} = require('../helpers/candidate-api');
+const {planTrain} = require('../../scripts/candidate-train/plan');
+const {revalidateSources} = require('../../scripts/candidate-train/publish');
+const {changedInput, automaticGroups} = require('../../scripts/candidate-train/automatic-groups');
+
+const tests = [];
+const test = (name, fn) => tests.push({name, fn});
+const env = {
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_SHA: 'a'.repeat(40),
+    DEPENDENCY_TRAIN_SELECTION_MODE: 'cohort',
+    DEPENDENCY_TRAIN_REPOSITORIES: 'all',
+};
+async function select(api, variables = env) {
+    const cwd = process.cwd();
+    process.chdir(path.join(__dirname, '../..'));
+    try {
+        return await planTrain(variables, api.request, api.evidence);
+    } finally {
+        process.chdir(cwd);
+    }
+}
+
+test('automatic groups use the complete shared input across more than three repositories', async () => {
+    const api = apiFixture();
+    for (const [i, repo] of ['alpha', 'beta', 'gamma', 'delta'].entries()) api.addPull(repo, i + 1);
+    const plan = await select(api);
+    assert.equal(plan.schema, 2);
+    assert.equal(plan.selected.length, 4);
+    assert.deepEqual(plan.cohort.dependency, {name: '@types/example', version: '1.1.0'});
+    await revalidateSources(plan, env, api.request, api.evidence);
+    const changed = {...env, DEPENDENCY_TRAIN_REPOSITORIES: 'alpha,beta,gamma'};
+    await assert.rejects(revalidateSources(plan, changed, api.request, api.evidence));
+});
+
+test('a missing or conflicting consumer blocks the entire automatic group', async () => {
+    for (const conflicting of [false, true]) {
+        const api = apiFixture();
+        for (const [i, repo] of ['alpha', 'beta', 'gamma', 'delta'].entries())
+            api.addPull(
+                repo,
+                i + 1,
+                repo === 'delta' ? {targetVersion: conflicting ? '1.2.0' : '1.1.0'} : {},
+            );
+        if (!conflicting)
+            api.evidence.fetchCheckRuns = async (_token, _owner, repo, sha) => ({
+                check_runs:
+                    repo === 'delta'
+                        ? []
+                        : [
+                              {
+                                  id: 1,
+                                  name: 'Quality',
+                                  app: {id: 15368},
+                                  head_sha: sha,
+                                  status: 'completed',
+                                  conclusion: 'success',
+                              },
+                          ],
+            });
+        const plan = await select(api);
+        assert.equal(plan.selected.length, 0);
+        assert.ok(plan.automaticGroups.excluded.length > 0);
+    }
+});
+
+test('ambiguity and a narrowed allowlist never silently shrink a group', () => {
+    const graph = ['alpha', 'beta'].map((repo) => ({
+        repo,
+        manifest: {devDependencies: {shared: '^1'}},
+    }));
+    const item = (repo, number) => ({repo, number, createdAt: '2026-11-01T00:00:00Z'});
+    const input = {name: 'shared', version: '1.1.0'};
+    const inventory = [item('alpha', 1), item('alpha', 2), item('beta', 3)];
+    const inputs = new Map(inventory.map((node) => [`${node.repo}#${node.number}`, input]));
+    assert.equal(automaticGroups(graph, inventory, inputs, ['alpha', 'beta']).groups.length, 0);
+    assert.equal(automaticGroups(graph, inventory.slice(1), inputs, ['alpha']).groups.length, 0);
+});
+
+test('single-input selection rejects grouped changes and floating/prerelease lock versions', () => {
+    const pkg = {devDependencies: {one: '^1', two: '^1'}};
+    const lock = (one, two) => ({
+        packages: {'node_modules/one': {version: one}, 'node_modules/two': {version: two}},
+    });
+    assert.deepEqual(changedInput(pkg, pkg, lock('1.0.0', '1.0.0'), lock('1.1.0', '1.0.0')), {
+        name: 'one',
+        version: '1.1.0',
+    });
+    assert.throws(() => changedInput(pkg, pkg, lock('1.0.0', '1.0.0'), lock('1.1.0', '1.1.0')));
+    assert.throws(() =>
+        changedInput(pkg, pkg, lock('1.0.0', '1.0.0'), lock('1.1.0-beta.1', '1.0.0')),
+    );
+});
+
+test('already updated consumers remain frozen in a complete automatic group', async () => {
+    const api = apiFixture();
+    for (const [i, repo] of ['alpha', 'beta', 'gamma'].entries()) api.addPull(repo, i + 1);
+    const delta = api.graph.find((node) => node.repo === 'delta');
+    const manifest = {...delta.manifest, devDependencies: {'@types/example': '^1.1.0'}};
+    api.addFiles('delta', delta.sha, {
+        'package.json': manifest,
+        'package-lock.json': {
+            lockfileVersion: 3,
+            packages: {'': manifest, 'node_modules/@types/example': {version: '1.1.0', dev: true}},
+        },
+    });
+    const plan = await select(api);
+    assert.equal(plan.schema, 2);
+    assert.equal(plan.selected.length, 3);
+    assert.deepEqual(plan.cohort.baseline, [{repo: 'delta', sha: delta.sha}]);
+    await revalidateSources(plan, env, api.request, api.evidence);
+    api.addFiles('delta', delta.sha, {
+        'package.json': manifest,
+        'package-lock.json': {
+            lockfileVersion: 3,
+            packages: {'': manifest, 'node_modules/@types/example': {version: '1.0.0', dev: true}},
+        },
+    });
+    await assert.rejects(revalidateSources(plan, env, api.request, api.evidence));
+});
+
+test('unchanged consumers cannot hide missing target versions or stale master snapshots', () => {
+    const graph = ['alpha', 'beta'].map((repo) => ({
+        repo,
+        sha: repo,
+        manifest: {devDependencies: {shared: '^1'}},
+    }));
+    const item = {repo: 'alpha', number: 1, createdAt: '2026-11-01T00:00:00Z'};
+    const inputs = new Map([['alpha#1', {name: 'shared', version: '1.1.0'}]]);
+    for (const current of [
+        {version: '1.0.0', sha: 'beta'},
+        {version: '1.1.0', sha: 'old'},
+    ]) {
+        assert.equal(
+            automaticGroups(graph, [item], inputs, ['alpha'], new Map([['beta:shared', current]]))
+                .groups.length,
+            0,
+        );
+    }
+});
+
+module.exports = {tests};

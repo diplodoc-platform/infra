@@ -460,11 +460,22 @@ test('manual preparation does not require enabling scheduled execution', () => {
     assert.deepEqual(Object.keys(workflow.jobs), ['select', 'build', 'publish']);
 
     for (const enabled of ['', 'false', 'true']) {
-        const vars = {DEPENDENCY_CANDIDATE_TRAIN_ENABLED: enabled};
+        const vars = {
+            DEPENDENCY_CANDIDATE_TRAIN_ENABLED: enabled,
+            DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED: 'true',
+        };
 
         assert.equal(
             runInNewContext(workflow.jobs.select.if, {github: {event_name: 'schedule'}, vars}),
             enabled === 'true',
+        );
+        assert.equal(
+            runInNewContext(workflow.jobs.select.if, {
+                github: {event_name: 'schedule'},
+                vars: {...vars, DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED: 'false'},
+            }),
+            false,
+            'Deploying the new group selector must not activate a schedule',
         );
 
         for (const dryRun of ['', true, false]) {

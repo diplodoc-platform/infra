@@ -36,8 +36,25 @@ function context(author, actor = author, fork = false, event = 'pull_request') {
         },
         steps: {'coverage-run': {outputs: {ran: 'true'}}},
         success: () => true,
+        startsWith: (value, prefix) => String(value || '').startsWith(prefix),
     };
 }
+
+tests.push({
+    name: 'immutable candidate branches validate their committed lock without a writer token',
+    fn: () => {
+        const ctx = context('diplodoc-bot', 'yc-ui-bot');
+        ctx.github.event.pull_request.head.ref = 'codex/dependency-candidate-0123456789abcdef';
+        assert.equal(evaluate(verify.if, ctx), true);
+        assert.equal(evaluate(writer.if, ctx), false);
+        const gate = lock.jobs['package-lock-result'].steps[0].env.LOCK_RESULT;
+        assert.ok(
+            gate.includes(
+                "startsWith(github.event.pull_request.head.ref, 'codex/dependency-candidate-')",
+            ),
+        );
+    },
+});
 
 for (const [name, githubContext, expected] of [
     ['Dependabot', context('dependabot[bot]'), false],

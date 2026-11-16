@@ -1,0 +1,96 @@
+name: Merge Verified Dependency Train
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_pr:
+        description: 'Temporary CLI candidate PR number'
+        type: number
+        required: true
+      dry_run:
+        description: 'Preview all gates without merging'
+        type: boolean
+        default: true
+      confirm_train_id:
+        description: 'For a live manual merge, paste the exact verified train ID'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-candidate-train
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: github.event_name == 'workflow_dispatch' && github.actor != 'dependabot[bot]' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      repositories: ${{ steps.preview.outputs.repositories }}
+      train-id: ${{ steps.preview.outputs.train-id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          run-install: 'false'
+          cache: ''
+      - run: npm ci --ignore-scripts
+      - id: preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          DEPENDENCY_TRAIN_MERGE_APPROVED: 'false'
+        run: node scripts/candidate-train/merge.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-train-merge-preview
+          path: merge-progress.json
+          if-no-files-found: ignore
+
+  merge:
+    needs: preview
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.dry_run == false &&
+      inputs.confirm_train_id == needs.preview.outputs.train-id
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          run-install: 'false'
+          cache: ''
+      - run: npm ci --ignore-scripts
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ needs.preview.outputs.repositories }}
+      - name: Recheck the entire group and merge the exact heads
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          CONFIRM_TRAIN_ID: ${{ inputs.confirm_train_id }}
+          DEPENDENCY_TRAIN_MERGE_APPROVED: 'true'
+        run: node scripts/candidate-train/merge.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-train-merge-progress
+          path: merge-progress.json
+          retention-days: 90
+          if-no-files-found: error

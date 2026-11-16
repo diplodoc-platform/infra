@@ -1,8 +1,9 @@
 # Dependency candidate preparation
 
-GitHub prepares one immutable temporary CLI PR per selected wave of Dependabot updates.
+GitHub prepares one immutable temporary CLI PR per selected coordinated group or legacy wave of Dependabot updates.
 It does not access private CI/review APIs, hold internal OAuth credentials, send
-notifications, observe document checks, merge PRs or publish npm packages.
+notifications, read private document checks or publish npm packages. The separate manual merge
+workflow consumes a public exact-train verdict from the trusted verifier App.
 
 ## Supported repositories and waves
 
@@ -28,8 +29,18 @@ not CVSS; a patch or minor is not automatically low risk. Other risks and
 major/new/removed/ignored changes need separate review. Current master bases,
 green exact-head required checks and publisher bindings remain mandatory.
 
-All eligible PRs are ordered by creation time, repository and PR number. Waves
-contain at most three PRs and at most one PR per repository. `train-plan.json`
+The default selector groups eligible Dependabot PRs by one changed direct dependency
+and its exact stable locked version. Every registered direct consumer must either have
+one eligible PR for that version, or already lock it at the frozen current master SHA.
+Missing, unhealthy, conflicting or ambiguous consumers block the whole group. Narrow
+repository allowlists cannot silently reduce coverage. Already-updated consumers are
+recorded in `cohort.baseline` and independently revalidated from canonical locks.
+Groups are ordered by oldest PR then dependency identity. `wave` selects the group
+index; groups are not truncated to three sources.
+
+Explicit `selection_mode: wave` preserves the legacy independent selector: eligible
+PRs are ordered by creation time, repository and PR number, with at most three PRs
+and one PR per repository. `train-plan.json`
 records the complete eligible/excluded inventory; the summary limits long lists
 to 100 waves/exclusions and points to that artifact. More than 2,000 considered
 PRs is an explicit error, not a silently partial inventory.
@@ -59,9 +70,12 @@ PRs is an explicit error, not a silently partial inventory.
 4. On a fresh publisher, independently validate the dependency delta and data against canonical source
    locks. Use the existing CLI-scoped App token and contributor bot credential to
    open one immutable CLI candidate. Never execute candidate code in this job.
-5. Stop at **prepared, not verified**. The existing internal webhook prepares its
-   Internal check. Hand off the CLI PR number, full head SHA and infrastructure
-   tooling SHA to the separately reviewed internal operations observer.
+5. Stop at **prepared, not verified**. With the private candidate rollout flag enabled,
+   the existing Viewer handler starts the exact-head candidate pipeline and retains
+   its callback identity. Document CI still requires the operator button while the
+   platform restriction is active. Only a completed successful executed document
+   badge on the stable active diff and verified installed trees can produce the
+   public exact-train verdict. Ordinary Internal Check routing is unchanged.
 
 ## Opt-in activation coverage
 
@@ -107,6 +121,7 @@ Missing proof, skipped checks or a stale SHA/diff cannot count as success.
 
 Dispatch `dependency-candidate-train.yml` with:
 
+- `selection_mode: cohort` (default) for complete coordinated groups, or `wave` for legacy independent waves;
 - `repositories: all` (or empty to use the organization variable);
 - `pr_number: 0` for automatic selection;
 - `wave: 1`;
@@ -183,29 +198,64 @@ graph paths reject preparation.
 This is one combined candidate, not several independent green waves.
 
 Manual groups use **plan schema 2**. This is independent of installed peer-proof
-schemas 1/2, whose version and integrity checks remain unchanged. Merge the
+schemas 1/2/3, whose version and integrity checks remain unchanged. Merge the
 compatible downstream consumer before relying on this producer mode. Older
-consumers reject these plans. Scheduled selection retains schema 1 and its
-three-PR wave limit; this feature changes no schedule, distribution or merge gate.
+consumers reject these plans. Automatic coordinated selection also uses schema 2. Its optional baseline-consumer
+field requires the compatible private consumer first; older consumers reject it.
+Legacy wave mode retains schema 1 and its three-PR limit.
 
 ## Scheduled preparation controls
 
-`DEPENDENCY_CANDIDATE_TRAIN_ENABLED` absent/false disables scheduled preparation.
-The retained cron is 06:17 Europe/Moscow, targeting readiness by 08:00;
-GitHub scheduling is not an SLA. `DEPENDENCY_TRAIN_REPOSITORIES` is an explicit
-repository allowlist or `all`. Scheduled preparation selects wave 1; other waves
-are explicitly selected on manual dispatch. No new organization variable is
-needed. Repository variables in infra override organization
-values; variables in source repositories do not control this central workflow.
+Scheduled preparation requires both organization variables set to the exact string `true`:
 
-Do not enable scheduled preparation before the internal handoff and one full
-manual pilot have passed. This change does not enable it. Internal observation
-also has no schedule. Health audits, distribution and auto-merge are independent
-gates and remain unchanged. Turning off a schedule flag does not cancel already
-running jobs or an existing Internal check.
+- `DEPENDENCY_CANDIDATE_TRAIN_ENABLED`;
+- **`DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED`**, a new default-off migration gate.
 
-The 08:00 readiness timestamp is metadata, not a deadline guarantee. This change
-does not alter the cron, add an external dispatcher, or enable any automation.
+`DEPENDENCY_TRAIN_REPOSITORIES=all` enables the supported registered inventory;
+an explicit comma-separated allowlist is still accepted. Repository variables in infra
+override organization values, including `false`; source repository variables do not
+control this central workflow. No variable is created or changed by this feature.
+
+The existing cron is 06:17 Europe/Moscow, targeting readiness by 08:00. GitHub
+scheduling and preparation duration do not provide an 08:00 SLA. Scheduled selection
+prepares the oldest complete group only; an open candidate blocks another preparation.
+Manual dispatch defaults to selection-only and needs no enabled schedule variables.
+Deploy the compatible private builder and Viewer worker before enabling the private
+`enable_dependency_candidate_checks` flag, then validate one complete manual cycle.
+Keep both schedule variables off until separately approved. Health audits, distribution
+and auto-merge remain independent and are not activated here.
+
+## Separate manual merge after verification
+
+`merge-verified-train.yml` has **workflow_dispatch only**, no schedule and no automatic
+trigger. It accepts `candidate_pr`, `dry_run` (default `true`) and `confirm_train_id`.
+Start with a preview; then explicitly request a live merge with `dry_run: false` and
+the exact train ID shown in the preview. It never enables GitHub auto-merge.
+
+The workflow accepts only a complete shared-dependency schema 2 group and the latest
+successful Internal Check from `diplodoc-app` on the unchanged CLI candidate head.
+The check must carry `DEPENDENCY_TRAIN_VERDICT_V1`, binding plan/proof hashes, tooling,
+CLI base, every source SHA/base and the private verifier's installed/document evidence.
+A generic green, another App, an older successful attempt behind a newer pending or
+failed attempt, or an absent/skipped document badge cannot authorize a merge.
+
+Before any write, and again before each source merge, it verifies the full group:
+unchanged source heads/bases, current publisher-bound CI, required human reviews,
+GitHub's clean merge gate, and strict server-side up-to-date status-check policy.
+CLI/metapackage and already-updated consumers must retain their frozen master SHAs.
+Use the normal GitHub merge endpoint with the expected head SHA; no admin override.
+Repositories without strict branch status policy are blocked, not silently reconfigured.
+
+Cross-repository merges are **not atomic**. `merge-progress.json` records partial
+completion even after an error. A rerun verifies actual merged PRs and requires their
+masters to remain exactly at those merge commits; changed/reverted group members block
+continuation. The merge parent must match the frozen source base. A concurrent base
+change is additionally subject to GitHub's server-side strict branch policy; a detected
+post-merge mismatch stops further writes. Rebuild/reverify the group after any drift.
+
+Only after every source is merged does it close the temporary CLI PR, retaining its
+branch and evidence. The temporary CLI PR is never merged or released. Keep ordinary
+source review and release policies; document verification does not approve a PR.
 
 ## Preserving the CLI installation
 

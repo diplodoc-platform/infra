@@ -35,6 +35,8 @@ const {
 
 const SUMMARY_LIMIT = 100;
 const {planCohort} = require('./cohort-plan');
+const {changedInput, automaticGroups} = require('./automatic-groups');
+const {declares} = require('./cohort');
 
 function allowlist(value) {
     const repos = (value || '')
@@ -185,6 +187,8 @@ async function planTrain(
     const requested = allowlist(env.DEPENDENCY_TRAIN_REPOSITORIES);
     const prNumber = Number(env.DEPENDENCY_TRAIN_PR_NUMBER || 0);
     const waveNumber = Number(env.DEPENDENCY_TRAIN_WAVE || 1);
+    const mode = env.DEPENDENCY_TRAIN_SELECTION_MODE || 'wave';
+    assert.ok(['wave', 'cohort'].includes(mode), 'Unknown candidate selection mode');
     assert.ok(Number.isSafeInteger(prNumber) && prNumber >= 0, 'Invalid source PR number');
     assert.ok(Number.isSafeInteger(waveNumber) && waveNumber > 0, 'Invalid wave number');
     assert.ok(
@@ -201,6 +205,7 @@ async function planTrain(
     const {repositories: repos, unsupported} = repositoryTargets(graph, requested);
     const registry = yaml.load(fs.readFileSync('dependency-policy.yml', 'utf8')).entries;
     const inventory = [];
+    const inputs = new Map();
     const excluded = [];
     const sourceFiles = new Map();
     const readSource = (repo, sha, filename) => {
@@ -240,6 +245,11 @@ async function planTrain(
                     readSource(repo, pr.head.sha, 'package-lock.json'),
                 ]).then((items) => items.map(JSON.parse));
                 const assessment = assess(pr, files, before, after, oldLock, newLock, registry);
+                if (mode === 'cohort')
+                    inputs.set(
+                        `${repo}#${pr.number}`,
+                        changedInput(before, after, oldLock, newLock),
+                    );
                 assert.equal(
                     graph.find((node) => node.repo === repo).manifest.version,
                     after.version,
@@ -282,7 +292,48 @@ async function planTrain(
         }
     }
 
-    const waves = candidateWaves(inventory);
+    let automaticReport;
+    if (mode === 'cohort') {
+        assert.equal(prNumber, 0, 'Use explicit cohort PRs for manual source selection');
+        const baselines = new Map();
+        for (const name of new Set([...inputs.values()].map((input) => input.name))) {
+            for (const node of graph.filter(
+                (item) => !['cli', 'vsc'].includes(item.repo) && declares(item.manifest, name),
+            )) {
+                const current = (await request(`/repos/${OWNER}/${node.repo}/branches/master`))
+                    .commit.sha;
+                if (current !== node.sha) continue;
+                const lock = JSON.parse(await readSource(node.repo, node.sha, 'package-lock.json'));
+                baselines.set(`${node.repo}:${name}`, {
+                    sha: node.sha,
+                    version: lock.packages[`node_modules/${name}`]?.version,
+                });
+            }
+        }
+        automaticReport = automaticGroups(graph, inventory, inputs, repos, baselines);
+        assert.ok(
+            waveNumber <= Math.max(1, automaticReport.groups.length),
+            'Group index is out of range',
+        );
+        const group = automaticReport.groups[waveNumber - 1];
+        if (group) {
+            const plan = await planCohort(
+                {
+                    ...env,
+                    DEPENDENCY_TRAIN_WAVE: '1',
+                    DEPENDENCY_TRAIN_COHORT_PRS: group.requests
+                        .map(({repo, number}) => `${repo}#${number}`)
+                        .join(','),
+                    DEPENDENCY_TRAIN_COHORT_DEPENDENCY: group.dependency.name,
+                },
+                request,
+                evidence,
+                {graphAt, assess, automatic: true, baseline: group.baseline || []},
+            );
+            return {...plan, automaticGroups: automaticReport, excluded};
+        }
+    }
+    const waves = mode === 'cohort' ? [] : candidateWaves(inventory);
     assert.ok(
         waveNumber <= Math.max(1, waves.length),
         `Wave ${waveNumber} is out of range; inventory contains ${waves.length} wave(s)`,
@@ -309,17 +360,18 @@ async function planTrain(
         graph,
         selected,
         excluded,
-        inventory: inventory.map(candidateIdentity),
+        inventory: (mode === 'cohort' ? [] : inventory).map(candidateIdentity),
         waves: waves.map((wave) => wave.map(candidateIdentity)),
         selection: {
             wave: waveNumber,
             totalWaves: waves.length,
             waveSize: WAVE_SIZE,
-            eligibleCount: inventory.length,
+            eligibleCount: mode === 'cohort' ? 0 : inventory.length,
             repositories: repos,
             unsupported,
         },
     };
+    if (automaticReport) plan.automaticGroups = automaticReport;
     plan.id = planId(plan);
     if (selected.length) buildOrder(graph, selected);
     return validatePlan(plan);
@@ -328,7 +380,9 @@ async function planTrain(
 function renderSelection(plan) {
     if (plan.schema === 2) {
         return [
-            '## Manual dependency cohort',
+            plan.automaticGroups
+                ? '## Automatic coordinated dependency group'
+                : '## Manual dependency cohort',
             '',
             `${plan.selected.length} exact source PRs; the group is indivisible and is **not yet verified**.`,
             ...(plan.cohort.dependency
@@ -402,6 +456,14 @@ function renderSelection(plan) {
             for (const item of plan.selection.unsupported) {
                 lines.push(`- ${item.repo}: ${clean(item.reason)}`);
             }
+        }
+    }
+    if (plan.automaticGroups?.excluded.length) {
+        lines.push('', '### Blocked coordinated groups', '');
+        for (const item of plan.automaticGroups.excluded.slice(0, SUMMARY_LIMIT)) {
+            lines.push(
+                `- ${clean(item.dependency.name)}@${clean(item.dependency.version)}: ${clean(item.reason)}`,
+            );
         }
     }
     if (plan.excluded.length) {
