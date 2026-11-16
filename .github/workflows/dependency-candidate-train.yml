@@ -5,6 +5,11 @@ on:
     - cron: '17 3 * * *' # Preparation only; opt-in, disabled by default.
   workflow_dispatch:
     inputs:
+      selection_mode:
+        description: 'Coordinated groups, or the legacy independent wave selector'
+        type: choice
+        options: [cohort, wave]
+        default: cohort
       cohort_prs:
         description: 'Manual indivisible group: repo#PR,repo#PR; one PR per supported repository'
         type: string
@@ -41,7 +46,7 @@ jobs:
   select:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'schedule' && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true')
+      (github.event_name == 'schedule' && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true' && vars.DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -64,6 +69,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'cohort' || inputs.selection_mode || 'cohort' }}
           DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
           DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
           DEPENDENCY_TRAIN_COHORT_PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_prs || '' }}
@@ -154,6 +160,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
+          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'cohort' || inputs.selection_mode || 'cohort' }}
+          DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
           DEPENDENCY_CANDIDATE_PREPARE_APPROVED: 'true'
           DEPENDENCY_TRAIN_COHORT_PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_prs || '' }}
           DEPENDENCY_TRAIN_COHORT_DEPENDENCY: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_dependency || '' }}

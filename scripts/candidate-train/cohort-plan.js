@@ -9,12 +9,21 @@ const {repositoryTargets} = require('./waves');
 const {deriveChecksGreen} = require('../auto-merge');
 
 /** Select the entire explicit group or fail; this path is unavailable to schedules. */
-async function planCohort(env, request, evidence, {graphAt, assess}) {
-    assert.equal(
-        env.GITHUB_EVENT_NAME,
-        'workflow_dispatch',
-        'Cohorts require an explicit manual dispatch',
-    );
+async function planCohort(
+    env,
+    request,
+    evidence,
+    {graphAt, assess, automatic = false, baseline = []},
+) {
+    if (automatic) {
+        assert.ok(['schedule', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME));
+        assert.equal(env.DEPENDENCY_TRAIN_SELECTION_MODE, 'cohort');
+    } else
+        assert.equal(
+            env.GITHUB_EVENT_NAME,
+            'workflow_dispatch',
+            'Cohorts require an explicit manual dispatch',
+        );
     assert.equal(
         Number(env.DEPENDENCY_TRAIN_PR_NUMBER || 0),
         0,
@@ -66,7 +75,7 @@ async function planCohort(env, request, evidence, {graphAt, assess}) {
             oldLock,
             newLock,
             registry,
-            {manual: true, dependency},
+            {manual: !automatic, dependency},
         );
         const node = graph.find((item) => item.repo === repo);
         assert.equal(
@@ -101,7 +110,25 @@ async function planCohort(env, request, evidence, {graphAt, assess}) {
     const cohort = {
         requests,
         ...(dependency ? {dependency: {name: dependency, version: [...versions][0]}} : {}),
+        ...(baseline.length ? {baseline} : {}),
     };
+    for (const item of baseline) {
+        assert.ok(
+            automatic && dependency,
+            'Only independently selected baseline consumers may be omitted',
+        );
+        assert.equal(graph.find((node) => node.repo === item.repo)?.sha, item.sha);
+        assert.equal(
+            (await request(`/repos/${OWNER}/${item.repo}/branches/master`)).commit.sha,
+            item.sha,
+        );
+        const lock = JSON.parse(await fileAt(item.repo, item.sha, 'package-lock.json', request));
+        assert.equal(
+            lock.packages[`node_modules/${dependency}`]?.version,
+            cohort.dependency.version,
+            'An unchanged consumer must already lock the exact group version',
+        );
+    }
     const date = new Date(Date.now() + 3 * 60 * 60_000).toISOString().slice(0, 10);
     const plan = {
         schema: 2,

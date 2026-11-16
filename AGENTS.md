@@ -13,15 +13,15 @@ The owner requested Action version tags and a reusable testpack caller at
 Exact candidate and trusted policy/publisher source SHAs remain required.
 Keep workflow JavaScript in the tested `scripts/` helpers, not large YAML blocks.
 Morning candidate trains are opt-in; see `docs/dependency-candidate-train.md`.
-Automatic inventory builds one low-risk wave. Explicit manual cohorts are
-indivisible, use plan schema 2, and must fail if any source or required check is
-missing. Keep the private consumer compatible before using that plan schema.
+Automatic groups and explicit cohorts are indivisible, use plan schema 2,
+and must fail if any consumer or required evidence is missing. Legacy waves remain
+explicit manual mode; merging is a separate human dispatch bound to the latest verdict. Keep the private consumer compatible before using that plan schema.
 Model bundled build inputs and opt-in activation explicitly; direct CLI and VSC
 updates remain excluded. Installing an archive alone is not activation evidence.
 Keep canonical source proofs and independently reject unplanned CLI dependency
 drift in both builder and publisher; never repair a proof by changing its meaning.
-GitHub only prepares candidates. Internal observation and existing notifications
-belong to Viewer ops; never add internal credentials/endpoints to GitHub Actions.
+GitHub prepares candidates and merges sources only by explicit verified-group dispatch.
+Internal observation and existing notifications belong to Viewer ops; never add internal credentials/endpoints to GitHub Actions.
 Keep package execution secretless and publication data-only. A standalone
 install is not downstream workspace proof. Never accept a missing installed
 version proof, stale SHA/diff or skipped document badge as success.

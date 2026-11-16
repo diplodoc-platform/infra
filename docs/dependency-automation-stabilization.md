@@ -25,7 +25,10 @@ an operator can approve one manual preparation without enabling the schedule.
 GitHub does not observe private document checks or send private notifications:
 hand off the exact CLI PR/SHA and tooling SHA to the internal operations system.
 Complete a manual pilot there, including installed-version proof, before enabling
-scheduled preparation. This is not the health or auto-merge audit; deployment
+scheduled preparation. Coordinated preparation additionally requires the new default-off
+`DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED` gate. Deploy the compatible private consumer
+and candidate-only Viewer route first. Manual verified-group merge is a separate
+workflow dispatch, defaults to preview and never activates automatic merge. This is not the health or auto-merge audit; deployment
 does not activate either audit schedule, live merge, publication or distribution.
 
 ## Required evidence before activation

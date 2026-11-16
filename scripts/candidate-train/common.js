@@ -149,7 +149,7 @@ function validateWaves(plan) {
 }
 
 async function github(route, {token = process.env.GH_TOKEN, method = 'GET', body} = {}) {
-    assert.ok(route.startsWith('/repos/') || route === '/user');
+    assert.ok(route.startsWith('/repos/') || route === '/user' || route === '/graphql');
     const response = await fetch(`https://api.github.com${route}`, {
         method,
         headers: {

@@ -173,26 +173,36 @@ async function unchangedSources(plan, request = github) {
 /** Re-derive a manual group from canonical sources, fresh CI and dispatch inputs. */
 async function revalidateSources(plan, env, request = github, evidence) {
     if (plan.schema === 1) {
+        assert.notEqual(
+            env.DEPENDENCY_TRAIN_SELECTION_MODE,
+            'cohort',
+            'Automatic groups cannot publish a downgraded wave',
+        );
         assert.ok(
             !env.DEPENDENCY_TRAIN_COHORT_PRS?.trim(),
             'Manual dispatch cannot publish a downgraded wave plan',
         );
         return unchangedSources(plan, request);
     }
-    assert.equal(
-        env.GITHUB_EVENT_NAME,
-        'workflow_dispatch',
-        'Cohort publication requires manual dispatch',
-    );
-    assert.deepEqual(
-        parseCohort(env.DEPENDENCY_TRAIN_COHORT_PRS),
-        plan.cohort.requests,
-        'Publisher dispatch does not approve this exact cohort',
-    );
-    assert.equal(
-        (env.DEPENDENCY_TRAIN_COHORT_DEPENDENCY || '').trim(),
-        plan.cohort.dependency?.name || '',
-    );
+    const automatic =
+        env.DEPENDENCY_TRAIN_SELECTION_MODE === 'cohort' &&
+        !env.DEPENDENCY_TRAIN_COHORT_PRS?.trim();
+    if (!automatic) {
+        assert.equal(
+            env.GITHUB_EVENT_NAME,
+            'workflow_dispatch',
+            'Cohort publication requires manual dispatch',
+        );
+        assert.deepEqual(
+            parseCohort(env.DEPENDENCY_TRAIN_COHORT_PRS),
+            plan.cohort.requests,
+            'Publisher dispatch does not approve this exact cohort',
+        );
+        assert.equal(
+            (env.DEPENDENCY_TRAIN_COHORT_DEPENDENCY || '').trim(),
+            plan.cohort.dependency?.name || '',
+        );
+    }
     const canonical = await planTrain(env, request, evidence);
     for (const key of [
         'schema',
@@ -222,11 +232,11 @@ function candidateBody(plan, runUrl) {
         `Affected consumers, including client assets where needed, are rebuilt. ` +
         `Installed-resolution evidence is in \`dependency-train/proof.json\`.\n\n` +
         `Target: ready for the operator by **08:00 Europe/Moscow**. ` +
-        `The existing Internal check prepares the downstream PR; its CI still needs manual start. ` +
+        `The candidate-only Internal check verifies this exact SHA and prepares the downstream PR; document CI still needs manual start. ` +
         `Internal observation and existing notifications belong to the private operations system. ` +
         `Preparation is NOT successful document verification.\n\n` +
         `[Preparation](${runUrl}). Hand off this exact PR/SHA and tooling SHA to the internal observer. ` +
-        `Missing, skipped, stale or failed checks are not success. No merge or release is authorized.\n`
+        `Missing, skipped, stale or failed checks are not success. After a trusted exact-train verdict, use the separate Merge Verified Dependency Train workflow to preview and explicitly merge approved source PRs. This CLI candidate must never be merged or released.\n`
     );
 }
 
