@@ -33,6 +33,111 @@ registry-owner: diplodoc-platform/infra
 last-updated: 2026-11-12
 
 entries:
+  - id: DEP-0012
+    dependency: '@typescript-eslint/eslint-plugin'
+    repositories:
+      - notes-extension
+    allowed-version: 8.72.1
+    ignored-versions: []
+    risk: high
+    category: tooling-compatibility
+    verification-profile: standard
+    reason: >-
+      The isolated notes source lint requires the directly declared ESLint plugin version paired with the supported
+      parser; ancestor workspace resolution previously hid the missing peer.
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28T00:00:00.000Z
+    review-after: 2026-11-17T00:00:00.000Z
+    expires-at: 2026-12-01T00:00:00.000Z
+    exit-criteria:
+      - Revalidate normal isolated source lint and plugin/parser peer resolution before widening the pin
+  - id: DEP-0013
+    dependency: '@typescript-eslint/parser'
+    repositories:
+      - notes-extension
+    allowed-version: 8.72.1
+    ignored-versions: []
+    risk: high
+    category: tooling-compatibility
+    verification-profile: standard
+    reason: >-
+      The isolated notes source lint requires the directly declared TypeScript ESLint parser paired with its plugin; an
+      ancestor workspace dependency previously masked the missing peer.
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28T00:00:00.000Z
+    review-after: 2026-11-17T00:00:00.000Z
+    expires-at: 2026-12-01T00:00:00.000Z
+    exit-criteria:
+      - Revalidate normal isolated source lint and plugin/parser peer resolution before widening the pin
+  - id: DEP-0014
+    dependency: markdown-it
+    repositories:
+      - notes-extension
+    allowed-version: 15.0.3
+    ignored-versions: []
+    risk: high
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: >-
+      The notes package tests its accepted native parser stack while separately exercising installed MarkdownIt 13, 14
+      and 15 with strict declarations and browser behavior.
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28T00:00:00.000Z
+    review-after: 2026-11-17T00:00:00.000Z
+    expires-at: 2026-12-01T00:00:00.000Z
+    exit-criteria:
+      - Revalidate all three native parser and installed browser matrices before widening the pin
+  - id: DEP-0015
+    dependency: typescript
+    repositories:
+      - notes-extension
+    allowed-version: 6.0.3
+    ignored-versions: []
+    risk: high
+    category: declaration-compatibility
+    verification-profile: ecosystem
+    reason: >-
+      The accepted notes package emits and validates native parser declarations with this TypeScript release; changes
+      require strict CJS and ESM consumer checks.
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28T00:00:00.000Z
+    review-after: 2026-11-17T00:00:00.000Z
+    expires-at: 2026-12-01T00:00:00.000Z
+    exit-criteria:
+      - Revalidate native parser declarations and strict installed CJS/ESM consumers before widening the pin
+  - id: DEP-0017
+    dependency: sass
+    repositories:
+      - notes-extension
+    allowed-version: 1.97.3
+    ignored-versions: []
+    risk: high
+    category: build-output
+    verification-profile: document-rendering
+    reason: >-
+      The accepted notes styles and exported Sass are checked against the Transform styling contract; a compiler change
+      needs computed CSS parity validation.
+    evidence:
+      review: https://github.com/diplodoc-platform/notes-extension/pull/1
+      task: https://st.yandex-team.ru/DOCSTOOLS-6942
+    owner: diplodoc-platform/team
+    introduced-at: 2026-10-28T00:00:00.000Z
+    review-after: 2026-11-17T00:00:00.000Z
+    expires-at: 2026-12-01T00:00:00.000Z
+    exit-criteria:
+      - Revalidate exported Sass and computed styles across the accepted rendering matrix before widening the pin
   - id: DEP-0003
     dependency: '@diplodoc/infra'
     pin-policy: managed-infra
