@@ -1,4 +1,5 @@
 name: Merge Verified Dependency Train
+run-name: "${{ inputs.dry_run && 'Preview' || 'Merge' }} candidates #${{ inputs.candidate_pr }} · request ${{ inputs.request_check_id || 'manual' }}"
 
 on:
   workflow_dispatch:
@@ -11,6 +12,10 @@ on:
         description: 'Preview all gates without merging'
         type: boolean
         default: true
+      request_check_id:
+        description: 'App authorization receipt; leave empty for a direct human dispatch'
+        type: string
+        default: ''
       confirm_train_id:
         description: 'For a live manual merge, paste the exact verified train ID'
         type: string
@@ -25,12 +30,16 @@ concurrency:
 
 jobs:
   preview:
-    if: github.event_name == 'workflow_dispatch' && github.actor != 'dependabot[bot]' && github.actor != 'github-actions[bot]'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      ((!endsWith(github.actor, '[bot]') && github.actor != 'diplodoc-bot' && github.actor != 'yc-ui-bot') ||
+      (github.actor == 'diplodoc-app[bot]' && inputs.request_check_id != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
       repositories: ${{ steps.preview.outputs.repositories }}
       train-id: ${{ steps.preview.outputs.train-id }}
+      read-repositories: ${{ steps.inventory.outputs.read-repositories }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -42,10 +51,38 @@ jobs:
           run-install: 'false'
           cache: ''
       - run: npm ci --ignore-scripts
+      - id: candidate-reader
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: cli
+          permission-contents: read
+          permission-checks: read
+          permission-pull-requests: read
+      - id: inventory
+        env:
+          GH_TOKEN: ${{ steps.candidate-reader.outputs.token }}
+          CANDIDATE_PR: ${{ inputs.candidate_pr }}
+        run: node scripts/candidate-train/merge.js inventory
+      - id: reader
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ steps.inventory.outputs.read-repositories }}
+          permission-contents: read
+          permission-checks: read
+          permission-pull-requests: read
+          permission-administration: read
       - id: preview
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.reader.outputs.token }}
           CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          REQUEST_CHECK_ID: ${{ inputs.request_check_id }}
+          REQUEST_ACTION: ${{ inputs.dry_run && 'preview' || 'merge' }}
           DEPENDENCY_TRAIN_MERGE_APPROVED: 'false'
         run: node scripts/candidate-train/merge.js
       - uses: actions/upload-artifact@v4
@@ -73,6 +110,17 @@ jobs:
           run-install: 'false'
           cache: ''
       - run: npm ci --ignore-scripts
+      - id: reader
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ needs.preview.outputs.read-repositories }}
+          permission-contents: read
+          permission-checks: read
+          permission-pull-requests: read
+          permission-administration: read
       - id: app
         uses: actions/create-github-app-token@v3
         with:
@@ -83,7 +131,10 @@ jobs:
       - name: Recheck the entire group and merge the exact heads
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_READ_TOKEN: ${{ steps.reader.outputs.token }}
           CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          REQUEST_CHECK_ID: ${{ inputs.request_check_id }}
+          REQUEST_ACTION: ${{ inputs.dry_run && 'preview' || 'merge' }}
           CONFIRM_TRAIN_ID: ${{ inputs.confirm_train_id }}
           DEPENDENCY_TRAIN_MERGE_APPROVED: 'true'
         run: node scripts/candidate-train/merge.js

@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const {OWNER, SHA, github, buildOrder, write} = require('./common');
 const {fetchCheckRuns, fetchRequiredChecks, deriveChecksGreen} = require('../auto-merge');
 const {verifiedVerdict} = require('./verdict');
+const {authorizeControl, requireOperatorWrite} = require('./control-authorization');
 
 /** Read data as Git blobs, never following a symlink or executing the candidate. */
 async function candidateFile(sha, name, request) {
@@ -75,8 +76,9 @@ async function baselineUnchanged(plan, request) {
     }
 }
 
-async function sourceReady(item, request, token, evidence) {
+async function sourceReady(item, request, token, evidence, operator) {
     assert.ok(!['cli', 'vsc', 'infra'].includes(item.repo), 'Unsupported merge target');
+    if (operator) await requireOperatorWrite(item.repo, operator, request);
     const prefix = `/repos/${OWNER}/${item.repo}`;
     const pr = await request(`${prefix}/pulls/${item.number}`);
     assert.equal(pr.head.repo?.full_name, `${OWNER}/${item.repo}`);
@@ -145,7 +147,14 @@ async function sourceReady(item, request, token, evidence) {
 /** A user dispatch is the only merge entrypoint. A rerun rechecks actual merged PRs, never trusts a journal. */
 async function mergeTrain(
     env = process.env,
-    request = (route, options) => github(route, {token: env.GH_TOKEN, ...options}),
+    request = (route, options) =>
+        github(route, {
+            token:
+                (options?.method || 'GET') === 'GET' || route === '/graphql'
+                    ? env.GH_READ_TOKEN || env.GH_TOKEN
+                    : env.GH_TOKEN,
+            ...options,
+        }),
     evidence = {fetchCheckRuns, fetchRequiredChecks},
     save = () => {},
 ) {
@@ -154,26 +163,24 @@ async function mergeTrain(
         'workflow_dispatch',
         'Merging requires an explicit user dispatch',
     );
-    assert.ok(
-        env.GITHUB_ACTOR &&
-            !env.GITHUB_ACTOR.endsWith('[bot]') &&
-            !['diplodoc-bot', 'yc-ui-bot'].includes(env.GITHUB_ACTOR),
-        'A human operator must request the merge',
-    );
     const live = env.DEPENDENCY_TRAIN_MERGE_APPROVED === 'true';
+    const evidenceToken = env.GH_READ_TOKEN || env.GH_TOKEN;
     const verified = await readVerifiedCandidate(
         Number(env.CANDIDATE_PR),
         request,
-        env.GH_TOKEN,
+        evidenceToken,
         evidence.fetchCheckRuns,
     );
     const {plan, candidate} = verified;
+    const operator = await authorizeControl(env, verified, request);
     if (live) assert.equal(env.CONFIRM_TRAIN_ID, plan.id, 'Confirm the exact verified train ID');
     const report = {
         schema: 1,
         trainId: plan.id,
         candidate,
         checkId: verified.checkId,
+        operator,
+        ...(env.REQUEST_CHECK_ID ? {requestCheckId: Number(env.REQUEST_CHECK_ID)} : {}),
         dryRun: !live,
         sources: [],
         complete: false,
@@ -186,7 +193,9 @@ async function mergeTrain(
             .filter(Boolean);
         // Preflight the entire indivisible group before the first write.
         for (const item of ordered)
-            report.sources.push(await sourceReady(item, request, env.GH_TOKEN, evidence));
+            report.sources.push(
+                await sourceReady(item, request, evidenceToken, evidence, operator),
+            );
         save(report);
         if (!live) return report;
         for (const item of ordered) {
@@ -196,9 +205,10 @@ async function mergeTrain(
             const current = await readVerifiedCandidate(
                 candidate.number,
                 request,
-                env.GH_TOKEN,
+                evidenceToken,
                 evidence.fetchCheckRuns,
             );
+            await authorizeControl(env, current, request);
             assert.deepEqual(current.candidate, candidate, 'Candidate changed during the merge');
             assert.deepEqual(
                 current.verdict,
@@ -206,7 +216,7 @@ async function mergeTrain(
                 'Verification changed during the merge',
             );
             for (const source of ordered) {
-                await sourceReady(source, request, env.GH_TOKEN, evidence);
+                await sourceReady(source, request, evidenceToken, evidence, operator);
             }
             const result = await request(
                 `/repos/${OWNER}/${item.repo}/pulls/${item.number}/merge`,
@@ -240,7 +250,30 @@ async function mergeTrain(
     }
 }
 
-if (require.main === module) {
+/** The first reader token is CLI-only; the canonical App verdict supplies the precise scope. */
+async function inventory(env = process.env) {
+    assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
+    const verified = await readVerifiedCandidate(
+        Number(env.CANDIDATE_PR),
+        (route, options) => github(route, {token: env.GH_TOKEN, ...options}),
+        env.GH_TOKEN,
+    );
+    const repositories = [
+        ...new Set([...verified.plan.selected.map((source) => source.repo), 'cli']),
+    ];
+    const readers = [...new Set([...repositories, 'infra', 'diplodoc'])];
+    fs.appendFileSync(
+        env.GITHUB_OUTPUT,
+        `repositories=${repositories.join(',')}\nread-repositories=${readers.join(',')}\n`,
+    );
+}
+
+if (require.main === module && process.argv[2] === 'inventory') {
+    inventory().catch((error) => {
+        console.error(error.message);
+        process.exitCode = 1;
+    });
+} else if (require.main === module) {
     mergeTrain(process.env, undefined, undefined, (report) => write('merge-progress.json', report))
         .then((report) => {
             if (process.env.GITHUB_OUTPUT)
