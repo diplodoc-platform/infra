@@ -73,10 +73,14 @@ function validateControlReceipt(check, verified, expectedAction, now = Date.now(
     assert.match(receipt.operator.login, LOGIN);
     assert.ok(!['diplodoc-bot', 'yc-ui-bot'].includes(receipt.operator.login));
     assert.ok(Number.isSafeInteger(receipt.operator.id) && receipt.operator.id > 0);
+
+    // Check runs have no created_at. The trusted App omits started_at on creation,
+    // so GitHub supplies the check's start time independently of the receipt body.
     const issued = Date.parse(receipt.issuedAt);
-    const created = Date.parse(check.created_at);
-    assert.ok(Number.isFinite(issued) && Number.isFinite(created));
-    assert.ok(Math.abs(issued - created) <= 60 * 1000, 'Receipt timestamp is not server-bound');
+    const started = Date.parse(check.started_at);
+    assert.ok(Number.isFinite(issued), 'Control receipt issuance time is missing or invalid');
+    assert.ok(Number.isFinite(started), 'Control receipt check start time is missing or invalid');
+    assert.ok(Math.abs(issued - started) <= 60 * 1000, 'Receipt timestamp is not server-bound');
     assert.ok(
         issued <= now + 30 * 1000 && now - issued <= REQUEST_TTL_MS,
         'Control receipt expired',

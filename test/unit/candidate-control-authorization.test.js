@@ -35,7 +35,8 @@ function authorized(action = 'merge') {
         head_sha: f.candidate.sha,
         status: 'completed',
         conclusion: 'neutral',
-        created_at: now,
+        started_at: now,
+        completed_at: now,
         external_id: `dependency-train-request:${receipt.requestId}`,
         output: {text: `Manual request\n${REQUEST_MARKER}\n${JSON.stringify(receipt)}`},
     };
@@ -52,8 +53,9 @@ function authorized(action = 'merge') {
     };
 }
 
-test('a public App receipt delegates a human preview without any merge write', async () => {
-    const {f, env} = authorized('preview');
+test('a REST check with started_at and no created_at authorizes preview without merge writes', async () => {
+    const {f, env, check} = authorized('preview');
+    assert.equal(Object.hasOwn(check, 'created_at'), false);
     const report = await f.run(false, env);
     assert.equal(report.operator.login, 'maintainer');
     assert.equal(report.requestCheckId, 123);
@@ -95,11 +97,11 @@ for (const change of [
         if (change === 'verifier') receipt.verifierCheckId = 11;
         if (change === 'train') receipt.trainId = '0'.repeat(16);
         if (change === 'expired')
-            receipt.issuedAt = check.created_at = new Date(
+            receipt.issuedAt = check.started_at = new Date(
                 Date.now() - REQUEST_TTL_MS - 1000,
             ).toISOString();
         if (change === 'future')
-            receipt.issuedAt = check.created_at = new Date(Date.now() + 60_000).toISOString();
+            receipt.issuedAt = check.started_at = new Date(Date.now() + 60_000).toISOString();
         if (change === 'operator') receipt.operator.id = 8;
         if (change === 'purpose') receipt.action = 'preview';
         refresh();
@@ -145,10 +147,20 @@ test('permission revocation after a partial merge stops the next write', async (
 
 test('a timestamp controlled only by the receipt cannot refresh an old request', () => {
     const {f, check, receipt, refresh} = authorized();
-    check.created_at = new Date(Date.now() - REQUEST_TTL_MS - 1000).toISOString();
+    check.started_at = new Date(Date.now() - REQUEST_TTL_MS - 1000).toISOString();
     receipt.issuedAt = new Date().toISOString();
     refresh();
     assert.throws(() => validateControlReceipt(check, f.verified, 'merge'), /server-bound/);
+});
+
+test('missing or invalid check start time cannot fall back to receipt or completion timestamps', async () => {
+    for (const started of [undefined, null, '', 'not-a-date']) {
+        const {f, env, check} = authorized();
+        check.started_at = started;
+        check.created_at = check.completed_at;
+        await assert.rejects(f.run(true, env), /check start time is missing or invalid/);
+        assert.deepEqual(f.writes, []);
+    }
 });
 
 test('read-only authority/baseline traffic and merge mutations use separate scoped tokens', async () => {
