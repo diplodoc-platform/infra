@@ -120,6 +120,10 @@ function fixture() {
         badCi: '',
         metaSha: plan.metapackageSha,
         advancedRepo: '',
+        deniedRepo: '',
+        operatorId: 7,
+        authorization: undefined,
+        revokeAfterMerge: false,
     };
     const blob = (content) => ({
         encoding: 'base64',
@@ -147,6 +151,12 @@ function fixture() {
         const parts = route.split('/');
         const repo = parts[3];
         const tail = parts.slice(4).join('/');
+        if (tail.startsWith('collaborators/'))
+            return {
+                permission: repo === state.deniedRepo ? 'read' : 'write',
+                user: {login: 'maintainer', id: state.operatorId, type: 'User'},
+            };
+        if (tail.startsWith('check-runs/')) return state.authorization;
         if (options.method === 'PUT') {
             state.writes.push({repo, ...options});
             if (repo === state.failRepo) throw new Error('Simulated merge failure');
@@ -158,6 +168,7 @@ function fixture() {
                 state: 'closed',
                 merge_commit_sha: commit,
             });
+            if (state.revokeAfterMerge) state.deniedRepo = 'beta';
             return {merged: true, sha: commit};
         }
         if (options.method === 'PATCH') {
@@ -238,6 +249,10 @@ function fixture() {
         CANDIDATE_PR: '42',
         CONFIRM_TRAIN_ID: plan.id,
     };
+    state.request = request;
+    state.evidence = evidence;
+    state.environment = env;
+    state.verified = {plan, verdict, candidate, checkId: 10};
     state.run = (live = false, overrides = {}) =>
         mergeTrain(
             {...env, DEPENDENCY_TRAIN_MERGE_APPROVED: String(live), ...overrides},
@@ -395,7 +410,7 @@ test('a changed or reverted merged group member blocks partial resume before ano
     assert.equal(f.writes.length, writes);
 });
 
-test('merge workflow is manual-only with a secretless default preview and scoped live authorization', () => {
+test('merge workflow is manual-only with read-only scoped preview and separate write authorization', () => {
     const workflow = yaml.load(
         fs.readFileSync(
             path.join(__dirname, '../../.github/workflows/merge-verified-train.yml'),
@@ -405,7 +420,27 @@ test('merge workflow is manual-only with a secretless default preview and scoped
     assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
     assert.equal(workflow.on.workflow_dispatch.inputs.dry_run.default, true);
     assert.deepEqual(workflow.permissions, {contents: 'read'});
-    assert.ok(!JSON.stringify(workflow.jobs.preview).includes('secrets.'));
+    for (const step of workflow.jobs.preview.steps.filter((step) =>
+        step.uses?.startsWith('actions/create-github-app-token@'),
+    )) {
+        const permissions = Object.entries(step.with).filter(([key]) =>
+            key.startsWith('permission-'),
+        );
+        assert.ok(permissions.length > 0 && permissions.every(([, value]) => value === 'read'));
+    }
+    assert.equal(
+        workflow.jobs.preview.steps.find((step) => step.id === 'candidate-reader').with
+            .repositories,
+        'cli',
+    );
+    assert.equal(
+        workflow.jobs.preview.steps.find((step) => step.id === 'inventory').run,
+        'node scripts/candidate-train/merge.js inventory',
+    );
+    assert.equal(
+        workflow.jobs.preview.steps.find((step) => step.id === 'reader').with.repositories,
+        '${{ steps.inventory.outputs.read-repositories }}',
+    );
     assert.ok(workflow.jobs.merge.if.includes('inputs.dry_run == false'));
     assert.ok(
         workflow.jobs.merge.if.includes(
@@ -423,4 +458,4 @@ test('merge workflow is manual-only with a secretless default preview and scoped
     );
 });
 
-module.exports = {tests};
+module.exports = {tests, fixture};

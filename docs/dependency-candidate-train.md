@@ -225,6 +225,44 @@ Deploy the compatible private builder and Viewer worker before enabling the priv
 Keep both schedule variables off until separately approved. Health audits, distribution
 and auto-merge remain independent and are not activated here.
 
+## Buttons and slash command on the temporary CLI PR
+
+After a coordinated candidate gets the trusted exact-train verdict, its check offers
+**Preview candidates** and **Merge candidates**. These buttons act on the frozen source
+PRs, never on the temporary CLI PR. A green check alone does not request any merge.
+
+Alternatively, create a new PR comment containing only:
+
+```text
+/merge-candidates
+```
+
+An optional exact train ID can follow the command. The comment must be unedited,
+no more than one hour old, and created after the current verification completed.
+Quoted commands, extra prose, bots, obsolete button checks and changed candidate heads
+are rejected. The App independently reads the canonical comment/check and current
+write permissions for the operator in infra, CLI and every source repository.
+
+Both controls dispatch the same fixed `merge-verified-train.yml` on infra master.
+The existing GitHub App writes a short-lived public authorization check binding the
+human login/ID, operation, candidate SHA, plan/proof hashes and latest verifier check.
+Infra accepts it only from that App's dispatch actor, revalidates the receipt and
+current user permissions, then executes all existing group preflights. Preview
+receipts cannot authorize writes. Caller-supplied user names or associations are
+never merge authority.
+
+Signed webhook deliveries are deduplicated through Temporal, including after
+completion. The dispatch activity has one attempt: a lost POST response must not
+cause blind redispatch. The observer correlates the exact GitHub run by request ID
+and posts public request/result comments with the operator, run link and source merge
+states. A partial failure stays partial; an unknown submission or observation timeout
+is not success. Audit comments never invoke the slash-command parser.
+
+The App webhook must deliver `check_run.requested_action` and `issue_comment` events.
+Deploy the compatible worker before the webhook handler. Reuse the existing default-off
+candidate rollout gate; this change configures no App subscription or activation flag.
+No private credentials are added to GitHub.
+
 ## Separate manual merge after verification
 
 `merge-verified-train.yml` has **workflow_dispatch only**, no schedule and no automatic
@@ -238,6 +276,15 @@ The check must carry `DEPENDENCY_TRAIN_VERDICT_V1`, binding plan/proof hashes, t
 CLI base, every source SHA/base and the private verifier's installed/document evidence.
 A generic green, another App, an older successful attempt behind a newer pending or
 failed attempt, or an absent/skipped document badge cannot authorize a merge.
+
+The preview first obtains a CLI-only read token to verify the canonical group, then
+an explicitly read-only token scoped to its sources, CLI, infra and the metapackage.
+This is required to query protected cross-repository permission and branch-policy data;
+infra's ordinary `GITHUB_TOKEN` cannot read that authorization metadata everywhere.
+The live job uses separate read and write tokens. Write scope remains only the source
+repositories and CLI; infra/metapackage baseline reads never use that write token.
+Candidate package execution remains secretless, and these jobs execute only trusted
+infra tooling, not code from candidate archives.
 
 Before any write, and again before each source merge, it verifies the full group:
 unchanged source heads/bases, current publisher-bound CI, required human reviews,
