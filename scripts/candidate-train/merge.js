@@ -135,12 +135,13 @@ async function sourceReady(item, request, token, evidence, operator) {
     const review = await request('/graphql', {
         method: 'POST',
         body: {
-            query: 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){headRefOid baseRefOid reviewDecision mergeStateStatus}}}',
+            query: 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){squashMergeAllowed rebaseMergeAllowed pullRequest(number:$number){headRefOid baseRefOid reviewDecision mergeStateStatus}}}',
             variables: {owner: OWNER, repo: item.repo, number: item.number},
         },
     });
     assert.ok(!review.errors?.length, 'Review state is unavailable');
-    const state = review.data?.repository?.pullRequest;
+    const repository = review.data?.repository;
+    const state = repository?.pullRequest;
     assert.equal(state?.headRefOid, item.sha);
     assert.equal(state?.baseRefOid, item.baseSha);
     assert.ok(
@@ -148,7 +149,7 @@ async function sourceReady(item, request, token, evidence, operator) {
         `${item.repo}: required review is missing`,
     );
     assert.equal(state.mergeStateStatus, 'CLEAN', `${item.repo}: GitHub merge gate is not green`);
-    const mergeMethod = await selectMergeMethod(item.repo, request);
+    const mergeMethod = await selectMergeMethod(item.repo, repository, request);
     const source = {
         repo: item.repo,
         number: item.number,

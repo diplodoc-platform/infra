@@ -149,6 +149,10 @@ function fixture() {
             return {
                 data: {
                     repository: {
+                        ...(state.mergeSettings.get(item.repo) || {
+                            squashMergeAllowed: true,
+                            rebaseMergeAllowed: false,
+                        }),
                         pullRequest: {
                             headRefOid: item.sha,
                             baseRefOid: item.baseSha,
@@ -162,7 +166,6 @@ function fixture() {
         const parts = route.split('/');
         const repo = parts[3];
         const tail = parts.slice(4).join('/');
-        if (!tail) return state.mergeSettings.get(repo) || {allow_squash_merge: true};
         if (tail.split('?')[0] === 'rules/branches/master') return state.mergeRules.get(repo) || [];
         if (tail.startsWith('collaborators/'))
             return {
@@ -342,7 +345,7 @@ function twoCommitRebase(f) {
 
     f.pulls.get('alpha').commits = 2;
     f.pulls.get('alpha').rebaseable = true;
-    f.mergeSettings.set('alpha', {allow_squash_merge: false, allow_rebase_merge: true});
+    f.mergeSettings.set('alpha', {squashMergeAllowed: false, rebaseMergeAllowed: true});
     add(alpha.sha, sourceParent, 'd');
     add(sourceParent, alpha.baseSha, 'e');
     add(mergedTip, mergedParent, 'd');
@@ -370,6 +373,19 @@ test('preview selects rebase in a rebase-only repo and partial resume verifies t
         f.writes.map(({repo}) => repo),
         ['alpha', 'beta', 'beta'],
     );
+});
+
+test('preview prefers rebase when both methods are allowed and respects a squash-only branch rule', async () => {
+    const f = fixture();
+    twoCommitRebase(f);
+    f.mergeSettings.set('alpha', {squashMergeAllowed: true, rebaseMergeAllowed: true});
+    assert.equal((await f.run()).sources[0].mergeMethod, 'rebase');
+
+    f.mergeRules.set('alpha', [
+        {type: 'pull_request', parameters: {allowed_merge_methods: ['squash']}},
+    ]);
+    assert.equal((await f.run()).sources[0].mergeMethod, 'squash');
+    assert.deepEqual(f.writes, []);
 });
 
 test('branch merge rules and repository settings must agree before any source is merged', async () => {
