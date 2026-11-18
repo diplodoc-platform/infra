@@ -378,6 +378,7 @@ test('preview selects rebase in a rebase-only repo and partial resume verifies t
 test('preview prefers rebase when both methods are allowed and respects a squash-only branch rule', async () => {
     const f = fixture();
     twoCommitRebase(f);
+    f.pulls.get('alpha').rebaseable = null;
     f.mergeSettings.set('alpha', {squashMergeAllowed: true, rebaseMergeAllowed: true});
     assert.equal((await f.run()).sources[0].mergeMethod, 'rebase');
 
@@ -403,7 +404,7 @@ test('rebase preflight rejects a PR on the wrong base and landed tree drift stop
     const f = fixture();
     const {alpha, mergedParent} = twoCommitRebase(f);
     f.pulls.get('alpha').rebaseable = false;
-    await assert.rejects(f.run(true), /GitHub has not confirmed that this PR can be rebased/);
+    await assert.rejects(f.run(true), /GitHub reports that this PR cannot be rebased/);
     assert.deepEqual(f.writes, []);
 
     f.pulls.get('alpha').rebaseable = true;
