@@ -3,12 +3,14 @@
 const assert = require('node:assert/strict');
 const {OWNER, SHA, pages} = require('./common');
 
-async function selectMergeMethod(repo, request) {
+async function selectMergeMethod(repo, settings, request) {
     const prefix = `/repos/${OWNER}/${repo}`;
-    const [settings, rules] = await Promise.all([
-        request(prefix),
-        pages(`${prefix}/rules/branches/master`, request),
-    ]);
+    const {squashMergeAllowed, rebaseMergeAllowed} = settings;
+    assert.ok(
+        typeof squashMergeAllowed === 'boolean' && typeof rebaseMergeAllowed === 'boolean',
+        `${repo}: repository merge settings are unavailable`,
+    );
+    const rules = await pages(`${prefix}/rules/branches/master`, request);
     const restrictions = rules
         .filter((rule) => rule.type === 'pull_request')
         .map((rule) => rule.parameters?.allowed_merge_methods);
@@ -17,13 +19,11 @@ async function selectMergeMethod(repo, request) {
         `${repo}: invalid merge method rules`,
     );
 
-    const method = ['squash', 'rebase'].find(
-        (name) =>
-            settings[`allow_${name}_merge`] === true &&
-            restrictions.every((methods) => methods === undefined || methods.includes(name)),
-    );
-    assert.ok(method, `${repo}: GitHub does not allow squash or rebase on master`);
-    return method;
+    const allowedByRules = (method) =>
+        restrictions.every((methods) => methods === undefined || methods.includes(method));
+    if (rebaseMergeAllowed && allowedByRules('rebase')) return 'rebase';
+    if (squashMergeAllowed && allowedByRules('squash')) return 'squash';
+    assert.fail(`${repo}: GitHub does not allow squash or rebase on master`);
 }
 
 /** Record the tree at every commit in the tested linear rebase history, newest first. */
