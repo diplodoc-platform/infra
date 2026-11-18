@@ -9,6 +9,7 @@ const {fetchCheckRuns, fetchRequiredChecks, deriveChecksGreen} = require('../aut
 const {verifiedVerdict} = require('./verdict');
 const {authorizeControl, requireOperatorWrite} = require('./control-authorization');
 const {packageRegistrationsAt} = require('./metapackage');
+const {selectMergeMethod, rebaseTrees, verifyRebase} = require('./merge-method');
 
 /** Read data as Git blobs, never following a symlink or executing the candidate. */
 async function candidateFile(sha, name, request) {
@@ -105,11 +106,9 @@ async function sourceReady(item, request, token, evidence, operator) {
     assert.equal(pr.head.sha, item.sha, `${item.repo}: source head changed`);
     if (pr.merged === true) {
         const commit = await request(`${prefix}/git/commits/${pr.merge_commit_sha}`);
-        assert.equal(
-            commit.parents[0]?.sha,
-            item.baseSha,
-            'Merged source has an unverified baseline',
-        );
+        if (commit.parents[0]?.sha !== item.baseSha) {
+            await verifyRebase(item, commit, await rebaseTrees(item, pr.commits, request), request);
+        }
         assert.equal(
             (await request(`${prefix}/branches/master`)).commit.sha,
             pr.merge_commit_sha,
@@ -149,7 +148,23 @@ async function sourceReady(item, request, token, evidence, operator) {
         `${item.repo}: required review is missing`,
     );
     assert.equal(state.mergeStateStatus, 'CLEAN', `${item.repo}: GitHub merge gate is not green`);
-    return {repo: item.repo, number: item.number, sha: item.sha, merged: false};
+    const mergeMethod = await selectMergeMethod(item.repo, request);
+    const source = {
+        repo: item.repo,
+        number: item.number,
+        sha: item.sha,
+        merged: false,
+        mergeMethod,
+    };
+    if (mergeMethod === 'squash') return source;
+
+    assert.equal(
+        pr.rebaseable,
+        true,
+        `${item.repo}: GitHub has not confirmed that this PR can be rebased`,
+    );
+    const trees = await rebaseTrees(item, pr.commits, request);
+    return {...source, trees};
 }
 
 /** A user dispatch is the only merge entrypoint. A rerun rechecks actual merged PRs, never trusts a journal. */
@@ -201,10 +216,16 @@ async function mergeTrain(
             .map((node) => plan.selected.find((item) => item.repo === node.repo))
             .filter(Boolean);
         // Preflight the entire indivisible group before the first write.
-        for (const item of ordered)
-            report.sources.push(
-                await sourceReady(item, request, evidenceToken, evidence, operator),
+        for (const item of ordered) {
+            const {trees: _trees, ...source} = await sourceReady(
+                item,
+                request,
+                evidenceToken,
+                evidence,
+                operator,
             );
+            report.sources.push(source);
+        }
         save(report);
         if (!live) return report;
         for (const item of ordered) {
@@ -224,9 +245,15 @@ async function mergeTrain(
                 verified.verdict,
                 'Verification changed during the merge',
             );
+            let target;
             for (const source of ordered) {
-                await sourceReady(source, request, evidenceToken, evidence, operator);
+                const ready = await sourceReady(source, request, evidenceToken, evidence, operator);
+                if (source.repo === item.repo) target = ready;
             }
+            assert.ok(
+                target && !target.merged,
+                `${item.repo}: source was merged concurrently; repeat preview`,
+            );
 
             // Recheck the target base after the group reads. GitHub only pins the PR head.
             const prefix = `/repos/${OWNER}/${item.repo}`;
@@ -235,17 +262,21 @@ async function mergeTrain(
 
             const result = await request(`${prefix}/pulls/${item.number}/merge`, {
                 method: 'PUT',
-                body: {sha: item.sha, merge_method: 'squash'},
+                body: {sha: item.sha, merge_method: target.mergeMethod},
             });
             assert.equal(result.merged, true, `${item.repo}: merge was refused`);
-            Object.assign(row, {merged: true, commit: result.sha});
+            Object.assign(row, {merged: true, commit: result.sha, mergeMethod: target.mergeMethod});
             save(report);
             const merged = await request(`${prefix}/git/commits/${result.sha}`);
-            assert.equal(
-                merged.parents[0]?.sha,
-                item.baseSha,
-                `${item.repo}: merged baseline differs from the verified baseline`,
-            );
+            if (target.mergeMethod === 'rebase') {
+                await verifyRebase(item, merged, target.trees, request);
+            } else {
+                assert.equal(
+                    merged.parents[0]?.sha,
+                    item.baseSha,
+                    `${item.repo}: merged baseline differs from the verified baseline`,
+                );
+            }
         }
         report.complete = true;
         save(report);

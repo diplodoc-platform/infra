@@ -117,6 +117,9 @@ function fixture() {
         mergeState: 'CLEAN',
         failRepo: '',
         badCi: '',
+        mergeSettings: new Map(),
+        mergeRules: new Map(),
+        commits: new Map(),
         metaSha: plan.metapackageSha,
         cliBase: cli.sha,
         advancedRepo: '',
@@ -159,6 +162,8 @@ function fixture() {
         const parts = route.split('/');
         const repo = parts[3];
         const tail = parts.slice(4).join('/');
+        if (!tail) return state.mergeSettings.get(repo) || {allow_squash_merge: true};
+        if (tail.split('?')[0] === 'rules/branches/master') return state.mergeRules.get(repo) || [];
         if (tail.startsWith('collaborators/'))
             return {
                 permission: repo === state.deniedRepo ? 'read' : 'write',
@@ -245,7 +250,11 @@ function fixture() {
         if (tail === `git/blobs/${'7'.repeat(40)}`) return blob(proofBytes);
         if (tail === `git/commits/${candidate.sha}`) return {parents: [{sha: cli.sha}]};
         if (tail.startsWith('git/commits/'))
-            return {parents: [{sha: plan.selected.find((item) => item.repo === repo).baseSha}]};
+            return (
+                state.commits.get(`${repo}:${tail.split('/').at(-1)}`) || {
+                    parents: [{sha: plan.selected.find((item) => item.repo === repo).baseSha}],
+                }
+            );
         assert.fail(`Unexpected request ${route}`);
     };
     const evidence = {
@@ -320,6 +329,85 @@ test('partial failure persists exact progress; rerun independently verifies merg
     assert.equal(
         f.writes.filter((item) => item.repo === 'alpha' && item.method === 'PUT').length,
         1,
+    );
+});
+
+function twoCommitRebase(f) {
+    const alpha = f.plan.selected.find((item) => item.repo === 'alpha');
+    const sourceParent = 'ab'.repeat(20);
+    const mergedParent = 'cd'.repeat(20);
+    const mergedTip = '3'.repeat(40);
+    const add = (sha, parent, tree) =>
+        f.commits.set(`alpha:${sha}`, {parents: [{sha: parent}], tree: {sha: tree.repeat(40)}});
+
+    f.pulls.get('alpha').commits = 2;
+    f.pulls.get('alpha').rebaseable = true;
+    f.mergeSettings.set('alpha', {allow_squash_merge: false, allow_rebase_merge: true});
+    add(alpha.sha, sourceParent, 'd');
+    add(sourceParent, alpha.baseSha, 'e');
+    add(mergedTip, mergedParent, 'd');
+    add(mergedParent, alpha.baseSha, 'e');
+
+    return {alpha, mergedParent};
+}
+
+test('preview selects rebase in a rebase-only repo and partial resume verifies the two landed commits', async () => {
+    const f = fixture();
+    twoCommitRebase(f);
+    const preview = await f.run();
+    assert.deepEqual(
+        preview.sources.map((item) => item.mergeMethod),
+        ['rebase', 'squash'],
+    );
+    assert.deepEqual(f.writes, []);
+
+    f.failRepo = 'beta';
+    await assert.rejects(f.run(true), /Simulated/);
+    assert.equal(f.writes[0].body.merge_method, 'rebase');
+    f.failRepo = '';
+    assert.equal((await f.run(true)).complete, true);
+    assert.deepEqual(
+        f.writes.map(({repo}) => repo),
+        ['alpha', 'beta', 'beta'],
+    );
+});
+
+test('branch merge rules and repository settings must agree before any source is merged', async () => {
+    const f = fixture();
+    f.mergeRules.set('beta', [
+        {type: 'pull_request', parameters: {allowed_merge_methods: ['rebase']}},
+    ]);
+
+    await assert.rejects(f.run(), /beta: GitHub does not allow squash or rebase/);
+    await assert.rejects(f.run(true), /beta: GitHub does not allow squash or rebase/);
+    assert.deepEqual(f.writes, []);
+});
+
+test('rebase preflight rejects a PR on the wrong base and landed tree drift stops later writes', async () => {
+    const f = fixture();
+    const {alpha, mergedParent} = twoCommitRebase(f);
+    f.pulls.get('alpha').rebaseable = false;
+    await assert.rejects(f.run(true), /GitHub has not confirmed that this PR can be rebased/);
+    assert.deepEqual(f.writes, []);
+
+    f.pulls.get('alpha').rebaseable = true;
+    const parent = f.commits.get(`alpha:${alpha.sha}`).parents[0].sha;
+    const first = f.commits.get(`alpha:${parent}`);
+    first.parents[0].sha = '9'.repeat(40);
+    await assert.rejects(f.run(true), /rebase history must start at the verified base/);
+    assert.deepEqual(f.writes, []);
+
+    first.parents[0].sha = alpha.baseSha;
+    f.commits.get(`alpha:${mergedParent}`).tree.sha = '9'.repeat(40);
+    await assert.rejects(f.run(true), /rebased tree differs from the verified PR/);
+    assert.deepEqual(
+        f.writes.map(({repo}) => repo),
+        ['alpha'],
+    );
+    await assert.rejects(f.run(true), /rebased tree differs from the verified PR/);
+    assert.deepEqual(
+        f.writes.map(({repo}) => repo),
+        ['alpha'],
     );
 });
 
