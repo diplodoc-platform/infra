@@ -99,6 +99,8 @@ jobs:
       inputs.confirm_train_id == needs.preview.outputs.train-id
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      candidate-sha: ${{ steps.merge.outputs.candidate-sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -129,6 +131,7 @@ jobs:
           owner: diplodoc-platform
           repositories: ${{ needs.preview.outputs.repositories }}
       - name: Recheck the entire group and merge the exact heads
+        id: merge
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_READ_TOKEN: ${{ steps.reader.outputs.token }}
@@ -145,3 +148,66 @@ jobs:
           path: merge-progress.json
           retention-days: 90
           if-no-files-found: error
+
+  dispatch-submodules:
+    needs: merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run-id: ${{ steps.dispatch.outputs.run-id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: dispatcher
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: diplodoc
+          permission-actions: write
+      - name: Start Update Submodules on metapackage master
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ steps.dispatcher.outputs.token }}
+        run: node scripts/candidate-train/submodules.js dispatch
+
+  finish:
+    needs: [preview, merge, dispatch-submodules]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: observer
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: diplodoc
+          permission-actions: read
+      - name: Wait for the dispatched Update Submodules run
+        env:
+          GH_TOKEN: ${{ steps.observer.outputs.token }}
+          SUBMODULES_RUN_ID: ${{ needs.dispatch-submodules.outputs.run-id }}
+        run: node scripts/candidate-train/submodules.js wait
+      - id: cli
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: cli
+          permission-pull-requests: write
+      - name: Close the verified temporary CLI PR
+        env:
+          GH_TOKEN: ${{ steps.cli.outputs.token }}
+          CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          CANDIDATE_SHA: ${{ needs.merge.outputs.candidate-sha }}
+          TRAIN_ID: ${{ needs.preview.outputs.train-id }}
+        run: node scripts/candidate-train/submodules.js close

@@ -300,9 +300,16 @@ continuation. A source base can still move between the final read and the merge 
 After each merge, the train checks that the first parent matches the frozen base and
 stops further writes if it differs. Rebuild and reverify the group after any drift.
 
-Only after every source is merged does it close the temporary CLI PR, retaining its
-branch and evidence. The temporary CLI PR is never merged or released. Keep ordinary
-source review and release policies; document verification does not approve a PR.
+After every source is merged, the workflow dispatches `Update Submodules` on
+`diplodoc/master` and waits for that run by ID. After success it closes the temporary
+CLI PR, retaining its branch and evidence. If the update fails, the candidate stays
+open and the infra summary links to the failed run. Rerun the failed jobs there, then
+rerun the failed `finish` job in infra after the update succeeds. That job uses the
+same run ID and does not repeat source merges or dispatch another update.
+The regular submodule refresh is scheduled for 00:30 Europe/Moscow.
+
+The temporary CLI PR is never merged or released. Keep ordinary source review and
+release policies; document verification does not approve a PR.
 
 ## Preserving the CLI installation
 

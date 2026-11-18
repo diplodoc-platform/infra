@@ -148,7 +148,10 @@ function validateWaves(plan) {
     assert.deepEqual(plan.selected.map(identity), waves[selection.wave - 1] || []);
 }
 
-async function github(route, {token = process.env.GH_TOKEN, method = 'GET', body} = {}) {
+async function github(
+    route,
+    {token = process.env.GH_TOKEN, method = 'GET', body, apiVersion} = {},
+) {
     assert.ok(route.startsWith('/repos/') || route === '/user' || route === '/graphql');
     const response = await fetch(`https://api.github.com${route}`, {
         method,
@@ -156,6 +159,7 @@ async function github(route, {token = process.env.GH_TOKEN, method = 'GET', body
             Accept: 'application/vnd.github+json',
             'User-Agent': 'diplodoc-infra-candidate-train',
             ...(token ? {Authorization: `Bearer ${token}`} : {}),
+            ...(apiVersion ? {'X-GitHub-Api-Version': apiVersion} : {}),
             'Content-Type': 'application/json',
         },
         body: body === undefined ? undefined : JSON.stringify(body),
