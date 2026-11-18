@@ -37,6 +37,7 @@ const SUMMARY_LIMIT = 100;
 const {planCohort} = require('./cohort-plan');
 const {changedInput, automaticGroups} = require('./automatic-groups');
 const {declares} = require('./cohort');
+const {packageRegistrationsAt} = require('./metapackage');
 
 function allowlist(value) {
     const repos = (value || '')
@@ -148,27 +149,12 @@ function assess(
 }
 
 async function graphAt(sha, request = github) {
-    const tree = await request(`/repos/${OWNER}/diplodoc/git/trees/${sha}?recursive=1`);
-    assert.equal(tree.truncated, false);
-    const modules = await fileAt('diplodoc', sha, '.gitmodules', request);
+    const registrations = await packageRegistrationsAt(sha, request);
     const graph = [];
-    for (const block of modules.split(/(?=\[submodule )/)) {
-        const directory = /^\s*path\s*=\s*((?:packages|extensions)\/[a-z0-9-]+)\s*$/m.exec(
-            block,
-        )?.[1];
-        const repo = /github\.com[:/]diplodoc-platform\/([a-z0-9-]+?)(?:\.git)?\s*$/m.exec(
-            block,
-        )?.[1];
-        if (!directory || !repo) continue;
-        const commit = tree.tree.find((item) => item.path === directory && item.type === 'commit');
-        assert.ok(commit, `Missing registered submodule ${directory}`);
-        graph.push({
-            repo,
-            sha: commit.sha,
-            manifest: JSON.parse(await fileAt(repo, commit.sha, 'package.json', request)),
-        });
+    for (const {repo, sha: commit} of registrations.values()) {
+        const manifest = JSON.parse(await fileAt(repo, commit, 'package.json', request));
+        graph.push({repo, sha: commit, manifest});
     }
-    assert.ok(graph.length > 0);
     return graph;
 }
 
