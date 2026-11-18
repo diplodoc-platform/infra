@@ -131,16 +131,6 @@ async function sourceReady(item, request, token, evidence, operator) {
         `${item.repo}: required review is missing`,
     );
     assert.equal(state.mergeStateStatus, 'CLEAN', `${item.repo}: GitHub merge gate is not green`);
-    const rules = await request(`${prefix}/rules/branches/master`);
-    assert.ok(
-        Array.isArray(rules) &&
-            rules.some(
-                (rule) =>
-                    rule.type === 'required_status_checks' &&
-                    rule.parameters?.strict_required_status_checks_policy === true,
-            ),
-        `${item.repo}: server-side up-to-date branch checks are required`,
-    );
     return {repo: item.repo, number: item.number, sha: item.sha, merged: false};
 }
 
@@ -218,17 +208,20 @@ async function mergeTrain(
             for (const source of ordered) {
                 await sourceReady(source, request, evidenceToken, evidence, operator);
             }
-            const result = await request(
-                `/repos/${OWNER}/${item.repo}/pulls/${item.number}/merge`,
-                {
-                    method: 'PUT',
-                    body: {sha: item.sha, merge_method: 'squash'},
-                },
-            );
+
+            // Recheck the target base after the group reads. GitHub only pins the PR head.
+            const prefix = `/repos/${OWNER}/${item.repo}`;
+            const base = await request(`${prefix}/branches/master`);
+            assert.equal(base.commit.sha, item.baseSha, `${item.repo}: source base changed`);
+
+            const result = await request(`${prefix}/pulls/${item.number}/merge`, {
+                method: 'PUT',
+                body: {sha: item.sha, merge_method: 'squash'},
+            });
             assert.equal(result.merged, true, `${item.repo}: merge was refused`);
             Object.assign(row, {merged: true, commit: result.sha});
             save(report);
-            const merged = await request(`/repos/${OWNER}/${item.repo}/git/commits/${result.sha}`);
+            const merged = await request(`${prefix}/git/commits/${result.sha}`);
             assert.equal(
                 merged.parents[0]?.sha,
                 item.baseSha,

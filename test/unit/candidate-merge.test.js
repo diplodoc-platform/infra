@@ -115,7 +115,6 @@ function fixture() {
         reports: [],
         review: 'APPROVED',
         mergeState: 'CLEAN',
-        strict: true,
         failRepo: '',
         badCi: '',
         metaSha: plan.metapackageSha,
@@ -192,13 +191,6 @@ function fixture() {
                                   : plan.selected.find((item) => item.repo === repo).baseSha,
                 },
             };
-        if (tail === 'rules/branches/master')
-            return [
-                {
-                    type: 'required_status_checks',
-                    parameters: {strict_required_status_checks_policy: state.strict},
-                },
-            ];
         if (tail === `git/trees/${candidate.sha}`)
             return {
                 truncated: false,
@@ -256,7 +248,7 @@ function fixture() {
     state.run = (live = false, overrides = {}) =>
         mergeTrain(
             {...env, DEPENDENCY_TRAIN_MERGE_APPROVED: String(live), ...overrides},
-            request,
+            state.request,
             evidence,
             (report) => state.reports.push(structuredClone(report)),
         );
@@ -270,7 +262,7 @@ test('dry-run preflights all sources and performs no writes', async () => {
     assert.deepEqual(f.writes, []);
 });
 
-test('live merge preserves dependency order and closes only the temporary CLI PR', async () => {
+test('live merge needs no strict branch policy and closes only the temporary CLI PR in dependency order', async () => {
     const f = fixture();
     const result = await f.run(true);
     assert.equal(result.complete, true);
@@ -321,12 +313,6 @@ for (const [name, mutate] of [
         'merge gate',
         (f) => {
             f.mergeState = 'BLOCKED';
-        },
-    ],
-    [
-        'strict base protection',
-        (f) => {
-            f.strict = false;
         },
     ],
     [
@@ -408,6 +394,43 @@ test('a changed or reverted merged group member blocks partial resume before ano
     const writes = f.writes.length;
     await assert.rejects(f.run(true), /previously merged source advanced/);
     assert.equal(f.writes.length, writes);
+});
+
+test('a target base change during the final group reads stops the merge', async () => {
+    const f = fixture();
+    const request = f.request;
+    let betaReviewReads = 0;
+    f.request = async (route, options) => {
+        const response = await request(route, options);
+        if (route === '/graphql' && options.body.variables.repo === 'beta') {
+            betaReviewReads++;
+            if (betaReviewReads === 2) f.advancedRepo = 'alpha';
+        }
+        return response;
+    };
+
+    await assert.rejects(f.run(true), /alpha: source base changed/);
+    assert.deepEqual(f.writes, []);
+});
+
+test('a base race between the final read and merge records partial progress and stops the group', async () => {
+    const f = fixture();
+    const request = f.request;
+    f.request = async (route, options) => {
+        const mergeCommit = f.pulls.get('alpha').merge_commit_sha;
+        if (mergeCommit && route === `/repos/diplodoc-platform/alpha/git/commits/${mergeCommit}`) {
+            return {parents: [{sha: '9'.repeat(40)}]};
+        }
+        return request(route, options);
+    };
+
+    await assert.rejects(f.run(true), /alpha: merged baseline differs/);
+    assert.deepEqual(
+        f.writes.map(({repo}) => repo),
+        ['alpha'],
+    );
+    assert.equal(f.reports.at(-1).sources[0].merged, true);
+    assert.equal(f.pulls.get('cli').state, 'open');
 });
 
 test('merge workflow is manual-only with read-only scoped preview and separate write authorization', () => {
