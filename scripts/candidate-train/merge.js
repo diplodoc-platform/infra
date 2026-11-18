@@ -3,10 +3,12 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const {isDeepStrictEqual} = require('node:util');
 const {OWNER, SHA, github, buildOrder, write} = require('./common');
 const {fetchCheckRuns, fetchRequiredChecks, deriveChecksGreen} = require('../auto-merge');
 const {verifiedVerdict} = require('./verdict');
 const {authorizeControl, requireOperatorWrite} = require('./control-authorization');
+const {packageRegistrationsAt} = require('./metapackage');
 
 /** Read data as Git blobs, never following a symlink or executing the candidate. */
 async function candidateFile(sha, name, request) {
@@ -59,13 +61,29 @@ async function readVerifiedCandidate(number, request, token, readChecks = fetchC
     return {...verified, candidate};
 }
 
-async function baselineUnchanged(plan, request) {
-    for (const [repo, sha] of [
-        ['cli', plan.cli.sha],
-        ['diplodoc', plan.metapackageSha],
-    ]) {
-        const current = await request(`/repos/${OWNER}/${repo}/branches/master`);
-        assert.equal(current.commit.sha, sha, `${repo} baseline changed; rebuild the train`);
+async function baselineUnchanged(plan, request, registrationsBySha = new Map()) {
+    const cli = await request(`/repos/${OWNER}/cli/branches/master`);
+    assert.equal(cli.commit.sha, plan.cli.sha, 'cli baseline changed; rebuild the train');
+
+    const meta = await request(`/repos/${OWNER}/diplodoc/branches/master`);
+    if (meta.commit.sha !== plan.metapackageSha) {
+        const registrationsAt = (sha) => {
+            if (!registrationsBySha.has(sha)) {
+                registrationsBySha.set(sha, packageRegistrationsAt(sha, request));
+            }
+            return registrationsBySha.get(sha);
+        };
+        const [frozen, current] = await Promise.all([
+            registrationsAt(plan.metapackageSha),
+            registrationsAt(meta.commit.sha),
+        ]);
+        const changedPath = [...new Set([...frozen.keys(), ...current.keys()])].find(
+            (directory) => !isDeepStrictEqual(frozen.get(directory), current.get(directory)),
+        );
+        assert.ok(
+            !changedPath,
+            `diplodoc package input changed (${changedPath}); rebuild the train`,
+        );
     }
     for (const {repo, sha} of plan.cohort?.baseline || []) {
         assert.equal(
@@ -176,8 +194,9 @@ async function mergeTrain(
         complete: false,
     };
     save(report);
+    const registrationsBySha = new Map();
     try {
-        await baselineUnchanged(plan, request);
+        await baselineUnchanged(plan, request, registrationsBySha);
         const ordered = buildOrder(plan.graph, plan.selected)
             .map((node) => plan.selected.find((item) => item.repo === node.repo))
             .filter(Boolean);
@@ -191,7 +210,7 @@ async function mergeTrain(
         for (const item of ordered) {
             const row = report.sources.find((source) => source.repo === item.repo);
             if (row.merged) continue;
-            await baselineUnchanged(plan, request);
+            await baselineUnchanged(plan, request, registrationsBySha);
             const current = await readVerifiedCandidate(
                 candidate.number,
                 request,

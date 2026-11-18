@@ -118,12 +118,21 @@ function fixture() {
         failRepo: '',
         badCi: '',
         metaSha: plan.metapackageSha,
+        cliBase: cli.sha,
         advancedRepo: '',
         deniedRepo: '',
         operatorId: 7,
         authorization: undefined,
         revokeAfterMerge: false,
     };
+    const registrations = plan.graph.map(({repo, sha}) => ({
+        directory: `packages/${repo}`,
+        repo,
+        sha,
+    }));
+    state.metapackages = new Map([
+        [plan.metapackageSha, {registrations, infraSha: '7'.repeat(40)}],
+    ]);
     const blob = (content) => ({
         encoding: 'base64',
         size: content.length,
@@ -176,7 +185,7 @@ function fixture() {
                 commit: {
                     sha:
                         repo === 'cli'
-                            ? cli.sha
+                            ? state.cliBase
                             : repo === 'diplodoc'
                               ? state.metaSha
                               : repo === state.advancedRepo
@@ -186,6 +195,35 @@ function fixture() {
                                   : plan.selected.find((item) => item.repo === repo).baseSha,
                 },
             };
+        if (repo === 'diplodoc' && tail.startsWith('git/')) {
+            const sha = tail.split('/').at(-1).split('?')[0];
+            const revision = state.metapackages.get(sha);
+            assert.ok(revision, `Unexpected metapackage revision ${sha}`);
+            if (tail.endsWith('?recursive=1')) {
+                return {
+                    truncated: Boolean(revision.truncated),
+                    tree: [
+                        ...revision.registrations.map(({directory, sha}) => ({
+                            path: directory,
+                            type: 'commit',
+                            sha,
+                        })),
+                        {path: 'devops/infra', type: 'commit', sha: revision.infraSha},
+                    ],
+                };
+            }
+            if (tail.startsWith('git/trees/')) {
+                return {truncated: false, tree: [{path: '.gitmodules', type: 'blob', sha}]};
+            }
+            const modules = [
+                ...revision.registrations,
+                {directory: 'devops/infra', repo: 'infra'},
+            ].map(
+                ({directory, repo}) =>
+                    `[submodule "${directory}"]\n path = ${directory}\n url = https://github.com/diplodoc-platform/${repo}.git\n`,
+            );
+            return blob(modules.join(''));
+        }
         if (tail === `git/trees/${candidate.sha}`)
             return {
                 truncated: false,
@@ -311,9 +349,11 @@ for (const [name, mutate] of [
         },
     ],
     [
-        'metapackage baseline',
+        'CLI baseline even with equivalent metapackage inputs',
         (f) => {
             f.metaSha = '9'.repeat(40);
+            f.metapackages.set(f.metaSha, f.metapackages.get(f.plan.metapackageSha));
+            f.cliBase = '8'.repeat(40);
         },
     ],
     [
@@ -335,6 +375,72 @@ for (const [name, mutate] of [
         await assert.rejects(f.run(true));
         assert.deepEqual(f.writes, []);
     });
+
+test('preview and merge accept a metapackage commit that only updates infra', async () => {
+    const f = fixture();
+    f.metaSha = '9'.repeat(40);
+    const frozen = f.metapackages.get(f.plan.metapackageSha);
+    f.metapackages.set(f.metaSha, {...frozen, infraSha: '8'.repeat(40)});
+
+    const preview = await f.run();
+    assert.equal(preview.sources.length, 2);
+    assert.deepEqual(f.writes, []);
+    const report = await f.run(true);
+    assert.equal(report.complete, true);
+    assert.deepEqual(
+        f.writes.map(({repo}) => repo),
+        ['alpha', 'beta'],
+    );
+});
+
+for (const [change, mutate] of [
+    [
+        'gitlink update',
+        (items) => {
+            items[0].sha = '8'.repeat(40);
+        },
+    ],
+    [
+        'repository remap',
+        (items) => {
+            items[0].repo = 'other';
+        },
+    ],
+    [
+        'registration removal',
+        (items) => {
+            items.shift();
+        },
+    ],
+    [
+        'registration addition',
+        (items) => {
+            items.push({directory: 'extensions/extra', repo: 'extra', sha: '8'.repeat(40)});
+        },
+    ],
+]) {
+    test(`a metapackage ${change} blocks both preview and live merge`, async () => {
+        const f = fixture();
+        f.metaSha = '9'.repeat(40);
+        const current = structuredClone(f.metapackages.get(f.plan.metapackageSha));
+        mutate(current.registrations);
+        f.metapackages.set(f.metaSha, current);
+
+        for (const live of [false, true]) {
+            await assert.rejects(f.run(live), /diplodoc package input changed.*rebuild the train/);
+            assert.deepEqual(f.writes, []);
+        }
+    });
+}
+
+test('a truncated metapackage tree cannot prove equivalent inputs', async () => {
+    const f = fixture();
+    f.metaSha = '9'.repeat(40);
+    f.metapackages.set(f.metaSha, {...f.metapackages.get(f.plan.metapackageSha), truncated: true});
+
+    await assert.rejects(f.run(true), /Incomplete metapackage tree/);
+    assert.deepEqual(f.writes, []);
+});
 
 test('a generic green check, forged App and mismatched evidence cannot authorize a merge', () => {
     for (const mutate of [

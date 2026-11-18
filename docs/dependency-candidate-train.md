@@ -289,7 +289,11 @@ infra tooling, not code from candidate archives.
 Before any write, and again before each source merge, it verifies the full group:
 unchanged source heads/bases, current publisher-bound CI, required human reviews
 and GitHub's clean merge gate. The repository's up-to-date branch setting is optional.
-CLI/metapackage and already-updated consumers must retain their frozen master SHAs.
+CLI and already-updated consumers must retain their frozen master SHAs. If the
+metapackage master advances, the train compares the registered `packages/` and
+`extensions/` paths, repositories, and gitlink SHAs at the frozen and current
+commits. Changes outside those build inputs, such as workflow edits and
+`devops/infra` refreshes, do not invalidate the verified group.
 Immediately before each merge request, it rereads that source's master SHA, then
 calls the normal GitHub merge endpoint with the expected PR head SHA.
 
