@@ -296,13 +296,17 @@ commits. Changes outside those build inputs, such as workflow edits and
 `devops/infra` refreshes, do not invalidate the verified group.
 Immediately before each merge request, it rereads that source's master SHA, then
 calls the normal GitHub merge endpoint with the expected PR head SHA.
+Preview and merge both prefer squash when the repository and branch rules allow it.
+If only rebase is allowed, the PR must have a linear history rooted at its verified
+base. The train checks every resulting commit's tree against that history.
 
 Cross-repository merges are **not atomic**. `merge-progress.json` records partial
 completion even after an error. A rerun verifies actual merged PRs and requires their
 masters to remain exactly at those merge commits; changed/reverted group members block
 continuation. A source base can still move between the final read and the merge request.
-After each merge, the train checks that the first parent matches the frozen base and
-stops further writes if it differs. Rebuild and reverify the group after any drift.
+After each merge, the train verifies that the resulting squash commit or rebased
+sequence starts at the frozen base and stops further writes on a mismatch. Rebuild
+and reverify the group after any drift.
 
 After every source is merged, the workflow dispatches `Update Submodules` on
 `diplodoc/master` and waits for that run by ID. After success it closes the temporary
