@@ -2,7 +2,7 @@ name: Morning Dependency Candidate Train
 
 on:
   schedule:
-    - cron: '17 3 * * *' # Preparation only; opt-in, disabled by default.
+    - cron: '0 22 * * *' # 01:00 Europe/Moscow. Preparation is opt-in.
   workflow_dispatch:
     inputs:
       selection_mode:

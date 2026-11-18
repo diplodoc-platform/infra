@@ -18,10 +18,11 @@ The stable GitHub release event still starts infrastructure distribution for
 all configured repositories. Do not publish the stable release until the
 prerelease pilots below have passed.
 
-The separate [morning candidate train](dependency-candidate-train.md) prepares
-temporary CLI PRs for manual document validation, targeting readiness by 08:00
-Europe/Moscow. Scheduled preparation stays disabled unless explicitly enabled;
-an operator can approve one manual preparation without enabling the schedule.
+The separate [candidate train](dependency-candidate-train.md) prepares temporary
+CLI PRs for automatic document validation. With scheduling enabled, preparation
+starts at 01:00 Europe/Moscow with an 08:00 readiness target. Scheduled preparation
+stays disabled unless explicitly enabled. An operator can approve one manual
+preparation without enabling the schedule.
 GitHub does not observe private document checks or send private notifications:
 hand off the exact CLI PR/SHA and tooling SHA to the internal operations system.
 Complete a manual pilot there, including installed-version proof, before enabling

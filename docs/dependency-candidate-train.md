@@ -72,10 +72,9 @@ PRs is an explicit error, not a silently partial inventory.
    open one immutable CLI candidate. Never execute candidate code in this job.
 5. Stop at **prepared, not verified**. With the private candidate rollout flag enabled,
    the existing Viewer handler starts the exact-head candidate pipeline and retains
-   its callback identity. Document CI still requires the operator button while the
-   platform restriction is active. Only a completed successful executed document
-   badge on the stable active diff and verified installed trees can produce the
-   public exact-train verdict. Ordinary Internal Check routing is unchanged.
+   its callback identity. Prerelease document CI starts automatically. The public
+   exact-train verdict requires a successful document badge on the stable active diff
+   and verified installed trees. Ordinary Internal Check routing is unchanged.
 
 ## Opt-in activation coverage
 
@@ -138,8 +137,8 @@ credentials (`INFRA_APP_ID`, `INFRA_APP_PRIVATE_KEY`, `INFRA_APPROVER_PAT`).
 The public summary and `train-candidate.json` contain only public identities;
 they never claim successful Internal verification.
 
-Start the internal observer manually after preparation, using the three frozen
-handoff values. The operator still presses the document CI button when notified.
+With the Viewer candidate route enabled, Internal Check starts automatically after
+preparation. Use the frozen handoff values if an operator needs to observe it manually.
 Nothing merges the candidate or source PR. Close the temporary CLI PR without
 merge after inspecting the result; a still-needed timed-out candidate may remain
 open for an explicitly resumed observation. A new train has a new immutable plan.
@@ -216,9 +215,10 @@ an explicit comma-separated allowlist is still accepted. Repository variables in
 override organization values, including `false`; source repository variables do not
 control this central workflow. No variable is created or changed by this feature.
 
-The existing cron is 06:17 Europe/Moscow, targeting readiness by 08:00. GitHub
-scheduling and preparation duration do not provide an 08:00 SLA. Scheduled selection
-prepares the oldest complete group only; an open candidate blocks another preparation.
+The cron is 01:00 Europe/Moscow (22:00 UTC on the previous day), with an 08:00
+readiness target in the plan. GitHub scheduling and preparation duration do not
+provide an 08:00 SLA. Scheduled selection prepares the oldest complete group only;
+an open candidate blocks another preparation.
 Manual dispatch defaults to selection-only and needs no enabled schedule variables.
 Deploy the compatible private builder and Viewer worker before enabling the private
 `enable_dependency_candidate_checks` flag, then validate one complete manual cycle.
@@ -287,18 +287,18 @@ Candidate package execution remains secretless, and these jobs execute only trus
 infra tooling, not code from candidate archives.
 
 Before any write, and again before each source merge, it verifies the full group:
-unchanged source heads/bases, current publisher-bound CI, required human reviews,
-GitHub's clean merge gate, and strict server-side up-to-date status-check policy.
+unchanged source heads/bases, current publisher-bound CI, required human reviews
+and GitHub's clean merge gate. The repository's up-to-date branch setting is optional.
 CLI/metapackage and already-updated consumers must retain their frozen master SHAs.
-Use the normal GitHub merge endpoint with the expected head SHA; no admin override.
-Repositories without strict branch status policy are blocked, not silently reconfigured.
+Immediately before each merge request, it rereads that source's master SHA, then
+calls the normal GitHub merge endpoint with the expected PR head SHA.
 
 Cross-repository merges are **not atomic**. `merge-progress.json` records partial
 completion even after an error. A rerun verifies actual merged PRs and requires their
 masters to remain exactly at those merge commits; changed/reverted group members block
-continuation. The merge parent must match the frozen source base. A concurrent base
-change is additionally subject to GitHub's server-side strict branch policy; a detected
-post-merge mismatch stops further writes. Rebuild/reverify the group after any drift.
+continuation. A source base can still move between the final read and the merge request.
+After each merge, the train checks that the first parent matches the frozen base and
+stops further writes if it differs. Rebuild and reverify the group after any drift.
 
 Only after every source is merged does it close the temporary CLI PR, retaining its
 branch and evidence. The temporary CLI PR is never merged or released. Keep ordinary
