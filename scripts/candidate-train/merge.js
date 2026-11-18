@@ -159,10 +159,12 @@ async function sourceReady(item, request, token, evidence, operator) {
     };
     if (mergeMethod === 'squash') return source;
 
-    assert.equal(
+    // GitHub may return null while calculating rebaseability. The linear
+    // history check below proves the PR already starts at the exact target base.
+    assert.notEqual(
         pr.rebaseable,
-        true,
-        `${item.repo}: GitHub has not confirmed that this PR can be rebased`,
+        false,
+        `${item.repo}: GitHub reports that this PR cannot be rebased`,
     );
     const trees = await rebaseTrees(item, pr.commits, request);
     return {...source, trees};
