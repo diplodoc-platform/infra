@@ -170,11 +170,6 @@ function fixture() {
             if (state.revokeAfterMerge) state.deniedRepo = 'beta';
             return {merged: true, sha: commit};
         }
-        if (options.method === 'PATCH') {
-            state.writes.push({repo, ...options});
-            pulls.get(repo).state = options.body.state;
-            return {};
-        }
         if (tail.startsWith('pulls/')) return structuredClone(pulls.get(repo));
         if (tail === 'branches/master')
             return {
@@ -262,7 +257,7 @@ test('dry-run preflights all sources and performs no writes', async () => {
     assert.deepEqual(f.writes, []);
 });
 
-test('live merge needs no strict branch policy and closes only the temporary CLI PR in dependency order', async () => {
+test('live merge needs no strict branch policy and leaves candidate cleanup to submodule sync', async () => {
     const f = fixture();
     const result = await f.run(true);
     assert.equal(result.complete, true);
@@ -271,9 +266,9 @@ test('live merge needs no strict branch policy and closes only the temporary CLI
         [
             ['alpha', 'PUT'],
             ['beta', 'PUT'],
-            ['cli', 'PATCH'],
         ],
     );
+    assert.equal(f.pulls.get('cli').state, 'open');
 });
 
 test('partial failure persists exact progress; rerun independently verifies merged sources and does not merge them twice', async () => {

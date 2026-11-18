@@ -70,7 +70,6 @@ test('a fresh exact merge request retains all group checks and never merges the 
         [
             ['alpha', 'PUT'],
             ['beta', 'PUT'],
-            ['cli', 'PATCH'],
         ],
     );
 });

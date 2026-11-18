@@ -230,11 +230,6 @@ async function mergeTrain(
         }
         report.complete = true;
         save(report);
-        // Closing the temporary PR releases the next preparation; its branch/evidence remain.
-        await request(`/repos/${OWNER}/cli/pulls/${candidate.number}`, {
-            method: 'PATCH',
-            body: {state: 'closed'},
-        });
         return report;
     } catch (error) {
         report.error = error.message;
@@ -272,7 +267,7 @@ if (require.main === module && process.argv[2] === 'inventory') {
             if (process.env.GITHUB_OUTPUT)
                 fs.appendFileSync(
                     process.env.GITHUB_OUTPUT,
-                    `repositories=${[...new Set([...report.sources.map((item) => item.repo), 'cli'])].join(',')}\ntrain-id=${report.trainId}\n`,
+                    `repositories=${[...new Set([...report.sources.map((item) => item.repo), 'cli'])].join(',')}\ntrain-id=${report.trainId}\ncandidate-sha=${report.candidate.sha}\n`,
                 );
             if (process.env.GITHUB_STEP_SUMMARY)
                 fs.appendFileSync(
