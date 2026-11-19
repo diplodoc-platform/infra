@@ -8,6 +8,7 @@ const path = require('node:path');
 const {setTimeout: delay} = require('node:timers/promises');
 const {OWNER, REPO, SHA, github, read, write} = require('./common');
 const {planTrain} = require('./plan');
+const {BOT, isPreparedSource, sourceHeadRepo} = require('./prepare-policy');
 
 const REBASE = `
 mutation Rebase($id: ID!, $head: GitObjectID!) {
@@ -95,9 +96,10 @@ async function readSource(request, source) {
     assert.equal(pr.number, source.number);
     assert.equal(pr.state, 'open');
     assert.equal(pr.draft, false);
-    assert.equal(pr.user.login, 'dependabot[bot]');
-    assert.equal(pr.head.repo.full_name, `${OWNER}/${source.repo}`);
-    assert.equal(pr.base.repo.full_name, pr.head.repo.full_name);
+    if (source.prepared) assert.ok(isPreparedSource(pr));
+    else assert.equal(pr.user.login, 'dependabot[bot]');
+    assert.equal(pr.head.repo.full_name, sourceHeadRepo(pr, source.repo));
+    assert.equal(pr.base.repo.full_name, `${OWNER}/${source.repo}`);
     assert.equal(pr.base.ref, 'master');
     assert.equal(pr.head.sha, source.sha, `${name}: head advanced`);
     assert.equal(pr.base.sha, source.baseSha, `${name}: base advanced`);
@@ -111,7 +113,7 @@ async function readSource(request, source) {
     if (source.refreshTo) {
         assert.match(source.refreshTo, SHA);
         assert.notEqual(source.refreshTo, source.baseSha);
-        assert.ok(pr.head.ref.startsWith('dependabot/'));
+        assert.ok(source.prepared || pr.head.ref.startsWith('dependabot/'));
         assert.equal(pr.commits, 1);
         assert.equal(pr.rebaseable, true);
         assert.match(pr.node_id, /^PR_[A-Za-z0-9_-]+$/);
@@ -119,12 +121,17 @@ async function readSource(request, source) {
         assert.equal(commit.sha, source.sha);
         assert.equal(
             commit.author?.login,
-            'dependabot[bot]',
+            source.prepared ? BOT : 'dependabot[bot]',
             'Stale head was edited by another author',
         );
         // GitHub's server-side rebase creates an unsigned commit.
-        for (const branch of [pr.base.ref, pr.head.ref]) {
-            const rules = await request(`${prefix}/rules/branches/${encodeURIComponent(branch)}`);
+        for (const [repo, branch] of [
+            [pr.base.repo.full_name, pr.base.ref],
+            [pr.head.repo.full_name, pr.head.ref],
+        ]) {
+            const rules = await request(
+                `/repos/${repo}/rules/branches/${encodeURIComponent(branch)}`,
+            );
             assert.ok(
                 !rules.some((rule) => rule.type === 'required_signatures'),
                 `${name}: ${branch} requires signed commits`,
@@ -209,20 +216,35 @@ async function run(env) {
         );
         return;
     }
-    const plan = await planTrain(env, undefined, undefined, {refresh: true});
+    const plan = await planTrain(env, undefined, undefined, refreshOptions(env));
     write(file, plan);
-    fs.appendFileSync(env.GITHUB_OUTPUT, `found=${Boolean(plan.group)}\n`);
+    const missing = plan.group?.missing || [];
+    fs.appendFileSync(
+        env.GITHUB_OUTPUT,
+        `found=${Boolean(plan.group)}\nmissing=${missing.map(({repo}) => repo).join(',')}\n`,
+    );
     if (!plan.group) {
-        summary('No complete promising group with a rebaseable stale source.');
+        summary('No eligible group selected. See the plan artifact for exclusions.');
+        for (const {dependency, reason} of plan.preparationBlocked || [])
+            summary(`- ${dependency.name}@${dependency.version}: ${reason}`);
         return;
     }
     const {dependency, risk, sources} = plan.group;
     summary(`### Refresh ${dependency.name}@${dependency.version} (${risk})\n`);
+    for (const item of missing) summary(`- ${item.repo}: prepare missing lockfile update`);
     for (const item of sources) {
         summary(
             `- ${item.repo}#${item.number} @ \`${item.sha}\`: ${item.refreshTo ? 'needs rebase' : 'already current'}`,
         );
     }
+}
+
+function refreshOptions(env) {
+    return {
+        refresh: true,
+        prepareMissing: env.DEPENDENCY_TRAIN_PREPARE_MISSING === 'true',
+        target: env.DEPENDENCY_TRAIN_REFRESH_TARGET || '',
+    };
 }
 
 if (require.main === module) {
@@ -232,4 +254,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = {applyRefresh};
+module.exports = {applyRefresh, refreshOptions};

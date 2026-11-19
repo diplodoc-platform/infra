@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const {apiFixture} = require('../helpers/candidate-api');
 const {planTrain} = require('../../scripts/candidate-train/plan');
+const {preparedBranch} = require('../../scripts/candidate-train/prepare-policy');
 const {applyRefresh} = require('../../scripts/candidate-train/refresh');
 
 const tests = [];
@@ -15,12 +16,12 @@ const env = {
     DEPENDENCY_TRAIN_REPOSITORIES: 'all',
 };
 
-async function select(api, variables = env, {refresh = true} = {}) {
+async function select(api, variables = env, {refresh = true, ...options} = {}) {
     const cwd = process.cwd();
     process.chdir(path.join(__dirname, '../..'));
 
     try {
-        return await planTrain(variables, api.request, api.evidence, {refresh});
+        return await planTrain(variables, api.request, api.evidence, {refresh, ...options});
     } finally {
         process.chdir(cwd);
     }
@@ -48,6 +49,90 @@ test('refresh selects stale PRs only in a complete group and Morning still requi
     stale.rebaseable = true;
     stale.commits = 2;
     assert.equal((await plan()).group, null);
+});
+
+function installFixture(api, repo, name, range = '^1.0.0') {
+    const item = api.graph.find((node) => node.repo === repo);
+    item.manifest.devDependencies[name] = range;
+    api.addFiles(repo, item.sha, {
+        'package.json': item.manifest,
+        'package-lock.json': {
+            lockfileVersion: 3,
+            packages: {'': item.manifest, [`node_modules/${name}`]: {version: '1.0.0', dev: true}},
+        },
+    });
+}
+
+test('prepares only one viable group, honours ranges and leaves default Refresh unchanged', async () => {
+    const api = apiFixture();
+    api.addPull('alpha', 1);
+    api.addPull('beta', 2, {dependency: '@types/other'});
+    installFixture(api, 'gamma', '@types/example', '~1.0.0');
+    installFixture(api, 'delta', '@types/other');
+
+    assert.equal((await select(api)).group, null);
+    const result = await select(api, env, {prepareMissing: true});
+    assert.equal(result.group.dependency.name, '@types/other');
+    assert.deepEqual(
+        result.group.missing.map(({repo}) => repo),
+        ['delta'],
+    );
+    assert.match(result.preparationBlocked[0].reason, /ranges do not allow/);
+    const targeted = await select(api, env, {prepareMissing: true, target: '@types/example@1.1.0'});
+    assert.equal(targeted.group, null);
+    assert.match(targeted.preparationBlocked[0].reason, /ranges do not allow/);
+
+    installFixture(api, 'gamma', '@types/example');
+    api.requests.length = 0;
+    const first = await select(api, env, {prepareMissing: true});
+    assert.equal(first.group.dependency.name, '@types/example');
+    assert.deepEqual(
+        first.group.missing.map(({repo}) => repo),
+        ['gamma'],
+    );
+    assert.ok(!api.requests.some((route) => route.includes('/delta/pulls?state=all')));
+});
+
+test('does not duplicate a pending update with the same dependency, even if CI is red', async () => {
+    const api = apiFixture();
+    api.addPull('alpha', 1);
+    const existing = api.addPull('beta', 2);
+    existing.user.login = 'someone';
+    const options = {prepareMissing: true};
+
+    const plan = await select(api, env, options);
+    assert.equal(plan.group, null);
+    assert.match(plan.preparationBlocked[0].reason, /beta#2 already changes/);
+});
+
+test('Morning requires green exact-head CI for a prepared fork PR and rejects same-repo lookalikes', async () => {
+    const api = apiFixture();
+    const dependency = {name: '@types/example', version: '1.1.0'};
+    api.addPull('alpha', 1);
+    const prepared = api.addPull('beta', 2, {prepared: preparedBranch(dependency)});
+    const selectMorning = () => select(api, env, {refresh: false});
+    assert.deepEqual(
+        (await selectMorning()).selected.map(({repo}) => repo),
+        ['alpha', 'beta'],
+    );
+
+    const existingCheck = api.evidence.fetchCheckRuns;
+    api.evidence.fetchCheckRuns = (...args) =>
+        args[2] === 'beta' ? {check_runs: []} : existingCheck(...args);
+    assert.equal((await selectMorning()).selected.length, 0);
+    const pending = await select(api, env, {prepareMissing: true});
+    assert.equal(pending.group, null);
+    assert.match(pending.preparationBlocked[0].reason, /prepared PR already exists/);
+
+    api.evidence.fetchCheckRuns = existingCheck;
+    prepared.head.repo = {full_name: `${namespace}/beta`};
+    assert.equal((await selectMorning()).selected.length, 0);
+
+    prepared.head.repo = {full_name: 'diplodoc-bot/beta', fork: true};
+    prepared.state = 'closed';
+    const result = await select(api, env, {prepareMissing: true});
+    assert.equal(result.group, null);
+    assert.match(result.preparationBlocked[0].reason, /prepared PR already exists/);
 });
 
 function applicationFixture() {

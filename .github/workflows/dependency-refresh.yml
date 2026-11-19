@@ -6,11 +6,19 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Plan only; false requests GitHub rebase for one complete group'
+        description: 'Plan only; false applies the selected group'
         type: boolean
         default: true
       repositories:
         description: 'Repository allowlist or all; defaults to the Morning setting'
+        type: string
+        default: ''
+      prepare_missing:
+        description: 'Allow preparing missing lockfile PRs for one group'
+        type: boolean
+        default: false
+      target:
+        description: 'Optional exact dependency target, e.g. example@1.2.3'
         type: string
         default: ''
 
@@ -32,6 +40,9 @@ jobs:
        vars.DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    outputs:
+      missing: ${{ steps.plan.outputs.missing }}
+      plan-artifact: ${{ steps.plan-artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -43,24 +54,83 @@ jobs:
           cache: ''
           run-install: 'false'
       - run: npm ci --ignore-scripts
-      - name: Find one complete dependency group with stale sources
+      - name: Select one dependency group
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
           DEPENDENCY_TRAIN_SELECTION_MODE: cohort
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
           DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+          DEPENDENCY_TRAIN_PREPARE_MISSING: ${{ (github.event_name == 'schedule' && vars.DEPENDENCY_TRAIN_PREPARE_MISSING_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.prepare_missing) }}
+          DEPENDENCY_TRAIN_REFRESH_TARGET: ${{ inputs.target }}
         run: node scripts/candidate-train/refresh.js
+      - name: Generate and validate locks without write credentials
+        if: steps.plan.outputs.missing != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+        run: node scripts/candidate-train/prepare-lock.js
       - uses: actions/upload-artifact@v4
+        id: plan-artifact
+        if: always() && steps.plan.outcome == 'success'
         with:
           name: dependency-refresh-plan
-          path: dependency-refresh-plan.json
+          path: |
+            dependency-refresh-plan.json
+            dependency-refresh-locks.json
           if-no-files-found: error
       - name: Rebase eligible stale PRs and verify their resulting trees
         if: >-
           steps.plan.outputs.found == 'true' &&
+          steps.plan.outputs.missing == '' &&
           github.ref == 'refs/heads/master' &&
           (github.event_name == 'schedule' || inputs.dry_run == false)
         env:
           TRAIN_REFRESH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
         run: node scripts/candidate-train/refresh.js apply
+
+  publish-group:
+    name: Publish missing lockfile PRs
+    needs: refresh
+    if: >-
+      needs.refresh.outputs.missing != '' &&
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'schedule' || inputs.dry_run == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          artifact-ids: ${{ needs.refresh.outputs.plan-artifact }}
+          merge-multiple: true
+      - name: Generate token scoped to the selected forks
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-bot
+          repositories: ${{ needs.refresh.outputs.missing }}
+          permission-contents: write
+      - name: Revalidate the plan and publish one group
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_REFRESH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
+          TRAIN_GROUP_APP_TOKEN: ${{ steps.app.outputs.token }}
+          DEPENDENCY_TRAIN_SELECTION_MODE: cohort
+          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+          DEPENDENCY_TRAIN_MISSING_REPOS: ${{ needs.refresh.outputs.missing }}
+          DEPENDENCY_TRAIN_PREPARE_MISSING: 'true'
+          DEPENDENCY_TRAIN_REFRESH_TARGET: ${{ inputs.target }}
+        run: node scripts/candidate-train/prepare-publish.js
