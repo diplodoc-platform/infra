@@ -67,6 +67,11 @@ function apiFixture() {
             'package.json': before,
             'package-lock.json': lock(before, '1.0.0'),
         });
+        if (options.stale)
+            addFiles(repo, SHA, {
+                'package.json': before,
+                'package-lock.json': lock(before, '1.0.0'),
+            });
         addFiles(repo, sha, {
             'package.json': after,
             'package-lock.json': lock(after, options.targetVersion || '1.1.0'),
@@ -78,7 +83,13 @@ function apiFixture() {
             created_at: candidate(repo, number, options.day || number).createdAt,
             user: {login: 'dependabot[bot]'},
             base: {ref: 'master', repo: {name: repo}, sha: options.stale ? SHA : base.sha},
-            head: {sha, repo: {full_name: `diplodoc-platform/${repo}`}},
+            head: {
+                sha,
+                ref: `dependabot/npm_and_yarn/${dependency}-1.1.0`,
+                repo: {full_name: `diplodoc-platform/${repo}`},
+            },
+            rebaseable: options.rebaseable ?? true,
+            commits: options.commits ?? 1,
         };
         pulls.get(repo).push(pr);
         return pr;
