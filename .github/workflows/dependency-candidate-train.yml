@@ -11,20 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.INFRA_APP_ID }}
-          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
-          owner: diplodoc-platform
-          repositories: tabs-extension
-          permission-pull-requests: write
       - name: Request Dependabot rebase for tabs-extension PR 170
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
         run: |
           set -euo pipefail
           repo=repos/diplodoc-platform/tabs-extension
+          test "$(gh api user --jq .login)" = 'diplodoc-bot'
+          test "$(gh api "$repo" --jq .permissions.push)" = 'true'
           gh api "$repo/pulls/170" | jq -e '
             .state == "open" and .draft == false and .user.login == "dependabot[bot]"
             and .head.repo.full_name == "diplodoc-platform/tabs-extension"
@@ -33,7 +27,7 @@ jobs:
           ' >/dev/null
           test "$(gh api "$repo/branches/master" --jq .commit.sha)" = '4b2fb98c3fe44675d4c4a4b8ff537b264ab2499c'
           gh api --paginate "$repo/issues/170/comments?per_page=100" | jq -es '
-            add | all(.[]; .body != "@dependabot rebase")
+            add | all(.[]; .body != "@dependabot rebase" or .user.login != "diplodoc-bot")
           ' >/dev/null
           gh api --method POST "$repo/issues/170/comments" -f body='@dependabot rebase' \
             --jq '{id,author:.user.login,url:.html_url}'
