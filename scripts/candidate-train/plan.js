@@ -37,6 +37,8 @@ const SUMMARY_LIMIT = 100;
 const {planCohort} = require('./cohort-plan');
 const {changedInput, automaticGroups} = require('./automatic-groups');
 const {declares} = require('./cohort');
+const {riskSelection, groupRisk, assertRiskAllowed} = require('./risk');
+const {requireDeepProfile} = require('./deep-profile');
 const {packageRegistrationsAt} = require('./metapackage');
 
 function allowlist(value) {
@@ -66,7 +68,7 @@ function assess(
     oldLock,
     newLock,
     registry,
-    {manual = false, dependency = ''} = {},
+    {manual = false, dependency = '', maxRisk = 'low'} = {},
 ) {
     if (!manual) assert.equal(pr.user?.login, 'dependabot[bot]');
     assert.equal(pr.state, 'open');
@@ -133,7 +135,7 @@ function assess(
     );
     const changes = [...assessment.direct, ...assessment.transitive];
     assert.ok(changes.length > 0, 'No dependency changes');
-    assert.equal(assessment.maxRisk, 'low', 'Only low-risk updates are eligible for a train');
+    assertRiskAllowed(assessment.maxRisk, maxRisk);
     assert.ok(
         !changes.some(
             (item) =>
@@ -164,7 +166,11 @@ async function planTrain(
     evidence = {fetchCheckRuns, fetchRequiredChecks},
 ) {
     if (env.DEPENDENCY_TRAIN_COHORT_PRS?.trim()) {
-        return planCohort(env, request, evidence, {graphAt, assess});
+        return planCohort(env, request, evidence, {
+            graphAt,
+            assess,
+            risk: riskSelection(env, 'cohort'),
+        });
     }
     assert.ok(
         !env.DEPENDENCY_TRAIN_COHORT_DEPENDENCY?.trim(),
@@ -175,6 +181,7 @@ async function planTrain(
     const waveNumber = Number(env.DEPENDENCY_TRAIN_WAVE || 1);
     const mode = env.DEPENDENCY_TRAIN_SELECTION_MODE || 'wave';
     assert.ok(['wave', 'cohort'].includes(mode), 'Unknown candidate selection mode');
+    const risk = riskSelection(env, mode);
     assert.ok(Number.isSafeInteger(prNumber) && prNumber >= 0, 'Invalid source PR number');
     assert.ok(Number.isSafeInteger(waveNumber) && waveNumber > 0, 'Invalid wave number');
     assert.ok(
@@ -230,7 +237,9 @@ async function planTrain(
                     readSource(repo, pr.base.sha, 'package-lock.json'),
                     readSource(repo, pr.head.sha, 'package-lock.json'),
                 ]).then((items) => items.map(JSON.parse));
-                const assessment = assess(pr, files, before, after, oldLock, newLock, registry);
+                const assessment = assess(pr, files, before, after, oldLock, newLock, registry, {
+                    maxRisk: risk.maxRisk,
+                });
                 if (mode === 'cohort')
                     inputs.set(
                         `${repo}#${pr.number}`,
@@ -271,6 +280,7 @@ async function planTrain(
                     profile: assessment.verificationProfile,
                     createdAt: new Date(pr.created_at).toISOString(),
                 };
+                await requireDeepProfile(item, checks, request);
                 inventory.push(item);
             } catch (error) {
                 excluded.push({repo, number: pr.number, reason: error.message.slice(0, 400)});
@@ -296,7 +306,15 @@ async function planTrain(
                 });
             }
         }
-        automaticReport = automaticGroups(graph, inventory, inputs, repos, baselines);
+        automaticReport = {
+            ...automaticGroups(graph, inventory, inputs, repos, baselines),
+            riskSelection: risk,
+        };
+        if (risk.exact) {
+            automaticReport.groups = automaticReport.groups.filter(
+                (group) => group.risk === risk.exact,
+            );
+        }
         assert.ok(
             waveNumber <= Math.max(1, automaticReport.groups.length),
             'Group index is out of range',
@@ -314,7 +332,7 @@ async function planTrain(
                 },
                 request,
                 evidence,
-                {graphAt, assess, automatic: true, baseline: group.baseline || []},
+                {graphAt, assess, risk, automatic: true, baseline: group.baseline || []},
             );
             return {...plan, automaticGroups: automaticReport, excluded};
         }
@@ -377,9 +395,14 @@ function renderSelection(plan) {
                       '',
                   ]
                 : []),
-            '| Source | Exact head |',
-            '| --- | --- |',
-            ...plan.selected.map((node) => `| ${node.repo}#${node.number} | \`${node.sha}\` |`),
+            `Group risk: **${groupRisk(plan.selected)}**.`,
+            '',
+            '| Source | Exact head | Risk | Profile |',
+            '| --- | --- | --- | --- |',
+            ...plan.selected.map(
+                (node) =>
+                    `| ${node.repo}#${node.number} | \`${node.sha}\` | ${node.risk} | ${node.profile} |`,
+            ),
             '',
             `Build order: ${buildOrder(plan.graph, plan.selected)
                 .map((node) => node.repo)
@@ -406,7 +429,18 @@ function renderSelection(plan) {
         lines.push(`| ${item.repo}#${item.number} | \`${item.sha}\` | ${clean(item.risk)} |`);
     }
 
-    if (plan.selection) {
+    if (plan.automaticGroups) {
+        const {riskSelection: risk, groups} = plan.automaticGroups;
+        lines.push(
+            '',
+            `Complete coordinated groups: **${groups.length}**. ` +
+                (risk.exact
+                    ? `Exact risk: **${risk.exact}**.`
+                    : `Risk ceiling: **${risk.maxRisk}**.`),
+        );
+    }
+
+    if (plan.selection && !plan.automaticGroups) {
         const waveLabel = plan.selection.totalWaves
             ? `Wave **${plan.selection.wave}/${plan.selection.totalWaves}**; `
             : 'No eligible waves; ';

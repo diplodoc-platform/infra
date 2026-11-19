@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const {assertRiskProfile} = require('./risk');
 
 const MAX_COHORT_SIZE = 40;
 const DEPENDENCY_SECTIONS = [
@@ -39,7 +40,16 @@ function parseCohort(value) {
 
 /** Bind the manual mode to the identity; legacy wave identifiers remain unchanged. */
 function cohortIdentity(plan) {
-    return plan.schema === 2 ? {schema: 2, cohort: plan.cohort} : {};
+    if (plan.schema !== 2) return {};
+
+    const elevated = plan.selected.some(({risk}) => risk !== 'low');
+    return {
+        schema: 2,
+        cohort: plan.cohort,
+        ...(elevated
+            ? {riskProfiles: plan.selected.map(({risk, profile}) => ({risk, profile}))}
+            : {}),
+    };
 }
 
 function declares(manifest, name) {
@@ -67,8 +77,7 @@ function validateCohort(plan) {
         'A manual cohort cannot be split or partially selected',
     );
     for (const node of selected) {
-        assert.equal(node.risk, 'low', 'Only low-risk candidates may enter a cohort');
-        assert.equal(typeof node.profile, 'string');
+        assertRiskProfile(node.risk, node.profile);
     }
     if (cohort.dependency) {
         const {name, version} = cohort.dependency;

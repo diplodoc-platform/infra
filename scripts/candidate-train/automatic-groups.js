@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const {declares} = require('./cohort');
+const {groupRisk, riskWeight} = require('./risk');
 
 /** A group updates one direct input; unrelated lock changes still pass the full policy check. */
 function changedInput(before, after, oldLock, newLock) {
@@ -79,6 +80,7 @@ function automaticGroups(graph, inventory, inputs, repositories, baselines = new
             .sort((a, b) => a.repo.localeCompare(b.repo));
         groups.push({
             dependency,
+            risk: groupRisk(candidates),
             requests,
             ...(baseline.length
                 ? {baseline: baseline.sort((a, b) => a.repo.localeCompare(b.repo))}
@@ -88,6 +90,7 @@ function automaticGroups(graph, inventory, inputs, repositories, baselines = new
     }
     groups.sort(
         (a, b) =>
+            riskWeight(a.risk) - riskWeight(b.risk) ||
             a.createdAt.localeCompare(b.createdAt) ||
             a.dependency.name.localeCompare(b.dependency.name) ||
             a.dependency.version.localeCompare(b.dependency.version),
