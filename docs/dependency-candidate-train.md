@@ -390,7 +390,7 @@ the same repository scope and automatic risk ceiling as Morning. A manual
 are available only on `infra/master`.
 
 Refresh chooses one complete dependency and version group with at least one
-stale, rebaseable, single-commit Dependabot PR. It applies the same source
+stale, rebaseable, single-commit source PR. It applies the same source
 policy, green required checks on the old heads, and complete-consumer rules.
 Before any write it recomputes the expected Git trees and checks the baseline
 and source refs. Only stale PRs receive a server-side GitHub rebase from
@@ -401,3 +401,36 @@ require signed commits block the group before any write.
 
 The next Morning independently checks source policy and required checks on the
 new heads. Refresh never treats old CI as evidence for the new commits.
+
+### Prepare missing source PRs
+
+If Morning already has a complete eligible group, Refresh leaves it ready for
+Morning or refreshes its stale sources. Otherwise Refresh can complete **one**
+group seeded by a real Dependabot PR. Before running npm, it checks the pinned
+baseline, the declared ranges, and open PRs in every missing repository. It
+generates lockfiles for that group only. Each proposal must preserve
+`package.json` and every other lock entry, and pass the same risk ceiling. An
+incompatible range, peer-only declaration, additional lock changes, or a profile
+that needs Dependabot's deep CI requires a separate update.
+
+To inspect a group, manually dispatch **Refresh Depends** with
+`dry_run: true` and `prepare_missing: true`. Optionally set `target` to an exact
+version such as `esbuild-sass-plugin@3.7.0`. The `dependency-refresh-plan`
+artifact includes the candidate lockfiles. A dry run works before provisioning
+the fork or deploying the updated lock workflow.
+
+Live preparation requires public `diplodoc-bot/<repo>` forks with the existing
+infra GitHub App installed on them, and the fork-aware package-lock workflow
+installed in the upstream repositories. Validate that their required checks
+run on fork PRs. The writer validates the whole plan before mutating anything,
+pushes branches to the forks, and opens source PRs as `diplodoc-bot`. The fork
+keeps upstream Actions secrets out of the candidate jobs. A closed prepared PR
+is never recreated for the same exact version. Automatic selection keeps a
+pending viable group ahead of starting another.
+
+Use `dry_run: false` on `infra/master` to apply the plan once. To allow
+scheduled Refresh to prepare missing PRs, set
+`DEPENDENCY_TRAIN_PREPARE_MISSING_ENABLED=true` alongside the existing Refresh
+and Morning switches. The new switch defaults to disabled. Morning admits
+prepared PRs only when its existing checks are green on their exact heads.
+Preparation grants no merge approval.

@@ -39,6 +39,14 @@ const {changedInput, automaticGroups} = require('./automatic-groups');
 const {declares} = require('./cohort');
 const {riskSelection, groupRisk, assertRiskAllowed} = require('./risk');
 const {requireDeepProfile} = require('./deep-profile');
+const {DEEP_PROFILES} = require('../dependency-verification-profiles');
+const {
+    isPreparedSource,
+    sourceHeadRepo,
+    preparedBranch,
+    validatePreparedLock,
+} = require('./prepare-policy');
+const {findPreparation} = require('./prepare-plan');
 const {packageRegistrationsAt} = require('./metapackage');
 
 function allowlist(value) {
@@ -70,11 +78,13 @@ function assess(
     registry,
     {manual = false, dependency = '', maxRisk = 'low'} = {},
 ) {
-    if (!manual) assert.equal(pr.user?.login, 'dependabot[bot]');
+    const prepared = isPreparedSource(pr);
+    if (!manual)
+        assert.ok(pr.user?.login === 'dependabot[bot]' || prepared, 'Unexpected source author');
     assert.equal(pr.state, 'open');
     assert.equal(pr.draft, false);
     assert.equal(pr.base.ref, 'master');
-    assert.equal(pr.head.repo?.full_name, `${OWNER}/${pr.base.repo.name}`);
+    assert.equal(pr.head.repo?.full_name, sourceHeadRepo(pr, pr.base.repo.name));
     assert.match(pr.head.sha, SHA);
     assert.ok(
         files.length > 0 &&
@@ -136,6 +146,20 @@ function assess(
     const changes = [...assessment.direct, ...assessment.transitive];
     assert.ok(changes.length > 0, 'No dependency changes');
     assertRiskAllowed(assessment.maxRisk, maxRisk);
+    if (prepared) {
+        assert.deepEqual(before, after, 'Prepared PR must preserve package.json');
+        assert.deepEqual(
+            files.map(({filename}) => filename),
+            ['package-lock.json'],
+        );
+        const target = changedInput(before, after, oldLock, newLock);
+        assert.equal(pr.head.ref, preparedBranch(target));
+        validatePreparedLock(before, oldLock, newLock, target);
+        assert.ok(
+            !DEEP_PROFILES.includes(assessment.verificationProfile),
+            'Prepared PR requires a Dependabot-only deep profile',
+        );
+    }
     assert.ok(
         !changes.some(
             (item) =>
@@ -164,7 +188,7 @@ async function planTrain(
     env = process.env,
     request = (route) => github(route, {token: env.GH_TOKEN}),
     evidence = {fetchCheckRuns, fetchRequiredChecks},
-    {refresh = false} = {},
+    {refresh = false, prepareMissing = false, target = ''} = {},
 ) {
     if (env.DEPENDENCY_TRAIN_COHORT_PRS?.trim()) {
         assert.ok(!refresh, 'Refresh only supports automatically discovered groups');
@@ -184,6 +208,13 @@ async function planTrain(
     const mode = env.DEPENDENCY_TRAIN_SELECTION_MODE || 'wave';
     assert.ok(['wave', 'cohort'].includes(mode), 'Unknown candidate selection mode');
     if (refresh) assert.equal(mode, 'cohort');
+    assert.ok(!prepareMissing || refresh, 'Missing-source preparation belongs to Refresh');
+    if (target) {
+        assert.ok(prepareMissing, 'Enable missing-source preparation to select a target');
+        const separator = target.lastIndexOf('@');
+        assert.ok(separator > 0, 'Use an exact package@version target');
+        preparedBranch({name: target.slice(0, separator), version: target.slice(separator + 1)});
+    }
     const risk = riskSelection(env, mode);
     assert.ok(Number.isSafeInteger(prNumber) && prNumber >= 0, 'Invalid source PR number');
     assert.ok(Number.isSafeInteger(waveNumber) && waveNumber > 0, 'Invalid wave number');
@@ -204,6 +235,8 @@ async function planTrain(
     const inputs = new Map();
     const excluded = [];
     const sourceFiles = new Map();
+    const masters = new Map();
+    const openPulls = new Map();
     const readSource = (repo, sha, filename) => {
         const key = `${repo}:${sha}:${filename}`;
 
@@ -214,14 +247,18 @@ async function planTrain(
 
     for (const repo of repos) {
         const current = (await request(`/repos/${OWNER}/${repo}/branches/master`)).commit.sha;
+        masters.set(repo, current);
         let requiredChecks;
         const pulls = await pages(
             `/repos/${OWNER}/${repo}/pulls?state=open&base=master&sort=created&direction=asc`,
             request,
         );
+        if (prepareMissing) openPulls.set(repo, pulls);
         for (const pr of pulls.filter(
             (item) =>
-                item.user?.login === 'dependabot[bot]' && (!prNumber || item.number === prNumber),
+                (item.user?.login === 'dependabot[bot]' ||
+                    (mode === 'cohort' && isPreparedSource(item))) &&
+                (!prNumber || item.number === prNumber),
         )) {
             assert.ok(
                 inventory.length + excluded.length < INVENTORY_LIMIT,
@@ -243,7 +280,8 @@ async function planTrain(
                             source.base.sha === pr.base.sha &&
                             source.rebaseable === true &&
                             source.commits === 1 &&
-                            source.head.ref?.startsWith('dependabot/'),
+                            (source.head.ref?.startsWith('dependabot/') ||
+                                isPreparedSource(source)),
                         'Stale source has no verified single-commit rebase',
                     );
                 }
@@ -291,6 +329,7 @@ async function planTrain(
                     'Invalid source PR date',
                 );
                 const item = {
+                    ...(isPreparedSource(pr) ? {prepared: true} : {}),
                     repo,
                     number: pr.number,
                     sha: pr.head.sha,
@@ -317,8 +356,9 @@ async function planTrain(
             for (const node of graph.filter(
                 (item) => !['cli', 'vsc'].includes(item.repo) && declares(item.manifest, name),
             )) {
-                const current = (await request(`/repos/${OWNER}/${node.repo}/branches/master`))
-                    .commit.sha;
+                const current =
+                    masters.get(node.repo) ||
+                    (await request(`/repos/${OWNER}/${node.repo}/branches/master`)).commit.sha;
                 if (current !== node.sha) continue;
                 const lock = JSON.parse(await readSource(node.repo, node.sha, 'package-lock.json'));
                 baselines.set(`${node.repo}:${name}`, {
@@ -327,32 +367,70 @@ async function planTrain(
                 });
             }
         }
-        automaticReport = {
-            ...automaticGroups(graph, inventory, inputs, repos, baselines),
-            riskSelection: risk,
-        };
-        if (risk.exact) {
-            automaticReport.groups = automaticReport.groups.filter(
-                (group) => group.risk === risk.exact,
-            );
-        }
+        const {
+            groups,
+            incomplete,
+            excluded: blockedGroups,
+        } = automaticGroups(graph, inventory, inputs, repos, baselines);
+        const eligibleGroups = risk.exact
+            ? groups.filter((group) => group.risk === risk.exact)
+            : groups;
+        automaticReport = {groups: eligibleGroups, excluded: blockedGroups, riskSelection: risk};
         if (refresh) {
+            const matchesTarget = ({dependency}) =>
+                !target || target === `${dependency.name}@${dependency.version}`;
             const sources = new Map(inventory.map((item) => [`${item.repo}#${item.number}`, item]));
-            const groups = automaticReport.groups.map((group) => ({
+            const describe = (group) => ({
                 dependency: group.dependency,
                 risk: group.risk,
                 sources: group.requests.map(({repo, number}) => {
-                    const {sha, baseSha, refreshTo} = sources.get(`${repo}#${number}`);
-                    return {repo, number, sha, baseSha, ...(refreshTo ? {refreshTo} : {})};
+                    const {sha, baseSha, refreshTo, prepared} = sources.get(`${repo}#${number}`);
+                    return {
+                        repo,
+                        number,
+                        sha,
+                        baseSha,
+                        ...(refreshTo ? {refreshTo} : {}),
+                        ...(prepared ? {prepared} : {}),
+                    };
                 }),
                 baseline: group.baseline || [],
-            }));
+                ...(group.missing ? {missing: group.missing} : {}),
+            });
+            const complete = eligibleGroups.filter(matchesTarget);
+            let group = complete.find(({requests}) =>
+                requests.some(({repo, number}) => sources.get(`${repo}#${number}`).refreshTo),
+            );
+            let preparationBlocked;
+            if (!group && prepareMissing && !complete.length) {
+                const active = new Set(
+                    [...openPulls.values()]
+                        .flat()
+                        .filter(isPreparedSource)
+                        .map((pr) => pr.head.ref),
+                );
+                const candidates = incomplete.filter(matchesTarget);
+                const waiting = candidates.filter(({dependency}) =>
+                    active.has(preparedBranch(dependency)),
+                );
+                const preparation = await findPreparation(
+                    !target && waiting.length ? waiting : candidates,
+                    graph,
+                    masters,
+                    openPulls,
+                    readSource,
+                    request,
+                );
+                group = preparation.group;
+                preparationBlocked = preparation.blocked;
+            }
             return {
                 toolSha: env.GITHUB_SHA,
                 metapackageSha,
-                group: groups.find((group) => group.sources.some((item) => item.refreshTo)) || null,
+                group: group ? describe(group) : null,
                 excluded,
-                blockedGroups: automaticReport.excluded,
+                blockedGroups,
+                ...(preparationBlocked ? {preparationBlocked} : {}),
             };
         }
         assert.ok(

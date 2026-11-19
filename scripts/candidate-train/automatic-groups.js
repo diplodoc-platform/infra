@@ -37,6 +37,7 @@ function changedInput(before, after, oldLock, newLock) {
 function automaticGroups(graph, inventory, inputs, repositories, baselines = new Map()) {
     const buckets = new Map();
     const excluded = [];
+    const incomplete = [];
     for (const item of inventory) {
         const input = inputs.get(`${item.repo}#${item.number}`);
         if (!input) continue;
@@ -65,37 +66,43 @@ function automaticGroups(graph, inventory, inputs, repositories, baselines = new
             }
             return true;
         });
-        if (missing.length) {
+        const remainders = missing.map(({repo}) => repo).sort();
+        if (remainders.length) {
             excluded.push({
                 dependency,
-                reason: `Missing or ambiguous eligible PRs: ${missing
-                    .map((node) => node.repo)
-                    .sort()
-                    .join(', ')}`,
+                reason: `Missing or ambiguous eligible PRs: ${remainders.join(', ')}`,
             });
-            continue;
+            if (
+                !candidates.some((item) => !item.prepared) ||
+                remainders.some(
+                    (repo) =>
+                        !repositories.includes(repo) ||
+                        candidates.some((item) => item.repo === repo),
+                )
+            )
+                continue;
         }
-        const requests = candidates
-            .map(({repo, number}) => ({repo, number}))
-            .sort((a, b) => a.repo.localeCompare(b.repo));
-        groups.push({
+
+        const group = {
             dependency,
             risk: groupRisk(candidates),
-            requests,
+            requests: candidates
+                .map(({repo, number}) => ({repo, number}))
+                .sort((a, b) => a.repo.localeCompare(b.repo)),
             ...(baseline.length
                 ? {baseline: baseline.sort((a, b) => a.repo.localeCompare(b.repo))}
                 : {}),
             createdAt: candidates.map((item) => item.createdAt).sort()[0],
-        });
+        };
+        if (remainders.length) incomplete.push({...group, missing: remainders});
+        else groups.push(group);
     }
-    groups.sort(
-        (a, b) =>
-            riskWeight(a.risk) - riskWeight(b.risk) ||
-            a.createdAt.localeCompare(b.createdAt) ||
-            a.dependency.name.localeCompare(b.dependency.name) ||
-            a.dependency.version.localeCompare(b.dependency.version),
-    );
-    return {groups, excluded};
+    const order = (a, b) =>
+        riskWeight(a.risk) - riskWeight(b.risk) ||
+        a.createdAt.localeCompare(b.createdAt) ||
+        a.dependency.name.localeCompare(b.dependency.name) ||
+        a.dependency.version.localeCompare(b.dependency.version);
+    return {groups: groups.sort(order), excluded, incomplete: incomplete.sort(order)};
 }
 
 module.exports = {changedInput, automaticGroups};

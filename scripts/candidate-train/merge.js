@@ -2,6 +2,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const {sourceHeadRepo} = require('./prepare-policy');
 const fs = require('node:fs');
 const {isDeepStrictEqual} = require('node:util');
 const {OWNER, SHA, github, buildOrder, write} = require('./common');
@@ -102,7 +103,7 @@ async function sourceReady(item, request, token, evidence, operator) {
     if (operator) await requireOperatorWrite(item.repo, operator, request);
     const prefix = `/repos/${OWNER}/${item.repo}`;
     const pr = await request(`${prefix}/pulls/${item.number}`);
-    assert.equal(pr.head.repo?.full_name, `${OWNER}/${item.repo}`);
+    assert.equal(pr.head.repo?.full_name, sourceHeadRepo(pr, item.repo));
     assert.equal(pr.base.repo?.full_name, `${OWNER}/${item.repo}`);
     assert.equal(pr.base.ref, 'master');
     assert.equal(pr.head.sha, item.sha, `${item.repo}: source head changed`);

@@ -56,6 +56,27 @@ tests.push({
     },
 });
 
+tests.push({
+    name: 'prepared group PRs validate the lock from the bot fork without the writer or scan token',
+    fn: () => {
+        const ctx = context('diplodoc-bot', 'maintainer', true);
+        const {head} = ctx.github.event.pull_request;
+        head.ref = 'codex/dependency-group-0123456789abcdef01234567';
+        head.repo = {full_name: 'diplodoc-bot/repo', fork: true, owner: {login: 'diplodoc-bot'}};
+        const gate = lock.jobs['package-lock-result'];
+        ctx.always = () => true;
+
+        assert.equal(evaluate(verify.if, ctx), true);
+        assert.equal(evaluate(gate.if, ctx), true);
+        assert.equal(evaluate(writer.if, ctx), false);
+        assert.equal(evaluate(sonar.if, ctx), false);
+
+        head.repo.owner.login = 'other';
+        assert.equal(evaluate(verify.if, ctx), false);
+        assert.equal(evaluate(gate.if, ctx), false);
+    },
+});
+
 for (const [name, githubContext, expected] of [
     ['Dependabot', context('dependabot[bot]'), false],
     ['human rerun of Dependabot', context('dependabot[bot]', 'maintainer'), false],
