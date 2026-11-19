@@ -175,8 +175,8 @@ One PR per supported registered repository is allowed, up to the graph limit
 of 40. Keep `pr_number: 0` and `wave: 1`; independent waves do not apply.
 The explicit list supplies the repository scope without changing organization
 variables. Sources may be human-authored or Dependabot PRs, but must be open,
-same-repository, dependency-only, low-risk patch/minor updates with green checks
-on their exact heads and current master bases. A failure rejects the whole
+same-repository, dependency-only patch/minor updates within the selected risk
+policy, with green checks on their exact heads and current master bases. A failure rejects the whole
 group instead of silently dropping a member. No source branches are merged.
 
 Set `cohort_dependency` when updating one dependency across packages. Every
@@ -380,3 +380,24 @@ both from immutable source locks and rejects missing, extra or downgraded eviden
 The build checks the actual installed providers too. Payloads without host peers
 retain schema 1. Deploy the downstream schema-2 verifier before merging producer
 support; an older consumer rejects schema 2 rather than silently ignoring it.
+
+## Refresh stale Dependabot PRs before Morning
+
+**Refresh Depends** is a separate workflow. The 23:17 Europe/Moscow run requires
+`DEPENDENCY_TRAIN_REFRESH_ENABLED=true` and both existing Morning flags. It uses
+the same repository scope and automatic risk ceiling as Morning. A manual
+`dry_run: true` reports its selection in `dependency-refresh-plan`. Live writes
+are available only on `infra/master`.
+
+Refresh chooses one complete dependency and version group with at least one
+stale, rebaseable, single-commit Dependabot PR. It applies the same source
+policy, green required checks on the old heads, and complete-consumer rules.
+Before any write it recomputes the expected Git trees and checks the baseline
+and source refs. Only stale PRs receive a server-side GitHub rebase from
+`diplodoc-bot`. The new commit must have the expected parent and tree. Conflicts
+or changed refs stop the group; further writes also stop on a failed proof.
+GitHub may create an unsigned rebased commit, so effective branch rulesets that
+require signed commits block the group before any write.
+
+The next Morning independently checks source policy and required checks on the
+new heads. Refresh never treats old CI as evidence for the new commits.
