@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const {apiFixture} = require('../helpers/candidate-api');
 const {planTrain} = require('../../scripts/candidate-train/plan');
+const {assertNoCompetingPull} = require('../../scripts/candidate-train/prepare-plan');
 const {preparedBranch} = require('../../scripts/candidate-train/prepare-policy');
 const {applyRefresh} = require('../../scripts/candidate-train/refresh');
 
@@ -103,6 +104,34 @@ test('does not duplicate a pending update with the same dependency, even if CI i
     const plan = await select(api, env, options);
     assert.equal(plan.group, null);
     assert.match(plan.preparationBlocked[0].reason, /beta#2 already changes/);
+});
+
+test('a stale PR touching an unrelated lock entry does not reserve an update from newer master', async () => {
+    const name = 'example';
+    const manifest = JSON.stringify({devDependencies: {example: '^1.0.0'}});
+    const [current, base, head] = [sha('a'), sha('b'), sha('c')];
+    const lock = {
+        [current]: {'node_modules/example': {version: '1.1.0'}},
+        [base]: {'node_modules/example': {version: '1.0.0'}},
+        [head]: {
+            'node_modules/example': {version: '1.0.0'},
+            'node_modules/unrelated': {version: '2.0.0'},
+        },
+    };
+    const pr = {number: 1, base: {sha: current}, head: {sha: head}};
+    const read = (_repo, sha, file) =>
+        file === 'package.json' ? manifest : JSON.stringify({packages: lock[sha]});
+    const request = async (route) =>
+        route.includes('/compare/')
+            ? {merge_base_commit: {sha: base}}
+            : [{filename: 'package-lock.json'}];
+    await assertNoCompetingPull('alpha', name, [pr], read, request);
+
+    lock[head]['node_modules/example'].version = '1.2.0';
+    await assert.rejects(
+        assertNoCompetingPull('alpha', name, [pr], read, request),
+        /alpha#1 already changes example/,
+    );
 });
 
 test('Morning requires green exact-head CI for a prepared fork PR and rejects same-repo lookalikes', async () => {
