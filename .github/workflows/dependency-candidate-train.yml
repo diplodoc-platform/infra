@@ -1,4 +1,4 @@
-name: Dependabot Rebase Pilot
+name: Dependabot Server Rebase Pilot
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Request Dependabot rebase for tabs-extension PR 170
+      - name: Server-side rebase for tabs-extension PR 170
         env:
           GH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
         run: |
@@ -21,13 +21,19 @@ jobs:
           test "$(gh api "$repo" --jq .permissions.push)" = 'true'
           gh api "$repo/pulls/170" | jq -e '
             .state == "open" and .draft == false and .user.login == "dependabot[bot]"
+            and .node_id == "PR_kwDOJ0QJqs8AAAABKub4kg" and .rebaseable == true
             and .head.repo.full_name == "diplodoc-platform/tabs-extension"
             and .head.sha == "b3fd3a4ae53b38011c6526a39261e94a7b28378b"
             and .base.ref == "master" and .base.sha == "b40392228aa25738ab386868db71f46f814d7f17"
           ' >/dev/null
           test "$(gh api "$repo/branches/master" --jq .commit.sha)" = '4b2fb98c3fe44675d4c4a4b8ff537b264ab2499c'
-          gh api --paginate "$repo/issues/170/comments?per_page=100" | jq -es '
-            add | all(.[]; .body != "@dependabot rebase" or .user.login != "diplodoc-bot")
-          ' >/dev/null
-          gh api --method POST "$repo/issues/170/comments" -f body='@dependabot rebase' \
-            --jq '{id,author:.user.login,url:.html_url}'
+          gh api graphql -f query='
+            mutation Rebase($id: ID!, $head: GitObjectID!) {
+              updatePullRequestBranch(input: {
+                pullRequestId: $id, expectedHeadOid: $head, updateMethod: REBASE
+              }) {
+                pullRequest { number headRefOid baseRefOid }
+              }
+            }
+          ' -f id='PR_kwDOJ0QJqs8AAAABKub4kg' -f head='b3fd3a4ae53b38011c6526a39261e94a7b28378b' |
+            jq -e '.data.updatePullRequestBranch.pullRequest | select(.number == 170)'
