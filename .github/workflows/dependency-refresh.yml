@@ -1,0 +1,66 @@
+name: Refresh Depends
+
+on:
+  schedule:
+    - cron: '17 20 * * *' # 23:17 Europe/Moscow, before Morning at 01:00.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Plan only; false requests GitHub rebase for one complete group'
+        type: boolean
+        default: true
+      repositories:
+        description: 'Repository allowlist or all; defaults to the Morning setting'
+        type: string
+        default: ''
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: dependency-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' &&
+       vars.DEPENDENCY_TRAIN_REFRESH_ENABLED == 'true' &&
+       vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true' &&
+       vars.DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
+      - run: npm ci --ignore-scripts
+      - name: Find one complete dependency group with stale sources
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY_TRAIN_SELECTION_MODE: cohort
+          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+        run: node scripts/candidate-train/refresh.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-refresh-plan
+          path: dependency-refresh-plan.json
+          if-no-files-found: error
+      - name: Rebase eligible stale PRs and verify their resulting trees
+        if: >-
+          steps.plan.outputs.found == 'true' &&
+          github.ref == 'refs/heads/master' &&
+          (github.event_name == 'schedule' || inputs.dry_run == false)
+        env:
+          TRAIN_REFRESH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
+        run: node scripts/candidate-train/refresh.js apply

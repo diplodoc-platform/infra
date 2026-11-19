@@ -164,8 +164,10 @@ async function planTrain(
     env = process.env,
     request = (route) => github(route, {token: env.GH_TOKEN}),
     evidence = {fetchCheckRuns, fetchRequiredChecks},
+    {refresh = false} = {},
 ) {
     if (env.DEPENDENCY_TRAIN_COHORT_PRS?.trim()) {
+        assert.ok(!refresh, 'Refresh only supports automatically discovered groups');
         return planCohort(env, request, evidence, {
             graphAt,
             assess,
@@ -181,6 +183,7 @@ async function planTrain(
     const waveNumber = Number(env.DEPENDENCY_TRAIN_WAVE || 1);
     const mode = env.DEPENDENCY_TRAIN_SELECTION_MODE || 'wave';
     assert.ok(['wave', 'cohort'].includes(mode), 'Unknown candidate selection mode');
+    if (refresh) assert.equal(mode, 'cohort');
     const risk = riskSelection(env, mode);
     assert.ok(Number.isSafeInteger(prNumber) && prNumber >= 0, 'Invalid source PR number');
     assert.ok(Number.isSafeInteger(waveNumber) && waveNumber > 0, 'Invalid wave number');
@@ -226,7 +229,24 @@ async function planTrain(
             );
 
             try {
-                assert.equal(pr.base.sha, current, 'Refresh the PR against current master first');
+                const stale = pr.base.sha !== current;
+                if (stale && !refresh)
+                    assert.equal(
+                        pr.base.sha,
+                        current,
+                        'Refresh the PR against current master first',
+                    );
+                if (stale) {
+                    const source = await request(`/repos/${OWNER}/${repo}/pulls/${pr.number}`);
+                    assert.ok(
+                        source.head.sha === pr.head.sha &&
+                            source.base.sha === pr.base.sha &&
+                            source.rebaseable === true &&
+                            source.commits === 1 &&
+                            source.head.ref?.startsWith('dependabot/'),
+                        'Stale source has no verified single-commit rebase',
+                    );
+                }
                 const files = await pages(
                     `/repos/${OWNER}/${repo}/pulls/${pr.number}/files`,
                     request,
@@ -275,6 +295,7 @@ async function planTrain(
                     number: pr.number,
                     sha: pr.head.sha,
                     baseSha: pr.base.sha,
+                    ...(stale ? {refreshTo: current} : {}),
                     manifest: after,
                     risk: assessment.maxRisk,
                     profile: assessment.verificationProfile,
@@ -314,6 +335,25 @@ async function planTrain(
             automaticReport.groups = automaticReport.groups.filter(
                 (group) => group.risk === risk.exact,
             );
+        }
+        if (refresh) {
+            const sources = new Map(inventory.map((item) => [`${item.repo}#${item.number}`, item]));
+            const groups = automaticReport.groups.map((group) => ({
+                dependency: group.dependency,
+                risk: group.risk,
+                sources: group.requests.map(({repo, number}) => {
+                    const {sha, baseSha, refreshTo} = sources.get(`${repo}#${number}`);
+                    return {repo, number, sha, baseSha, ...(refreshTo ? {refreshTo} : {})};
+                }),
+                baseline: group.baseline || [],
+            }));
+            return {
+                toolSha: env.GITHUB_SHA,
+                metapackageSha,
+                group: groups.find((group) => group.sources.some((item) => item.refreshTo)) || null,
+                excluded,
+                blockedGroups: automaticReport.excluded,
+            };
         }
         assert.ok(
             waveNumber <= Math.max(1, automaticReport.groups.length),
