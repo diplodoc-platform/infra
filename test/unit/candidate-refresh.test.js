@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const {apiFixture} = require('../helpers/candidate-api');
 const {planTrain} = require('../../scripts/candidate-train/plan');
 const {applyRefresh} = require('../../scripts/candidate-train/refresh');
@@ -14,11 +15,22 @@ const env = {
     DEPENDENCY_TRAIN_REPOSITORIES: 'all',
 };
 
+async function select(api, variables = env, {refresh = true} = {}) {
+    const cwd = process.cwd();
+    process.chdir(path.join(__dirname, '../..'));
+
+    try {
+        return await planTrain(variables, api.request, api.evidence, {refresh});
+    } finally {
+        process.chdir(cwd);
+    }
+}
+
 test('refresh selects stale PRs only in a complete group and Morning still requires current heads', async () => {
     const api = apiFixture();
     const stale = api.addPull('alpha', 1, {stale: true});
     api.addPull('beta', 2);
-    const plan = () => planTrain(env, api.request, api.evidence, {refresh: true});
+    const plan = () => select(api);
 
     assert.equal((await plan()).group.dependency.name, '@types/example');
     assert.deepEqual(
@@ -28,18 +40,8 @@ test('refresh selects stale PRs only in a complete group and Morning still requi
             ['beta', false],
         ],
     );
-    assert.equal((await planTrain(env, api.request, api.evidence)).selected.length, 0);
-    assert.equal(
-        (
-            await planTrain(
-                {...env, DEPENDENCY_TRAIN_REPOSITORIES: 'alpha'},
-                api.request,
-                api.evidence,
-                {refresh: true},
-            )
-        ).group,
-        null,
-    );
+    assert.equal((await select(api, env, {refresh: false})).selected.length, 0);
+    assert.equal((await select(api, {...env, DEPENDENCY_TRAIN_REPOSITORIES: 'alpha'})).group, null);
 
     stale.rebaseable = false;
     assert.equal((await plan()).group, null);
