@@ -147,6 +147,7 @@ function apiFixture() {
             return structuredClone(
                 pulls.get(repo).find((item) => item.number === Number(parts[1])),
             );
+        if (parts[0] === 'compare') return {merge_base_commit: {sha: parts[1].split('...')[0]}};
         if (parts[0] === 'pulls' && parts[2] === 'files')
             return [{filename: 'package-lock.json', status: 'modified'}];
         if (parts.length === 1 && parts[0] === 'pulls') {

@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const {OWNER, pages} = require('./common');
+const {OWNER, SHA, pages} = require('./common');
 const {BOT, preparedBranch, preparationSection, touchesInput} = require('./prepare-policy');
 
 async function readInputs(readSource, repo, base, head) {
@@ -18,7 +18,14 @@ async function assertNoCompetingPull(repo, name, pulls, readSource, request) {
         const files = await pages(`/repos/${OWNER}/${repo}/pulls/${pr.number}/files`, request);
         if (!files.some(({filename}) => ['package.json', 'package-lock.json'].includes(filename)))
             continue;
-        const values = await readInputs(readSource, repo, pr.base.sha, pr.head.sha);
+        assert.match(pr.base.sha, SHA);
+        assert.match(pr.head.sha, SHA);
+        const comparison = await request(
+            `/repos/${OWNER}/${repo}/compare/${pr.base.sha}...${pr.head.sha}?per_page=1`,
+        );
+        const mergeBase = comparison.merge_base_commit?.sha;
+        assert.match(mergeBase, SHA);
+        const values = await readInputs(readSource, repo, mergeBase, pr.head.sha);
         assert.ok(!touchesInput(...values, name), `${repo}#${pr.number} already changes ${name}`);
     }
 }
