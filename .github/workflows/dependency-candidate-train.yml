@@ -18,6 +18,11 @@ on:
         description: 'Optional shared dependency; requires every supported direct consumer at one locked version'
         type: string
         default: ''
+      risk_level:
+        description: 'Automatic risk priority up to the organization ceiling, or one exact group risk'
+        type: choice
+        options: [auto, low, medium, high, critical]
+        default: auto
       dry_run:
         description: 'Selection only; false explicitly approves one preparation run'
         type: boolean
@@ -36,6 +41,7 @@ on:
         default: 1
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -69,6 +75,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_RISK_LEVEL: ${{ inputs.risk_level || 'auto' }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
           DEPENDENCY_TRAIN_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'cohort' || inputs.selection_mode || 'cohort' }}
           DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
           DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
@@ -161,6 +169,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_RISK_LEVEL: ${{ inputs.risk_level || 'auto' }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
           DEPENDENCY_TRAIN_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'cohort' || inputs.selection_mode || 'cohort' }}
           DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
           DEPENDENCY_CANDIDATE_PREPARE_APPROVED: 'true'

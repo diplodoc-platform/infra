@@ -7,13 +7,15 @@ const {OWNER, SHA, fileAt, pages, planId, validatePlan, buildOrder} = require('.
 const {parseCohort, PACKAGE} = require('./cohort');
 const {repositoryTargets} = require('./waves');
 const {deriveChecksGreen} = require('../auto-merge');
+const {groupRisk} = require('./risk');
+const {requireDeepProfile} = require('./deep-profile');
 
 /** Select the entire explicit group or fail; this path is unavailable to schedules. */
 async function planCohort(
     env,
     request,
     evidence,
-    {graphAt, assess, automatic = false, baseline = []},
+    {graphAt, assess, risk, automatic = false, baseline = []},
 ) {
     if (automatic) {
         assert.ok(['schedule', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME));
@@ -75,7 +77,7 @@ async function planCohort(
             oldLock,
             newLock,
             registry,
-            {manual: !automatic, dependency},
+            {manual: !automatic, dependency, maxRisk: risk.maxRisk},
         );
         const node = graph.find((item) => item.repo === repo);
         assert.equal(
@@ -95,14 +97,22 @@ async function planCohort(
             versions.add(version);
         }
         Object.assign(node, {sha: pr.head.sha, manifest: after});
-        selected.push({
+        const item = {
             ...node,
             number,
             baseSha: pr.base.sha,
             risk: assessment.maxRisk,
             profile: assessment.verificationProfile,
-        });
+        };
+        await requireDeepProfile(item, checks, request);
+        selected.push(item);
     }
+    if (risk.exact)
+        assert.equal(
+            groupRisk(selected),
+            risk.exact,
+            'The group does not match the requested risk',
+        );
     assert.ok(
         versions.size <= 1,
         'Cohort sources lock different versions of the shared dependency',

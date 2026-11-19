@@ -24,10 +24,21 @@ algolia, folding-headings, html and quote-link. Only selected opt-ins add virtua
 CLI edges and exact candidate-only archive dependencies; other waves do not
 silently acquire these extensions. Canonical source manifests remain unchanged.
 
-Only **low policy-risk** patch/minor updates qualify. This is output-impact risk,
-not CVSS; a patch or minor is not automatically low risk. Other risks and
-major/new/removed/ignored changes need separate review. Current master bases,
-green exact-head required checks and publisher bindings remain mandatory.
+Only patch/minor updates qualify. Policy risk measures possible impact on
+Diplodoc output and tooling. Major/new/removed/ignored changes need separate
+review. Current master bases, green exact-head required checks and publisher
+bindings remain mandatory.
+
+| Coordinated selection                                                      | Result                                                                                                            |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `risk_level: auto` with the organization ceiling unset or `low`            | Checks only low-risk groups.                                                                                      |
+| `risk_level: auto` with `DEPENDENCY_TRAIN_MAX_RISK=medium\|high\|critical` | Tries complete groups in ascending risk order up to the ceiling.                                                  |
+| Manual `risk_level: low\|medium\|high\|critical`                           | Selects groups whose maximum source risk equals the chosen level. Lower-risk PRs of the same group stay included. |
+
+Only use the higher levels after deploying the compatible internal builder.
+The ceiling controls verification only. Groups above low risk go through
+review and merge in the source repositories, independently of the train's
+`Merge candidates` control.
 
 The default selector groups eligible Dependabot PRs by one changed direct dependency
 and its exact stable locked version. Every registered direct consumer must either have
@@ -35,10 +46,10 @@ one eligible PR for that version, or already lock it at the frozen current maste
 Missing, unhealthy, conflicting or ambiguous consumers block the whole group. Narrow
 repository allowlists cannot silently reduce coverage. Already-updated consumers are
 recorded in `cohort.baseline` and independently revalidated from canonical locks.
-Groups are ordered by oldest PR then dependency identity. `wave` selects the group
-index; groups are not truncated to three sources.
+Groups are ordered by maximum source risk, oldest PR, then dependency identity.
+`wave` selects the group index; groups are not truncated to three sources.
 
-Explicit `selection_mode: wave` preserves the legacy independent selector: eligible
+Explicit `selection_mode: wave` preserves the legacy low-risk-only independent selector: eligible
 PRs are ordered by creation time, repository and PR number, with at most three PRs
 and one PR per repository. `train-plan.json`
 records the complete eligible/excluded inventory; the summary limits long lists
@@ -47,9 +58,11 @@ PRs is an explicit error, not a silently partial inventory.
 
 ## Trust boundary
 
-1. Select dependency-only, low-risk patch/minor updates with green exact-head
-   required checks and explicit publisher bindings. New/removed dependencies,
-   major updates, unknown evidence and ignored changes fail closed.
+1. Select dependency-only patch/minor updates with green exact-head required
+   checks and explicit publisher bindings. For elevated risks that require deep
+   verification, require the successful Testpack comparison and its exact profile
+   artifact from the same run attempt. New/removed dependencies, major updates,
+   unknown evidence and ignored changes fail closed.
 2. Freeze infrastructure, metapackage, CLI base and source SHAs. Rebuild affected
    consumers, including client assets for component changes.
 3. Build/pack without secrets. Relocatable archives and scoped overrides carry

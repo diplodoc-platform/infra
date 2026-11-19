@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const {isDeepStrictEqual} = require('node:util');
 const {OWNER, SHA, github, buildOrder, write} = require('./common');
 const {fetchCheckRuns, fetchRequiredChecks, deriveChecksGreen} = require('../auto-merge');
+const {groupRisk} = require('./risk');
+const {requireDeepProfile} = require('./deep-profile');
 const {verifiedVerdict} = require('./verdict');
 const {authorizeControl, requireOperatorWrite} = require('./control-authorization');
 const {packageRegistrationsAt} = require('./metapackage');
@@ -132,6 +134,7 @@ async function sourceReady(item, request, token, evidence, operator) {
         deriveChecksGreen(checks, required, item.sha),
         `${item.repo}: required exact-head CI is not green`,
     );
+    await requireDeepProfile(item, checks, request);
     const review = await request('/graphql', {
         method: 'POST',
         body: {
@@ -199,7 +202,14 @@ async function mergeTrain(
     );
     const {plan, candidate} = verified;
     const operator = await authorizeControl(env, verified, request);
-    if (live) assert.equal(env.CONFIRM_TRAIN_ID, plan.id, 'Confirm the exact verified train ID');
+    if (live) {
+        assert.equal(env.CONFIRM_TRAIN_ID, plan.id, 'Confirm the exact verified train ID');
+        assert.equal(
+            groupRisk(plan.selected),
+            'low',
+            'Candidates above low risk require merging the source PRs through their review process',
+        );
+    }
     const report = {
         schema: 1,
         trainId: plan.id,

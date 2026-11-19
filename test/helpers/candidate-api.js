@@ -55,11 +55,12 @@ function apiFixture() {
 
     function addPull(repo, number, options = {}) {
         const base = graph.find((item) => item.repo === repo);
-        const before = {...base.manifest, devDependencies: {'@types/example': '^1.0.0'}};
-        const after = {...before, devDependencies: {'@types/example': '^1.1.0'}};
+        const dependency = options.dependency || '@types/example';
+        const before = {...base.manifest, devDependencies: {[dependency]: '^1.0.0'}};
+        const after = {...before, devDependencies: {[dependency]: '^1.1.0'}};
         const lock = (manifest, version) => ({
             lockfileVersion: 3,
-            packages: {'': manifest, 'node_modules/@types/example': {version, dev: true}},
+            packages: {'': manifest, [`node_modules/${dependency}`]: {version, dev: true}},
         });
         const sha = hash(`${repo}#${number}`);
         addFiles(repo, base.sha, {

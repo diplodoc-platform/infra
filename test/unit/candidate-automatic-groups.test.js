@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const {apiFixture} = require('../helpers/candidate-api');
 const {planTrain} = require('../../scripts/candidate-train/plan');
+const {planId, validatePlan} = require('../../scripts/candidate-train/common');
 const {revalidateSources} = require('../../scripts/candidate-train/publish');
 const {changedInput, automaticGroups} = require('../../scripts/candidate-train/automatic-groups');
 
@@ -38,6 +39,56 @@ test('automatic groups use the complete shared input across more than three repo
     await revalidate(plan, env, api);
     const changed = {...env, DEPENDENCY_TRAIN_REPOSITORIES: 'alpha,beta,gamma'};
     await assert.rejects(revalidate(plan, changed, api));
+});
+
+test('risk defaults to low; automatic fallback prioritizes whole groups and exact dispatch selects one risk', async () => {
+    const api = apiFixture();
+    api.addPull('alpha', 1, {dependency: 'vitest'});
+    api.addPull('beta', 2, {day: 2});
+    const fallback = {...env, DEPENDENCY_TRAIN_MAX_RISK: 'critical'};
+    const exact = {
+        ...env,
+        GITHUB_EVENT_NAME: 'workflow_dispatch',
+        DEPENDENCY_TRAIN_RISK_LEVEL: 'medium',
+    };
+
+    const defaultPlan = await select(api);
+    assert.equal(defaultPlan.selected[0].repo, 'beta');
+    assert.equal(defaultPlan.automaticGroups.groups.length, 1);
+
+    const fallbackPlan = await select(api, fallback);
+    assert.deepEqual(
+        fallbackPlan.automaticGroups.groups.map(({risk}) => risk),
+        ['low', 'medium'],
+    );
+    assert.equal(fallbackPlan.selected[0].repo, 'beta');
+
+    const manual = await select(api, exact);
+    assert.equal(manual.selected[0].repo, 'alpha');
+    assert.equal(manual.selected[0].profile, 'toolchain');
+    await revalidate(manual, exact, api);
+    await assert.rejects(revalidate(manual, env, api));
+
+    const downgraded = structuredClone(manual);
+    Object.assign(downgraded.selected[0], {risk: 'low', profile: 'standard'});
+    assert.notEqual(planId(downgraded), manual.id);
+    assert.throws(() => validatePlan(downgraded));
+    await assert.rejects(select(api, {...fallback, DEPENDENCY_TRAIN_MAX_RISK: 'constructor'}));
+    await assert.rejects(select(api, {...exact, GITHUB_EVENT_NAME: 'schedule'}));
+});
+
+test('an exact group may combine sources of different risk and keeps the maximum', () => {
+    const input = {name: 'shared', version: '1.1.0'};
+    const inventory = [
+        {repo: 'alpha', number: 1, risk: 'low', createdAt: '2026-11-01'},
+        {repo: 'beta', number: 2, risk: 'critical', createdAt: '2026-11-02'},
+    ];
+    const graph = inventory.map(({repo}) => ({repo, manifest: {dependencies: {shared: '^1'}}}));
+    const inputs = new Map(inventory.map(({repo, number}) => [`${repo}#${number}`, input]));
+    const {groups} = automaticGroups(graph, inventory, inputs, ['alpha', 'beta']);
+
+    assert.equal(groups[0].risk, 'critical');
+    assert.equal(groups[0].requests.length, 2);
 });
 
 test('a missing or conflicting consumer blocks the entire automatic group', async () => {
