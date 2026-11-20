@@ -135,21 +135,31 @@ function deriveCiCompletedAt(checkRunsResponse) {
  * @param {object} checkRunsResponse GitHub check-runs API response.
  * @param {Array<{context: string, appId: number|null}>} requiredChecks Required publishers.
  * @param {string} headSha Immutable PR head SHA.
+ * @param {object} [options]
+ * @param {boolean} [options.allowUnboundPublisher=false] Accept a rule configured for any source.
  * @returns {boolean}
  */
-function deriveChecksGreen(checkRunsResponse, requiredChecks = [], headSha) {
+function deriveChecksGreen(
+    checkRunsResponse,
+    requiredChecks = [],
+    headSha,
+    {allowUnboundPublisher = false} = {},
+) {
     if (!checkRunsResponse || !Array.isArray(checkRunsResponse.check_runs)) {
         return false;
     }
     if (!Array.isArray(requiredChecks) || requiredChecks.length === 0) return false;
     if (!/^[a-f0-9]{40}$/i.test(headSha || '')) return false;
     return requiredChecks.every((check) => {
-        if (!check || !Number.isSafeInteger(check.appId) || check.appId <= 0) return false;
+        if (!check) return false;
+        const anySource = allowUnboundPublisher && check.appId === null;
+        if (!anySource && (!Number.isSafeInteger(check.appId) || check.appId <= 0)) return false;
+
         const runs = checkRunsResponse.check_runs.filter(
             (run) =>
                 run &&
                 run.name === check.context &&
-                run.app?.id === check.appId &&
+                (anySource || run.app?.id === check.appId) &&
                 run.head_sha === headSha,
         );
         const run = runs.sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0];

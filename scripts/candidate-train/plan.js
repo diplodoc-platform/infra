@@ -316,7 +316,9 @@ async function planTrain(
                     'master',
                 );
                 assert.ok(
-                    deriveChecksGreen(checks, requiredChecks, pr.head.sha),
+                    deriveChecksGreen(checks, requiredChecks, pr.head.sha, {
+                        allowUnboundPublisher: true,
+                    }),
                     'Required exact-head CI is not green',
                 );
                 assert.ok(

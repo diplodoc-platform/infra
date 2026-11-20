@@ -124,6 +124,35 @@ test('deriveChecksGreen: true when all runs completed + success', () => {
     );
 });
 
+test('deriveChecksGreen: the train can accept an unbound rule on the exact head', () => {
+    const head = 'a'.repeat(40);
+    const result = {
+        id: 1,
+        name: 'lint',
+        app: {id: 321},
+        head_sha: head,
+        status: 'completed',
+        conclusion: 'success',
+    };
+    const rule = [{context: 'lint', appId: null}];
+    const options = {allowUnboundPublisher: true};
+    const response = {check_runs: [result]};
+
+    assert.equal(deriveChecksGreen(response, rule, head), false);
+    assert.equal(deriveChecksGreen(response, rule, head, options), true);
+    assert.equal(deriveChecksGreen(response, rule, 'b'.repeat(40), options), false);
+    assert.equal(
+        deriveChecksGreen(response, [{context: 'lint', appId: 15368}], head, options),
+        false,
+    );
+
+    const newerFailure = {...result, id: 2, app: {id: 15368}, conclusion: 'failure'};
+    assert.equal(
+        deriveChecksGreen({check_runs: [result, newerFailure]}, rule, head, options),
+        false,
+    );
+});
+
 test('deriveChecksGreen: false when one run failed', () => {
     const response = {
         check_runs: [

@@ -41,6 +41,24 @@ test('automatic groups use the complete shared input across more than three repo
     await assert.rejects(revalidate(plan, changed, api));
 });
 
+test('Morning accepts a complete group with an Any source rule and revalidates its exact heads', async () => {
+    const api = apiFixture();
+    for (const [i, repo] of ['alpha', 'beta', 'gamma', 'delta'].entries()) api.addPull(repo, i + 1);
+    api.evidence.fetchRequiredChecks = async (_token, _owner, repo) => [
+        {context: 'Quality', appId: repo === 'delta' ? null : 15368},
+    ];
+
+    const plan = await select(api);
+    assert.equal(plan.selected.length, 4);
+    await revalidate(plan, env, api);
+
+    const currentRuns = api.evidence.fetchCheckRuns;
+    api.evidence.fetchCheckRuns = (token, owner, repo, head) =>
+        currentRuns(token, owner, repo, repo === 'delta' ? 'b'.repeat(40) : head);
+    await assert.rejects(revalidate(plan, env, api));
+    assert.deepEqual((await select(api)).selected, []);
+});
+
 test('risk defaults to low; automatic fallback prioritizes whole groups and exact dispatch selects one risk', async () => {
     const api = apiFixture();
     api.addPull('alpha', 1, {dependency: 'vitest'});

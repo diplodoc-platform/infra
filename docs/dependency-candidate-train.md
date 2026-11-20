@@ -26,8 +26,9 @@ silently acquire these extensions. Canonical source manifests remain unchanged.
 
 Only patch/minor updates qualify. Policy risk measures possible impact on
 Diplodoc output and tooling. Major/new/removed/ignored changes need separate
-review. Current master bases, green exact-head required checks and publisher
-bindings remain mandatory.
+review. Current master bases and green required checks on the exact PR head
+are mandatory. When the repository requires a specific App for a check, the
+train enforces that binding. A rule set to Any source is also eligible.
 
 | Coordinated selection                                                      | Result                                                                                                            |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -59,9 +60,9 @@ PRs is an explicit error, not a silently partial inventory.
 ## Trust boundary
 
 1. Select dependency-only patch/minor updates with green exact-head required
-   checks and explicit publisher bindings. For elevated risks that require deep
-   verification, require the successful Testpack comparison and its exact profile
-   artifact from the same run attempt. New/removed dependencies, major updates,
+   checks from the publishers allowed by the repository rules. For elevated risks
+   that require deep verification, require the successful Testpack comparison and
+   its exact profile artifact from the same run attempt. New/removed dependencies, major updates,
    unknown evidence and ignored changes fail closed.
 2. Freeze infrastructure, metapackage, CLI base and source SHAs. Rebuild affected
    consumers, including client assets for component changes.
@@ -300,7 +301,7 @@ Candidate package execution remains secretless, and these jobs execute only trus
 infra tooling, not code from candidate archives.
 
 Before any write, and again before each source merge, it verifies the full group:
-unchanged source heads/bases, current publisher-bound CI, required human reviews
+unchanged source heads/bases, current exact-head CI, required human reviews
 and GitHub's clean merge gate. The repository's up-to-date branch setting is optional.
 CLI and already-updated consumers must retain their frozen master SHAs. If the
 metapackage master advances, the train compares the registered `packages/` and
