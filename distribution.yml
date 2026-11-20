@@ -136,3 +136,5 @@ repos:
         reason: 'Testpack dependency PRs already run their own corpus and E2E workflows'
   screencaster:
     exclude: []
+  notes-extension:
+    exclude: []
