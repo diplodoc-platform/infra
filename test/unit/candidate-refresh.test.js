@@ -134,7 +134,7 @@ test('a stale PR touching an unrelated lock entry does not reserve an update fro
     );
 });
 
-test('Morning requires green exact-head CI for a prepared fork PR and rejects same-repo lookalikes', async () => {
+test('Morning requires green exact-head CI and the bot identity for a prepared PR', async () => {
     const api = apiFixture();
     const dependency = {name: '@types/example', version: '1.1.0'};
     api.addPull('alpha', 1);
@@ -154,10 +154,13 @@ test('Morning requires green exact-head CI for a prepared fork PR and rejects sa
     assert.match(pending.preparationBlocked[0].reason, /prepared PR already exists/);
 
     api.evidence.fetchCheckRuns = existingCheck;
-    prepared.head.repo = {full_name: `${namespace}/beta`};
+    prepared.user.login = 'someone';
+    assert.equal((await selectMorning()).selected.length, 0);
+    prepared.user.login = 'diplodoc-bot';
+    prepared.head.repo = {full_name: 'diplodoc-bot/beta', fork: true};
     assert.equal((await selectMorning()).selected.length, 0);
 
-    prepared.head.repo = {full_name: 'diplodoc-bot/beta', fork: true};
+    prepared.head.repo = {full_name: `${namespace}/beta`};
     prepared.state = 'closed';
     const result = await select(api, env, {prepareMissing: true});
     assert.equal(result.group, null);

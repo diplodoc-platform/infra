@@ -416,15 +416,21 @@ that needs Dependabot's deep CI requires a separate update.
 To inspect a group, manually dispatch **Refresh Depends** with
 `dry_run: true` and `prepare_missing: true`. Optionally set `target` to an exact
 version such as `esbuild-sass-plugin@3.7.0`. The `dependency-refresh-plan`
-artifact includes the candidate lockfiles. A dry run works before provisioning
-the fork or deploying the updated lock workflow.
+artifact includes the candidate lockfiles. A dry run works before the target
+repositories have deployed the reviewed candidate workflows.
 
-Live preparation requires public `diplodoc-bot/<repo>` forks with the existing
-infra GitHub App installed on them, and the fork-aware package-lock workflow
-installed in the upstream repositories. Validate that their required checks
-run on fork PRs. The writer validates the whole plan before mutating anything,
-pushes branches to the forks, and opens source PRs as `diplodoc-bot`. The fork
-keeps upstream Actions secrets out of the candidate jobs. A closed prepared PR
+Live preparation currently supports `components` and `transform`. The existing
+infra GitHub App creates branches in the original repositories, and
+`diplodoc-bot` opens the source PRs. The writer validates the complete plan and
+checks the reviewed workflow directory of each repository before writing.
+Refresh also checks the new base workflow tree before rebasing a prepared PR.
+A change under `.github/workflows` requires reviewing and updating that
+repository's approved tree in infra. Regular dependency updates do not affect
+this check.
+
+Candidate CI runs tests and uploads their artifacts with read-only repository
+permissions. Privileged report publication skips candidate branches.
+A closed prepared PR
 is never recreated for the same exact version. Automatic selection keeps a
 pending viable group ahead of starting another.
 

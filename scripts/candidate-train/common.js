@@ -190,14 +190,7 @@ async function pages(route, request = github) {
 async function fileAt(repo, sha, file, request = github) {
     assert.match(repo, REPO);
     assert.match(sha, SHA);
-    assert.ok(
-        [
-            'package.json',
-            'package-lock.json',
-            '.gitmodules',
-            '.github/workflows/package-lock.yml',
-        ].includes(file),
-    );
+    assert.ok(['package.json', 'package-lock.json', '.gitmodules'].includes(file));
     const prefix = `/repos/${OWNER}/${repo}`;
     const tree = await request(`${prefix}/git/trees/${sha}`);
     assert.equal(tree.truncated, false);

@@ -20,14 +20,9 @@ function preparedBranch({name, version}) {
 function isPreparedSource(pr) {
     return (
         pr.user?.login === BOT &&
-        pr.head?.repo?.fork === true &&
-        pr.head.repo.full_name === `${BOT}/${pr.base?.repo?.name}` &&
+        pr.head?.repo?.full_name === `${OWNER}/${pr.base?.repo?.name}` &&
         /^codex\/dependency-group-[a-f0-9]{24}$/.test(pr.head?.ref || '')
     );
-}
-
-function sourceHeadRepo(pr, repo) {
-    return `${isPreparedSource(pr) ? BOT : OWNER}/${repo}`;
 }
 
 function lockedVersion(lock, name) {
@@ -82,7 +77,6 @@ module.exports = {
     BOT,
     preparedBranch,
     isPreparedSource,
-    sourceHeadRepo,
     lockedVersion,
     preparationSection,
     validatePreparedLock,

@@ -101,9 +101,7 @@ function apiFixture() {
             head: {
                 sha,
                 ref: options.prepared || `dependabot/npm_and_yarn/${dependency}-1.1.0`,
-                repo: options.prepared
-                    ? {full_name: `diplodoc-bot/${repo}`, fork: true}
-                    : {full_name: `diplodoc-platform/${repo}`},
+                repo: {full_name: `diplodoc-platform/${repo}`},
             },
             rebaseable: options.rebaseable ?? true,
             commits: options.commits ?? 1,
