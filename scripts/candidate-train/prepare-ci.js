@@ -5,7 +5,7 @@ const {OWNER, SHA} = require('./common');
 
 // Review the workflow directory before permitting candidate code to run in the base repository.
 const WORKFLOW_TREES = Object.freeze({
-    components: 'eb68acbe3c407ccefc1ec2fe64fda41f5da273e2',
+    components: '497eb367ebeaa37bc1c4f970b1e6eca06cfde150',
     transform: 'c722ab7b6f3c908cac6913a41a0f9cc98c7f66cb',
 });
 
