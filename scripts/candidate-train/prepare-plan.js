@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const {OWNER, SHA, pages} = require('./common');
-const {BOT, preparedBranch, preparationSection, touchesInput} = require('./prepare-policy');
+const {preparedBranch, preparationSection, touchesInput} = require('./prepare-policy');
 
 async function readInputs(readSource, repo, base, head) {
     return Promise.all([
@@ -50,7 +50,7 @@ async function findPreparation(groups, graph, masters, pulls, readSource, reques
             const branch = preparedBranch(group.dependency);
             for (const {repo} of missing) {
                 const previous = await pages(
-                    `/repos/${OWNER}/${repo}/pulls?state=all&head=${BOT}:${encodeURIComponent(branch)}`,
+                    `/repos/${OWNER}/${repo}/pulls?state=all&head=${OWNER}:${encodeURIComponent(branch)}`,
                     request,
                 );
                 assert.equal(

@@ -2,11 +2,11 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const yaml = require('js-yaml');
 const {OWNER, REPO, SHA, github, pages, fileAt, read} = require('./common');
 const {planTrain} = require('./plan');
 const {applyRefresh, refreshOptions} = require('./refresh');
 const {BOT, preparedBranch, isPreparedSource} = require('./prepare-policy');
+const {assertPreparedCI} = require('./prepare-ci');
 const {assertNoCompetingPull} = require('./prepare-plan');
 const {readPolicy, canonicalInputs, validateProposal} = require('./prepare-lock');
 
@@ -17,7 +17,6 @@ async function currentMaster(request, {repo, baseSha}) {
 
 async function publishLock(item, dependency, bot, request, appRequest, botRequest) {
     const prefix = `/repos/${OWNER}/${item.repo}`;
-    const fork = `/repos/${BOT}/${item.repo}`;
     const branch = preparedBranch(dependency);
     await currentMaster(request, item);
     const competing = await pages(`${prefix}/pulls?state=open&base=master`, request);
@@ -26,12 +25,12 @@ async function publishLock(item, dependency, bot, request, appRequest, botReques
 
     // Never recreate deliberately closed PRs for this target.
     const previous = await pages(
-        `${prefix}/pulls?state=all&head=${BOT}:${encodeURIComponent(branch)}`,
+        `${prefix}/pulls?state=all&head=${OWNER}:${encodeURIComponent(branch)}`,
         request,
     );
     assert.equal(previous.length, 0, `${item.repo}: a PR already exists for this branch`);
     const base = await request(`${prefix}/git/commits/${item.baseSha}`);
-    const tree = await appRequest(`${fork}/git/trees`, {
+    const tree = await appRequest(`${prefix}/git/trees`, {
         method: 'POST',
         body: {
             base_tree: base.tree.sha,
@@ -47,7 +46,7 @@ async function publishLock(item, dependency, bot, request, appRequest, botReques
     });
     assert.match(tree.sha, SHA);
     const title = `chore(deps): align ${dependency.name} at ${dependency.version}`;
-    const commit = await appRequest(`${fork}/git/commits`, {
+    const commit = await appRequest(`${prefix}/git/commits`, {
         method: 'POST',
         body: {
             message: title,
@@ -60,16 +59,16 @@ async function publishLock(item, dependency, bot, request, appRequest, botReques
     assert.match(head, SHA);
     try {
         await currentMaster(request, item);
-        await appRequest(`${fork}/git/refs`, {
+        await appRequest(`${prefix}/git/refs`, {
             method: 'POST',
             body: {ref: `refs/heads/${branch}`, sha: head},
         });
     } catch (error) {
         if (error.status !== 422) throw error;
-        const ref = await request(`${fork}/git/ref/heads/${branch}`);
+        const ref = await request(`${prefix}/git/ref/heads/${branch}`);
         head = ref.object.sha;
         assert.match(head, SHA);
-        const existing = await request(`${fork}/git/commits/${head}`);
+        const existing = await request(`${prefix}/git/commits/${head}`);
         assert.deepEqual(
             existing.parents.map(({sha}) => sha),
             [item.baseSha],
@@ -80,17 +79,16 @@ async function publishLock(item, dependency, bot, request, appRequest, botReques
     const pr = await botRequest(`${prefix}/pulls`, {
         method: 'POST',
         body: {
-            head: `${BOT}:${branch}`,
+            head: branch,
             base: 'master',
             draft: false,
-            maintainer_can_modify: false,
             title,
             body: 'This lockfile update completes a coordinated dependency group. The manifest ranges are preserved. Morning checks this exact head and the other group members before any candidate build.',
         },
     });
     assert.ok(isPreparedSource(pr));
     assert.equal(pr.head.sha, head);
-    assert.equal(pr.head.repo?.full_name, `${BOT}/${item.repo}`);
+    assert.equal(pr.head.repo?.full_name, `${OWNER}/${item.repo}`);
     assert.equal(pr.base.sha, item.baseSha);
     return pr.number;
 }
@@ -101,7 +99,7 @@ async function publishPreparation(plan, locks, env, request = github, hooks = {}
     assert.equal(plan.toolSha, env.GITHUB_SHA);
     const options = refreshOptions(env);
     assert.ok(options.prepareMissing);
-    const {canonicalPlan = planTrain, refresh = applyRefresh} = hooks;
+    const {canonicalPlan = planTrain, refresh = applyRefresh, checkCI = assertPreparedCI} = hooks;
     const reader = (route, options) => request(route, {...options, token: env.GH_TOKEN});
     const botRequest = (route, options) =>
         request(route, {...options, token: env.TRAIN_REFRESH_TOKEN});
@@ -120,22 +118,7 @@ async function publishPreparation(plan, locks, env, request = github, hooks = {}
         assert.match(item.baseSha, SHA);
         assert.deepEqual({repo: item.repo, baseSha: item.baseSha}, group.missing[i]);
         await currentMaster(reader, item);
-        const fork = await appRequest(`/repos/${BOT}/${item.repo}`);
-        assert.equal(fork.fork, true);
-        assert.equal(fork.private, false);
-        assert.equal(fork.parent?.full_name, `${OWNER}/${item.repo}`);
-        const workflow = yaml.load(
-            await fileAt(item.repo, item.baseSha, '.github/workflows/package-lock.yml', reader),
-        );
-        const branchPrefix = 'codex/dependency-group-';
-        assert.ok(
-            ['verify-dependabot-lock', 'package-lock-result'].every((job) =>
-                workflow?.jobs?.[job]?.if?.includes(branchPrefix),
-            ),
-            `${item.repo}: install the fork-aware package-lock workflow first`,
-        );
-        const base = await appRequest(`/repos/${BOT}/${item.repo}/git/commits/${item.baseSha}`);
-        assert.equal(base.sha, item.baseSha, `${item.repo}: fork cannot access the frozen base`);
+        await checkCI(item.repo, item.baseSha, reader);
         const [manifest, lock] = await canonicalInputs(item, reader);
         validateProposal(
             item,

@@ -113,13 +113,13 @@ jobs:
         with:
           artifact-ids: ${{ needs.refresh.outputs.plan-artifact }}
           merge-multiple: true
-      - name: Generate token scoped to the selected forks
+      - name: Generate token scoped to the selected repositories
         id: app
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.INFRA_APP_ID }}
           private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
-          owner: diplodoc-bot
+          owner: diplodoc-platform
           repositories: ${{ needs.refresh.outputs.missing }}
           permission-contents: write
       - name: Revalidate the plan and publish one group

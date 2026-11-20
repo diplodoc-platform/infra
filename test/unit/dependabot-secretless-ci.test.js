@@ -57,12 +57,11 @@ tests.push({
 });
 
 tests.push({
-    name: 'prepared group PRs validate the lock from the bot fork without the writer or scan token',
+    name: 'prepared group PRs validate the lock in the same repository without the writer or scan token',
     fn: () => {
-        const ctx = context('diplodoc-bot', 'maintainer', true);
+        const ctx = context('diplodoc-bot', 'maintainer');
         const {head} = ctx.github.event.pull_request;
         head.ref = 'codex/dependency-group-0123456789abcdef01234567';
-        head.repo = {full_name: 'diplodoc-bot/repo', fork: true, owner: {login: 'diplodoc-bot'}};
         const gate = lock.jobs['package-lock-result'];
         ctx.always = () => true;
 
@@ -71,7 +70,13 @@ tests.push({
         assert.equal(evaluate(writer.if, ctx), false);
         assert.equal(evaluate(sonar.if, ctx), false);
 
-        head.repo.owner.login = 'other';
+        ctx.github.event.pull_request.user.login = 'other';
+        assert.equal(evaluate(verify.if, ctx), false);
+        assert.equal(evaluate(writer.if, ctx), false);
+        assert.equal(evaluate(sonar.if, ctx), false);
+
+        ctx.github.event.pull_request.user.login = 'diplodoc-bot';
+        head.repo.full_name = 'other/repo';
         assert.equal(evaluate(verify.if, ctx), false);
         assert.equal(evaluate(gate.if, ctx), false);
     },

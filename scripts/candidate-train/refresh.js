@@ -8,7 +8,8 @@ const path = require('node:path');
 const {setTimeout: delay} = require('node:timers/promises');
 const {OWNER, REPO, SHA, github, read, write} = require('./common');
 const {planTrain} = require('./plan');
-const {BOT, isPreparedSource, sourceHeadRepo} = require('./prepare-policy');
+const {BOT, isPreparedSource} = require('./prepare-policy');
+const {assertPreparedCI} = require('./prepare-ci');
 
 const REBASE = `
 mutation Rebase($id: ID!, $head: GitObjectID!) {
@@ -98,7 +99,7 @@ async function readSource(request, source) {
     assert.equal(pr.draft, false);
     if (source.prepared) assert.ok(isPreparedSource(pr));
     else assert.equal(pr.user.login, 'dependabot[bot]');
-    assert.equal(pr.head.repo.full_name, sourceHeadRepo(pr, source.repo));
+    assert.equal(pr.head.repo.full_name, `${OWNER}/${source.repo}`);
     assert.equal(pr.base.repo.full_name, `${OWNER}/${source.repo}`);
     assert.equal(pr.base.ref, 'master');
     assert.equal(pr.head.sha, source.sha, `${name}: head advanced`);
@@ -112,6 +113,7 @@ async function readSource(request, source) {
 
     if (source.refreshTo) {
         assert.match(source.refreshTo, SHA);
+        if (source.prepared) await assertPreparedCI(source.repo, source.refreshTo, request);
         assert.notEqual(source.refreshTo, source.baseSha);
         assert.ok(source.prepared || pr.head.ref.startsWith('dependabot/'));
         assert.equal(pr.commits, 1);

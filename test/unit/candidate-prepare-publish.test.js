@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const path = require('node:path');
 const {apiFixture} = require('../helpers/candidate-api');
+const {assertPreparedCI} = require('../../scripts/candidate-train/prepare-ci');
 const {preparedBranch} = require('../../scripts/candidate-train/prepare-policy');
 const {publishPreparation} = require('../../scripts/candidate-train/prepare-publish');
 
@@ -25,10 +25,6 @@ function fixture() {
         api.addFiles(item.repo, item.baseSha, {
             'package.json': manifest,
             'package-lock.json': oldLock,
-            '.github/workflows/package-lock.yml': fs.readFileSync(
-                path.join(root, 'scaffolding/.github/workflows/package-lock.yml'),
-                'utf8',
-            ),
         });
         const lock = structuredClone(oldLock);
         lock.packages[key] = {
@@ -52,7 +48,7 @@ function fixture() {
     };
     const writes = [];
     const reports = [];
-    const validForks = new Set(missing.map(({repo}) => repo));
+    const reviewedCI = new Set(missing.map(({repo}) => repo));
     const request = async (route, {method = 'GET', token, body}) => {
         const [, , owner, repo, ...parts] = route.split('/');
         const item = missing.find((item) => item.repo === repo);
@@ -60,7 +56,7 @@ function fixture() {
         if (method === 'POST') {
             writes.push({route, token, body});
             if (parts[0] === 'git') {
-                assert.equal(owner, 'diplodoc-bot');
+                assert.equal(owner, 'diplodoc-platform');
                 assert.equal(token, 'app');
                 return {sha: sha(parts[1] === 'trees' ? 'c' : 'd')};
             }
@@ -73,7 +69,7 @@ function fixture() {
                 head: {
                     sha: sha('d'),
                     ref: branch,
-                    repo: {full_name: `diplodoc-bot/${repo}`, fork: true},
+                    repo: {full_name: `diplodoc-platform/${repo}`},
                 },
                 base: {sha: item.baseSha, repo: {name: repo}},
             };
@@ -82,17 +78,6 @@ function fixture() {
         if (route === '/user') {
             assert.equal(token, 'bot');
             return {login: 'diplodoc-bot', id: 17};
-        }
-        if (owner === 'diplodoc-bot') {
-            assert.equal(token, 'app');
-            if (!parts.length)
-                return {
-                    fork: validForks.has(repo),
-                    private: false,
-                    parent: {full_name: `diplodoc-platform/${repo}`},
-                };
-            assert.equal(parts.join('/'), `git/commits/${item.baseSha}`);
-            return {sha: item.baseSha};
         }
         assert.equal(token, 'reader');
         if (parts.join('/') === `git/commits/${item.baseSha}`) return {tree: {sha: sha('e')}};
@@ -106,25 +91,26 @@ function fixture() {
             return await publishPreparation(plan, locks, env, request, {
                 canonicalPlan: () => plan,
                 refresh: () => {},
+                checkCI: (repo) => assert.ok(reviewedCI.has(repo), 'CI has not been reviewed'),
                 report: (message) => reports.push(message),
             });
         } finally {
             process.chdir(cwd);
         }
     }
-    return {run, plan, env, locks, validForks, writes, reports};
+    return {run, plan, env, locks, reviewedCI, writes, reports};
 }
 
-test('validates every missing lock and fork before the first write', async () => {
+test('validates every missing lock and its reviewed workflows before the first write', async () => {
     const extraDelta = fixture();
     extraDelta.locks[1].lock.packages['node_modules/unrelated'] = {version: '2.0.0'};
     await assert.rejects(extraDelta.run(), /Unrelated lockfile entries changed/);
     assert.deepEqual(extraDelta.writes, []);
 
-    const invalidFork = fixture();
-    invalidFork.validForks.delete('beta');
-    await assert.rejects(invalidFork.run());
-    assert.deepEqual(invalidFork.writes, []);
+    const invalidCI = fixture();
+    invalidCI.reviewedCI.delete('beta');
+    await assert.rejects(invalidCI.run(), /CI has not been reviewed/);
+    assert.deepEqual(invalidCI.writes, []);
 
     const nonMaster = fixture();
     nonMaster.env.GITHUB_REF = 'refs/heads/topic';
@@ -132,7 +118,7 @@ test('validates every missing lock and fork before the first write', async () =>
     assert.deepEqual(nonMaster.writes, []);
 });
 
-test('publishes only the missing lockfiles for the selected group from public forks', async () => {
+test('publishes only the missing lockfiles for the selected group in its source repositories', async () => {
     const f = fixture();
     await f.run();
     assert.equal(f.writes.length, 8);
@@ -145,10 +131,27 @@ test('publishes only the missing lockfiles for the selected group from public fo
         assert.deepEqual(commit.body.parents, [f.plan.group.missing[i].baseSha]);
         assert.equal(ref.body.ref, `refs/heads/${branch}`);
         assert.equal(pr.route, `/repos/diplodoc-platform/${repo}/pulls`);
-        assert.equal(pr.body.head, `diplodoc-bot:${branch}`);
-        assert.equal(pr.body.maintainer_can_modify, false);
+        assert.equal(pr.body.head, branch);
     }
     assert.equal(f.reports.length, 2);
+});
+
+test('repository workflow changes fail before prepared CI can run', async () => {
+    const request = async (route) => {
+        assert.equal(
+            route,
+            `/repos/diplodoc-platform/components/git/trees/${sha('d')}?recursive=1`,
+        );
+        return {
+            truncated: false,
+            tree: [{path: '.github/workflows', type: 'tree', sha: sha('e')}],
+        };
+    };
+    await assert.rejects(
+        assertPreparedCI('components', sha('d'), request),
+        /differs from the reviewed/,
+    );
+    await assert.rejects(assertPreparedCI('alpha', sha('d'), request), /has not been reviewed/);
 });
 
 module.exports = {tests};

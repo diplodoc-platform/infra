@@ -40,12 +40,7 @@ const {declares} = require('./cohort');
 const {riskSelection, groupRisk, assertRiskAllowed} = require('./risk');
 const {requireDeepProfile} = require('./deep-profile');
 const {DEEP_PROFILES} = require('../dependency-verification-profiles');
-const {
-    isPreparedSource,
-    sourceHeadRepo,
-    preparedBranch,
-    validatePreparedLock,
-} = require('./prepare-policy');
+const {isPreparedSource, preparedBranch, validatePreparedLock} = require('./prepare-policy');
 const {findPreparation} = require('./prepare-plan');
 const {packageRegistrationsAt} = require('./metapackage');
 
@@ -84,7 +79,7 @@ function assess(
     assert.equal(pr.state, 'open');
     assert.equal(pr.draft, false);
     assert.equal(pr.base.ref, 'master');
-    assert.equal(pr.head.repo?.full_name, sourceHeadRepo(pr, pr.base.repo.name));
+    assert.equal(pr.head.repo?.full_name, `${OWNER}/${pr.base.repo.name}`);
     assert.match(pr.head.sha, SHA);
     assert.ok(
         files.length > 0 &&

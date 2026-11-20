@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const yaml = require('js-yaml');
-const {fileAt, read, write} = require('./common');
+const {OWNER, fileAt, read, write} = require('./common');
 const {preparedBranch, preparationSection, validatePreparedLock, BOT} = require('./prepare-policy');
 const {assess} = require('./plan');
 
@@ -47,7 +47,7 @@ function validateProposal(location, group, manifest, oldLock, newLock, registry,
             base: {ref: 'master', repo: {name: repo}},
             head: {
                 ref: preparedBranch(group.dependency),
-                repo: {full_name: `${BOT}/${repo}`, fork: true},
+                repo: {full_name: `${OWNER}/${repo}`},
                 sha: baseSha,
             },
         },
