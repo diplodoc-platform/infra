@@ -19,6 +19,7 @@ on:
           - '@diplodoc/components'
           - '@diplodoc/directive'
           - '@diplodoc/liquid'
+          - '@diplodoc/screencaster'
           - '@diplodoc/sentenizer'
           - '@diplodoc/transform'
           - '@diplodoc/translation'
