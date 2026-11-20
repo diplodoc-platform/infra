@@ -131,7 +131,7 @@ async function sourceReady(item, request, token, evidence, operator) {
     const checks = await evidence.fetchCheckRuns(token, OWNER, item.repo, item.sha);
     const required = await evidence.fetchRequiredChecks(token, OWNER, item.repo, 'master');
     assert.ok(
-        deriveChecksGreen(checks, required, item.sha),
+        deriveChecksGreen(checks, required, item.sha, {allowUnboundPublisher: true}),
         `${item.repo}: required exact-head CI is not green`,
     );
     await requireDeepProfile(item, checks, request);

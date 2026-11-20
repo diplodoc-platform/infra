@@ -88,7 +88,7 @@ async function planCohort(
         const checks = await evidence.fetchCheckRuns(env.GH_TOKEN, OWNER, repo, pr.head.sha);
         const required = await evidence.fetchRequiredChecks(env.GH_TOKEN, OWNER, repo, 'master');
         assert.ok(
-            deriveChecksGreen(checks, required, pr.head.sha),
+            deriveChecksGreen(checks, required, pr.head.sha, {allowUnboundPublisher: true}),
             `${repo}#${number}: required exact-head CI is not green`,
         );
         if (dependency) {

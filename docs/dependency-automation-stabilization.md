@@ -94,9 +94,9 @@ rollback point:
   after review; do not resolve policy code from candidate `node_modules`.
 - The decision schema checks boolean/count consistency, allowed profiles/risks
   and exact head SHA. An unknown profile is an error, not a skipped deep check.
-- Required checks bind context, publisher App ID and exact head SHA. Only
-  `success` qualifies for future auto-merge; `neutral`, `skipped`, missing and
-  unknown publisher evidence block it. The native GitHub Actions publisher is
+- Auto-merge requires a successful check with the required context, publisher
+  App ID and exact head SHA. Candidate train verifies the same context and SHA
+  and accepts Any source rules. The native GitHub Actions publisher is
   App ID 15368. Ruleset sync preserves unrelated rules and manual settings.
   Validate a pilot publisher binding before applying it broadly; external
   status-only integrations require their own reviewed handling.
