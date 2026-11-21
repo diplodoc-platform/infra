@@ -135,6 +135,10 @@ repos:
       - path: .github/workflows/dependency-deep-verification.yml
         reason: 'Testpack dependency PRs already run their own corpus and E2E workflows'
   screencaster:
-    exclude: []
+    exclude:
+      - path: .github/workflows/dependency-deep-verification.yml
+        reason: 'Screencaster is not covered by the Testpack downstream corpus'
   notes-extension:
-    exclude: []
+    exclude:
+      - path: .github/workflows/dependency-deep-verification.yml
+        reason: 'Notes is not loaded by the Testpack downstream corpus'
