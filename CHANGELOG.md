@@ -1,5 +1,49 @@
 # Changelog
 
+## [2.4.0](https://github.com/diplodoc-platform/infra/compare/v2.3.0...v2.4.0) (2026-11-21)
+
+
+### Features
+
+* authorize manual candidate controls through signed App requests ([4d2f5b8](https://github.com/diplodoc-platform/infra/commit/4d2f5b804a84cbd475f9f771b6df90e80fce8be3))
+* **ci:** prepare dependency group PRs in source repositories ([b9dddf4](https://github.com/diplodoc-platform/infra/commit/b9dddf4833b85f20f4164586d9ab3906bc7ef462))
+* model CLI build inputs and opt-in extension checks ([4bb8608](https://github.com/diplodoc-platform/infra/commit/4bb8608486942471d4a3fa7e1212c5836dda1d7c))
+* prepare low-risk dependency waves without resolution drift ([642da6c](https://github.com/diplodoc-platform/infra/commit/642da6c5c086edc384f31431180e2a8271c25079))
+* prepare one incomplete dependency group in Refresh ([c15d241](https://github.com/diplodoc-platform/infra/commit/c15d2416fd565dc49e35f22102aaee50b9858be8))
+* refresh stale Dependabot PRs in complete candidate groups ([9c8ed2b](https://github.com/diplodoc-platform/infra/commit/9c8ed2bf783586fdb2293ac97235332b35caa3eb))
+* support all risk levels in coordinated dependency trains ([69ee96f](https://github.com/diplodoc-platform/infra/commit/69ee96f33165845e5a6bbf1e14f7c381e7b385c5))
+* **train:** verify explicit dependency cohorts in one CLI candidate ([873ad44](https://github.com/diplodoc-platform/infra/commit/873ad4445370ac07dc2a262224be1ff680cc9f6c))
+* verify coordinated dependency groups before manual merge ([ccb1ea6](https://github.com/diplodoc-platform/infra/commit/ccb1ea65283c60114ebd1598fff5385ccacbf333))
+
+
+### Bug Fixes
+
+* **ci:** accept Any source checks in candidate trains ([74009a3](https://github.com/diplodoc-platform/infra/commit/74009a3ef4240605dada1e7c12677286636e8b5b))
+* **ci:** align dependency checks for Notes and Screencaster ([bbb6c73](https://github.com/diplodoc-platform/infra/commit/bbb6c73a7bce1120dd0490e28a3efdd3dbd3c930))
+* **ci:** apply configured risk ceiling to manual train merges ([f06b62f](https://github.com/diplodoc-platform/infra/commit/f06b62f5f58bd8b79b3daf0551e21984c6a73a3b))
+* **ci:** detect installed candidate lock drift before CLI tests ([c551e8d](https://github.com/diplodoc-platform/infra/commit/c551e8d4a9aa7302d25fde8e24d08d14df64fd7c))
+* **ci:** refresh stale dependency groups and try viable alternatives ([ba42853](https://github.com/diplodoc-platform/infra/commit/ba428531629cef35146e8112d7020de6036a0352))
+* compare candidate train metapackage build inputs on baseline drift ([22a0f21](https://github.com/diplodoc-platform/infra/commit/22a0f21bb9d08e642c8782eb78f891d59aff6d3a))
+* compare open dependency pulls against their merge base ([f033a7c](https://github.com/diplodoc-platform/infra/commit/f033a7c72793ebd28cc08f1ffbace5a1c6bf6d92))
+* **policy:** consume the approved runtime baseline registry revision ([ccff9cb](https://github.com/diplodoc-platform/infra/commit/ccff9cb8496e7d58a8da4fdfc5a468741851b0d8))
+* **policy:** register coordinated runtime baseline pins ([8bd81b8](https://github.com/diplodoc-platform/infra/commit/8bd81b8bd01e89b4ccd6ac1cb95f7d63a6a726b4))
+* prefer rebase and read merge settings with the preview token ([7ff742c](https://github.com/diplodoc-platform/infra/commit/7ff742c8b63a8a3fd7d7377339ba58ee64bfffed))
+* preserve numeric wave inputs in manual candidate runs ([40e1daa](https://github.com/diplodoc-platform/infra/commit/40e1daa1ad5ddcf7ff22bca01b7d90407fc333ae))
+* refresh submodules before closing candidate trains ([1816981](https://github.com/diplodoc-platform/infra/commit/1816981b14586ffb0fcbaf6a580d929a622bfb04))
+* run candidate train overnight and make strict branch policy optional ([83ee32b](https://github.com/diplodoc-platform/infra/commit/83ee32bb1f8180a509515150b2fde77d455bf705))
+* run refresh selection tests from the repo root ([23ff5f9](https://github.com/diplodoc-platform/infra/commit/23ff5f9ec9ea3126d09877eb9d572d802168fba8))
+* **train:** accept valid dotted npm scopes ([d96f1d1](https://github.com/diplodoc-platform/infra/commit/d96f1d18152761c241a1c52dd6b728a80315056b))
+* **train:** bind external peers to frozen CLI context ([83f46e4](https://github.com/diplodoc-platform/infra/commit/83f46e4c7c681ee6ab89a88fd32c417bbfefb98d))
+* **train:** bind nested optional peers to every frozen owner context ([1880599](https://github.com/diplodoc-platform/infra/commit/18805994952ae6112e0f1b4639a92c94d839460b))
+* **train:** bind optional host peers to the frozen CLI baseline ([1e32a5d](https://github.com/diplodoc-platform/infra/commit/1e32a5d28b30955a5fe88400cfbf7f148afb663e))
+* **train:** install publisher tooling before cohort validation ([0baa42a](https://github.com/diplodoc-platform/infra/commit/0baa42a10e8ef688503e983bd72d18f9a2cc903e))
+* **train:** keep source builds separate from frozen CLI assembly ([b017d93](https://github.com/diplodoc-platform/infra/commit/b017d93789a00e70398a09753399f5aac7fdf96e))
+* **train:** preserve frozen CLI trees when substituting archives ([92dab77](https://github.com/diplodoc-platform/infra/commit/92dab7739a90a7e0487da563320b5eb8da49f9f3))
+* **train:** require a passive sandbox for HTML smoke ([e7f999e](https://github.com/diplodoc-platform/infra/commit/e7f999ec652fa6826423de2339ec1c81e640c6c0))
+* use the repository merge method for dependency trains ([4122cb4](https://github.com/diplodoc-platform/infra/commit/4122cb4d0e25a515dd4ed4037b8ef88818450b5d))
+* validate train control requests against check start time ([c877481](https://github.com/diplodoc-platform/infra/commit/c877481b35dd2ef88a2612dc9934272ab5c98b59))
+* verify rebase history while GitHub calculates rebaseability ([e6b9894](https://github.com/diplodoc-platform/infra/commit/e6b98940881314afd9dc80dae646759bc34aee56))
+
 ## [2.3.0](https://github.com/diplodoc-platform/infra/compare/v2.2.3...v2.3.0) (2026-10-23)
 
 
