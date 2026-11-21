@@ -7,6 +7,9 @@ const {buildEdges} = require('./model');
 const {MAX_COHORT_SIZE, cohortIdentity, validateCohort} = require('./cohort');
 
 const OWNER = 'diplodoc-platform';
+const MAX_GROUP_ATTEMPTS = 3;
+
+class CandidateResolutionMismatch extends Error {}
 const SHA = /^[a-f0-9]{40}$/;
 const REPO = /^[a-z0-9][a-z0-9-]*$/;
 const SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
@@ -249,6 +252,8 @@ function buildOrder(graph, selected) {
 }
 
 module.exports = {
+    MAX_GROUP_ATTEMPTS,
+    CandidateResolutionMismatch,
     OWNER,
     SHA,
     REPO,

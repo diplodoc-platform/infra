@@ -6,6 +6,7 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {
     OWNER,
+    MAX_GROUP_ATTEMPTS,
     SHA,
     SECTIONS,
     digest,
@@ -170,8 +171,30 @@ async function unchangedSources(plan, request = github) {
     }
 }
 
-/** Re-derive a manual group from canonical sources, fresh CI and dispatch inputs. */
+function groupOffset(env) {
+    const value = env.TRAIN_GROUP_OFFSET ?? '0';
+    const offset = Number(value);
+    assert.ok(
+        String(offset) === value &&
+            offset >= 0 &&
+            offset < MAX_GROUP_ATTEMPTS &&
+            Number.isInteger(offset),
+        'Invalid automatic group offset',
+    );
+
+    if (offset) {
+        assert.equal(env.DEPENDENCY_TRAIN_SELECTION_MODE, 'cohort');
+        assert.ok(
+            !env.DEPENDENCY_TRAIN_COHORT_PRS?.trim(),
+            'Only automatic groups can use a fallback',
+        );
+    }
+    return offset;
+}
+
+/** Re-derive the selected group from canonical sources, fresh CI and dispatch inputs. */
 async function revalidateSources(plan, env, request = github, evidence) {
+    const offset = groupOffset(env);
     if (plan.schema === 1) {
         assert.notEqual(
             env.DEPENDENCY_TRAIN_SELECTION_MODE,
@@ -203,7 +226,13 @@ async function revalidateSources(plan, env, request = github, evidence) {
             plan.cohort.dependency?.name || '',
         );
     }
-    const canonical = await planTrain(env, request, evidence);
+    const start = Number(env.DEPENDENCY_TRAIN_WAVE || 1);
+    assert.ok(Number.isSafeInteger(start) && start >= 1, 'Invalid starting group index');
+    const canonical = await planTrain(
+        {...env, DEPENDENCY_TRAIN_WAVE: String(start + offset)},
+        request,
+        evidence,
+    );
     for (const key of [
         'schema',
         'toolSha',
@@ -446,8 +475,17 @@ async function publish(plan, directory, env = process.env, request = github) {
     };
 }
 
+async function publishSelected(env) {
+    const primary = process.argv[2];
+    const offset = groupOffset(env);
+    const filename = offset
+        ? path.join(path.dirname(primary), `train-plan-${offset}.json`)
+        : primary;
+    return publish(read(filename), path.resolve(process.argv[3]), env);
+}
+
 if (require.main === module) {
-    publish(read(process.argv[2]), path.resolve(process.argv[3]))
+    publishSelected(process.env)
         .then((result) => {
             write('train-candidate.json', result);
             fs.appendFileSync(

@@ -87,7 +87,17 @@ const tests = [
                     'utf8',
                 ),
             );
-            for (const [jobName, job] of Object.entries(workflow.jobs)) {
+            const reusable = yaml.load(
+                fs.readFileSync(
+                    path.join(root, '.github/workflows/dependency-candidate-build.yml'),
+                    'utf8',
+                ),
+            );
+            for (const [jobName, job] of Object.entries({
+                select: workflow.jobs.select,
+                build: reusable.jobs.build,
+                publish: workflow.jobs.publish,
+            })) {
                 const index = job.steps.findIndex((step) =>
                     step.run?.includes('node scripts/candidate-train/'),
                 );

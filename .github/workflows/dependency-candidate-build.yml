@@ -1,0 +1,60 @@
+name: Build Dependency Candidate
+
+on:
+  workflow_call:
+    inputs:
+      plan-artifact:
+        type: string
+        required: true
+      group-offset:
+        type: string
+        required: true
+      allow-fallback:
+        type: boolean
+        required: true
+    outputs:
+      passed:
+        value: ${{ jobs.build.outputs.passed }}
+      payload-artifact:
+        value: ${{ jobs.build.outputs['payload-artifact'] }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    outputs:
+      passed: ${{ steps.build.outputs.passed }}
+      payload-artifact: ${{ steps.payload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          artifact-ids: ${{ inputs['plan-artifact'] }}
+          path: selected
+          merge-multiple: true
+      - name: Build locked candidates and affected consumers (no secrets)
+        id: build
+        env:
+          TRAIN_PLAN: ${{ inputs['group-offset'] == '0' && 'train-plan.json' || format('train-plan-{0}.json', inputs['group-offset']) }}
+          TRAIN_ALLOW_FALLBACK: ${{ inputs['allow-fallback'] }}
+        run: node scripts/candidate-train/build.js "selected/$TRAIN_PLAN" train-payload
+      - uses: actions/upload-artifact@v4
+        id: payload
+        if: steps.build.outputs.passed == 'true'
+        with:
+          name: dependency-train-payload-${{ inputs['group-offset'] }}
+          path: train-payload
+          if-no-files-found: error

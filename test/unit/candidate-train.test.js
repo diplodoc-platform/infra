@@ -509,7 +509,13 @@ test('manual preparation does not require enabling scheduled execution', () => {
     assert.equal(workflow.on.workflow_dispatch.inputs.dry_run.default, true);
     assert.equal(workflow.on.workflow_dispatch.inputs.pr_number.default, 0);
     assert.equal(workflow.on.workflow_dispatch.inputs.wave.default, 1);
-    assert.deepEqual(Object.keys(workflow.jobs), ['select', 'build', 'publish']);
+    assert.deepEqual(Object.keys(workflow.jobs), [
+        'select',
+        'build',
+        'build-second',
+        'build-third',
+        'publish',
+    ]);
 
     for (const enabled of ['', 'false', 'true']) {
         const vars = {
@@ -554,6 +560,80 @@ test('manual preparation does not require enabling scheduled execution', () => {
             assert.equal(actual, false, 'An open or unknown candidate must block a build');
         }
     }
+});
+
+test('Morning advances only after a reported dependency mismatch and publishes at most one payload', () => {
+    const workflow = yaml.load(
+        fs.readFileSync(
+            path.join(root, '.github/workflows/dependency-candidate-train.yml'),
+            'utf8',
+        ),
+    );
+    const {jobs} = workflow;
+    for (const [index, name] of ['build', 'build-second', 'build-third'].entries()) {
+        assert.equal(jobs[name].uses, './.github/workflows/dependency-candidate-build.yml');
+        assert.equal(jobs[name].with['group-offset'], String(index));
+    }
+    for (const [name, previousName, attempts] of [
+        ['build-second', 'build', '2'],
+        ['build-third', 'build-second', '3'],
+    ]) {
+        const condition = jobs[name].if.replace(`needs.${previousName}`, 'previous');
+        const needs = {select: {outputs: {attempts}}};
+        for (const [passed, expected] of [
+            ['', false],
+            ['false', true],
+            ['true', false],
+        ])
+            assert.equal(
+                runInNewContext(condition, {needs, previous: {outputs: {passed}}}),
+                expected,
+            );
+    }
+
+    const publish = jobs.publish.if
+        .replaceAll(/needs\.(build-second|build-third)/g, 'needs["$1"]')
+        .replaceAll(' != ', ' !== ')
+        .replaceAll(' == ', ' === ');
+    const empty = {result: 'skipped', outputs: {'payload-artifact': ''}};
+    const needs = {build: empty, 'build-second': empty, 'build-third': empty};
+    const canPublish = (state) => runInNewContext(publish, {needs: state, cancelled: () => false});
+    assert.equal(canPublish(needs), false);
+    assert.equal(
+        canPublish({
+            ...needs,
+            'build-second': {result: 'success', outputs: {'payload-artifact': '123'}},
+        }),
+        true,
+    );
+    assert.equal(
+        canPublish({
+            ...needs,
+            'build-third': {result: 'failure', outputs: {'payload-artifact': '123'}},
+        }),
+        false,
+    );
+});
+
+test('only a dependency resolution mismatch can request a fallback attempt', () => {
+    const mismatch = new common.CandidateResolutionMismatch('wrong installed version');
+    const reports = [];
+    const run = (error, allowFallback) =>
+        builder.runAttempt(
+            {},
+            '',
+            allowFallback,
+            () => {
+                if (error) throw error;
+            },
+            (message) => reports.push(message),
+        );
+
+    assert.equal(run(null, true), true);
+    assert.equal(run(mismatch, true), false);
+    assert.throws(() => run(mismatch, false), /wrong installed version/);
+    assert.throws(() => run(new Error('tests failed'), true), /tests failed/);
+    assert.deepEqual(reports, ['wrong installed version']);
 });
 
 test('manual wave accepts string and numeric inputs without JSON quotes or a zero fallback', () => {
@@ -634,7 +714,14 @@ test('GitHub preparation cannot access internal APIs or notification credentials
         /TRAIN_(?:CI|REVIEW|MESSENGER|CA)|OBSERVER_RUNNER|preflight|observe\.js|notify\.js/,
     );
 
-    for (const job of Object.values(workflow.jobs)) {
+    const reusable = yaml.load(
+        fs.readFileSync(
+            path.join(root, '.github/workflows/dependency-candidate-build.yml'),
+            'utf8',
+        ),
+    );
+    assert.ok(!JSON.stringify(reusable).includes('secrets.'));
+    for (const job of [workflow.jobs.select, reusable.jobs.build, workflow.jobs.publish]) {
         const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
 
         assert.equal(checkout.with.ref, '${{ github.sha }}');

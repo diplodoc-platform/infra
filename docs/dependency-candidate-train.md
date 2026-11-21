@@ -46,7 +46,17 @@ Missing, unhealthy, conflicting or ambiguous consumers block the whole group. Na
 repository allowlists cannot silently reduce coverage. Already-updated consumers are
 recorded in `cohort.baseline` and independently revalidated from canonical locks.
 Groups are ordered by maximum source risk, oldest PR, then dependency identity.
-`wave` selects the group index; groups are not truncated to three sources.
+`wave` sets the starting group index. Morning can try up to three complete
+automatic groups in order. Each attempt runs on a separate runner. Only a
+dependency resolution mismatch permits the next attempt. Failed builds and
+tests stop the run, as does a mismatch on the last available attempt. Morning
+publishes at most one CLI PR, for the first successful attempt, after the
+publisher independently rechecks that group's exact sources and payload.
+Explicit cohorts and legacy waves still prepare one candidate.
+
+A lock-only update can join an automatic group when it changes the resolved
+version of a dependency declared directly in `package.json`. A transitive-only
+update has no such direct input to identify the group and its consumers.
 
 Explicit `selection_mode: wave` preserves the legacy low-risk-only independent selector: eligible
 PRs are ordered by creation time, repository and PR number, with at most three PRs
@@ -400,6 +410,8 @@ are available only on `infra/master`.
 Refresh chooses one complete dependency and version group with at least one
 stale, rebaseable, single-commit source PR. It applies the same source
 policy, green required checks on the old heads, and complete-consumer rules.
+For stale PRs, it compares the registered package version with current master,
+since that is the destination of the rebase.
 Before any write it recomputes the expected Git trees and checks the baseline
 and source refs. Only stale PRs receive a server-side GitHub rebase from
 `diplodoc-bot`. The new commit must have the expected parent and tree. Conflicts

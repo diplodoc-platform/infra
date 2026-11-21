@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const {buildOrder} = require('./common');
+const {buildOrder, CandidateResolutionMismatch} = require('./common');
 const {optInExtension} = require('./model');
 const {modeledRuntimeLock} = require('./build-inputs');
 const {satisfiesStable} = require('./peer-range');
@@ -97,7 +97,7 @@ function compare(expectedLock, expectedRoot, actualLock, actualRoot, options) {
     const seen = new Set();
     let count = 0;
     const fail = (trail, reason) => {
-        throw new Error(
+        throw new CandidateResolutionMismatch(
             `${options.label}: ${trail}: ${reason}. Refresh the CLI baseline explicitly; ` +
                 'unrelated dependency changes are not part of this train',
         );
