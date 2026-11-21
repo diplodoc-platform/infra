@@ -37,9 +37,7 @@ train enforces that binding. A rule set to Any source is also eligible.
 | Manual `risk_level: low\|medium\|high\|critical`                           | Selects groups whose maximum source risk equals the chosen level. Lower-risk PRs of the same group stay included. |
 
 Only use the higher levels after deploying the compatible internal builder.
-The ceiling controls verification only. Groups above low risk go through
-review and merge in the source repositories, independently of the train's
-`Merge candidates` control.
+The same ceiling also limits the [separate manual merge](#separate-manual-merge-after-verification).
 
 The default selector groups eligible Dependabot PRs by one changed direct dependency
 and its exact stable locked version. Every registered direct consumer must either have
@@ -283,6 +281,13 @@ No private credentials are added to GitHub.
 trigger. It accepts `candidate_pr`, `dry_run` (default `true`) and `confirm_train_id`.
 Start with a preview; then explicitly request a live merge with `dry_run: false` and
 the exact train ID shown in the preview. It never enables GitHub auto-merge.
+
+For a live request, the highest risk across the group must be at or below the
+effective GitHub Actions variable `DEPENDENCY_TRAIN_MAX_RISK` (`low` when unset).
+The variable accepts `low`, `medium`, `high`, or `critical`. The merge job reads it
+for the current run. Morning's exact `risk_level` input controls selection for that
+preparation run; it does not override the merge ceiling. Preview remains available
+for groups above the ceiling.
 
 The workflow accepts only a complete shared-dependency schema 2 group and the latest
 successful Internal Check from `diplodoc-app` on the unchanged CLI candidate head.

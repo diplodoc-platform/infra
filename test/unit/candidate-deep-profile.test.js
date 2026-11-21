@@ -9,7 +9,7 @@ const item = {repo: 'tabs-extension', number: 170, sha, risk: 'critical', profil
 const prefix = '/repos/diplodoc-platform/tabs-extension/actions/runs/42';
 const artifact = `dependency-comparison-42-2-tabs-extension-${sha}-ecosystem`;
 
-function evidence() {
+function comparisonEvidence({repo, sha, profile}) {
     return {
         check: {
             id: 18,
@@ -19,8 +19,7 @@ function evidence() {
             check_suite: {id: 12},
             status: 'completed',
             conclusion: 'success',
-            details_url:
-                'https://github.com/diplodoc-platform/tabs-extension/actions/runs/42/job/123',
+            details_url: `https://github.com/diplodoc-platform/${repo}/actions/runs/42/job/123`,
         },
         run: {
             id: 42,
@@ -36,7 +35,10 @@ function evidence() {
                 },
             ],
         },
-        artifact: {name: artifact, expired: false},
+        artifact: {
+            name: `dependency-comparison-42-2-${repo}-${sha}-${profile}`,
+            expired: false,
+        },
     };
 }
 
@@ -49,7 +51,7 @@ async function verify(e) {
 }
 
 test('critical requires a green comparison and artifact for the exact profile and run attempt', async () => {
-    await verify(evidence());
+    await verify(comparisonEvidence(item));
     const cases = [
         (e) => (e.check.conclusion = 'skipped'),
         (e) => (e.check.app.id = 42),
@@ -62,7 +64,7 @@ test('critical requires a green comparison and artifact for the exact profile an
         (e) => (e.artifact.expired = true),
     ];
     for (const change of cases) {
-        const e = evidence();
+        const e = comparisonEvidence(item);
         change(e);
         await assert.rejects(verify(e), /required ecosystem comparison|\/artifacts\?name=/);
     }
@@ -76,4 +78,4 @@ test('profile coverage only accepts known and sufficiently strong profiles', () 
     assert.throws(() => assertRiskProfile('unknown', 'ecosystem'));
 });
 
-module.exports = {tests};
+module.exports = {tests, comparisonEvidence};

@@ -140,6 +140,7 @@ jobs:
           REQUEST_ACTION: ${{ inputs.dry_run && 'preview' || 'merge' }}
           CONFIRM_TRAIN_ID: ${{ inputs.confirm_train_id }}
           DEPENDENCY_TRAIN_MERGE_APPROVED: 'true'
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
         run: node scripts/candidate-train/merge.js
       - uses: actions/upload-artifact@v4
         if: always()
