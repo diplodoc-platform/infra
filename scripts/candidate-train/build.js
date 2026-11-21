@@ -219,6 +219,7 @@ function verifyLockedTree(
     frozenPeers = false,
 ) {
     const proof = [];
+    const mismatches = [];
 
     for (const expected of runtimeVersions(lock, replacementNames, false, root, frozenPeers)) {
         const names = expected.path.slice('node_modules/'.length).split('/node_modules/');
@@ -237,14 +238,21 @@ function verifyLockedTree(
             cursor = actual.directory;
         }
         if (!actual && expected.optional) continue;
-        assert.ok(actual, `Missing locked dependency ${expected.path}`);
-        assert.equal(
-            actual.manifest.version,
-            expected.version,
-            `Locked resolution mismatch: ${expected.path}`,
-        );
-        proof.push({path: expected.path, version: expected.version});
+        if (!actual) {
+            mismatches.push(
+                `Missing locked dependency ${expected.path} (expected ${expected.version})`,
+            );
+        } else if (actual.manifest.version !== expected.version) {
+            mismatches.push(
+                `Locked resolution mismatch: ${expected.path} (expected ${expected.version}, installed ${actual.manifest.version})`,
+            );
+        } else {
+            proof.push({path: expected.path, version: expected.version});
+        }
+        if (mismatches.length === 10) break;
     }
+
+    assert.ok(!mismatches.length, mismatches.join('\n'));
     return proof;
 }
 
@@ -303,6 +311,52 @@ function verifyModeledRuntimeInputs(
     }
 
     verify(directory, modeled);
+}
+
+function verifyCliArchives(plan, directory, installArchives, archives) {
+    const replacements = new Set(installArchives.keys());
+
+    return [...installArchives].map(([name, archive]) => {
+        try {
+            const actual = installed(directory, directory, name);
+            assert.equal(
+                actual?.manifest.dependencyTrain?.sourceSha,
+                archive.sha,
+                `CLI installation fell back to a registry ${name}`,
+            );
+            const resolutions = verifyLockedTree(
+                directory,
+                actual.directory,
+                archive.lock,
+                replacements,
+                '',
+                true,
+            );
+            verifyModeledRuntimeInputs(
+                directory,
+                actual.directory,
+                plan.graph.find((item) => item.repo === archive.repo),
+                archive.lock,
+                archives,
+                true,
+            );
+            return {
+                repo: archive.repo,
+                name,
+                sourceSha: archive.sha,
+                archiveSha256: archive.digest,
+                sourceLockSha256: archive.lockDigest,
+                resolutions,
+            };
+        } catch (error) {
+            throw new Error(
+                `CLI archive ${archive.repo}@${archive.sha} does not match its canonical source lock:\n` +
+                    error.message +
+                    '\nCheck the source package-lock.json against CLI overrides and the CLI baseline before retrying.',
+                {cause: error},
+            );
+        }
+    });
 }
 
 function cloneAt(node, destination) {
@@ -446,6 +500,7 @@ function buildCandidate(plan, output) {
             verifyFrozenCli(lock, directory, installArchives, (context, name, expectedName) =>
                 installed(directory, context, name, expectedName),
             );
+            verifyCliArchives(plan, directory, installArchives, archives);
             run('npm', ['run', 'build'], directory);
             run('npm', ['run', 'typecheck', '--if-present'], directory);
             run('npm', ['test', '--', '--update=false'], directory);
@@ -475,38 +530,7 @@ function buildCandidate(plan, output) {
             );
             proof.cliBaseLockSha256 = digest(JSON.stringify(lock));
 
-            for (const [name, archive] of installArchives) {
-                const actual = installed(directory, directory, name);
-                assert.equal(
-                    actual?.manifest.dependencyTrain?.sourceSha,
-                    archive.sha,
-                    `CLI installation fell back to a registry ${name}`,
-                );
-                const resolutions = verifyLockedTree(
-                    directory,
-                    actual.directory,
-                    archive.lock,
-                    new Set(installArchives.keys()),
-                    '',
-                    true,
-                );
-                verifyModeledRuntimeInputs(
-                    directory,
-                    actual.directory,
-                    plan.graph.find((item) => item.repo === archive.repo),
-                    archive.lock,
-                    archives,
-                    true,
-                );
-                proof.packages.push({
-                    repo: archive.repo,
-                    name,
-                    sourceSha: archive.sha,
-                    archiveSha256: archive.digest,
-                    sourceLockSha256: archive.lockDigest,
-                    resolutions,
-                });
-            }
+            proof.packages = verifyCliArchives(plan, directory, installArchives, archives);
             proof.builds = buildReceipts(
                 plan,
                 sourceLocks,
@@ -572,6 +596,7 @@ module.exports = {
     verifyLockedTree,
     verifyInstalledPeer,
     verifyModeledRuntimeInputs,
+    verifyCliArchives,
     verifyCohortInput,
     assertDependencyDelta,
     buildCandidate,
