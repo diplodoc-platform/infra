@@ -65,8 +65,10 @@ PRs is an explicit error, not a silently partial inventory.
 2. Freeze infrastructure, metapackage, CLI base and source SHAs. Rebuild affected
    consumers, including client assets for component changes.
 3. Build/pack without secrets. Relocatable archives and scoped overrides carry
-   source lock versions. Verify installed identities, run CLI tests/typecheck and
-   HTML/Markdown smoke builds. Do not update baselines.
+   source lock versions. Verify the installed CLI archives against their canonical
+   locks immediately after installation and again after CLI tests. A mismatch reports
+   the source and the expected and installed versions before running CLI build and tests.
+   Run CLI typecheck and HTML/Markdown smoke builds. Do not update baselines.
    Resolution proof paths describe runtime dependency chains, not physical
    lockfile directories. Resolve each edge from its installed parent and require
    its exact source-lock version, including source-owned peers and cycle-closing

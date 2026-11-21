@@ -117,6 +117,58 @@ test('runtime proof follows dependency edges and accepts relocated exact version
     );
 });
 
+test('CLI archive preflight reports both root-provider mismatches and accepts exact isolation', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-archive-preflight-'));
+    const source = node('algolia-extension', {cheerio: '^1.0.0', lodash: '^4.17.21'});
+    const name = source.manifest.name;
+    const archivePath = path.join('node_modules', name);
+    const lock = {
+        lockfileVersion: 3,
+        packages: {
+            '': source.manifest,
+            'node_modules/cheerio': {version: '1.2.0', dependencies: {undici: '^7.19.0'}},
+            'node_modules/undici': {version: '7.21.0'},
+            'node_modules/lodash': {version: '4.17.23'},
+        },
+    };
+    const archives = new Map([[name, {...source, lock, digest: HEAD, lockDigest: SHA}]]);
+    const install = (location, manifest) => {
+        const target = path.join(directory, location);
+        fs.mkdirSync(target, {recursive: true});
+        common.write(path.join(target, 'package.json'), manifest);
+    };
+    const preflight = () =>
+        builder.verifyCliArchives({graph: [source]}, directory, archives, archives);
+
+    try {
+        install(archivePath, {...source.manifest, dependencyTrain: {sourceSha: source.sha}});
+        install('node_modules/cheerio', {name: 'cheerio', version: '1.2.0'});
+        install('node_modules/undici', {name: 'undici', version: '7.30.2'});
+        install('node_modules/lodash', {name: 'lodash', version: '4.18.1'});
+
+        assert.throws(preflight, (error) => {
+            assert.match(error.message, /CLI archive algolia-extension@.*canonical source lock/);
+            assert.match(error.message, /undici \(expected 7\.21\.0, installed 7\.30\.2\)/);
+            assert.match(error.message, /lodash \(expected 4\.17\.23, installed 4\.18\.1\)/);
+            return true;
+        });
+
+        for (const [key, manifest] of Object.entries(lock.packages)) {
+            if (key)
+                install(path.join(archivePath, key), {...manifest, name: key.split('/').at(-1)});
+        }
+
+        const [proof] = preflight();
+        assert.deepEqual(proof.resolutions, [
+            {path: 'node_modules/cheerio', version: '1.2.0'},
+            {path: 'node_modules/cheerio/node_modules/undici', version: '7.21.0'},
+            {path: 'node_modules/lodash', version: '4.17.23'},
+        ]);
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 test('runtime graph retains distinct consumers, peer edges, optional paths and cycles', () => {
     const lock = hoistedLock();
     lock.packages['node_modules/cheerio'].peerDependencies = {entities: '*'};
