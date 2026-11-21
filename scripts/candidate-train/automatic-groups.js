@@ -22,6 +22,10 @@ function changedInput(before, after, oldLock, newLock) {
                 names.add(name);
         }
     }
+    assert.ok(
+        names.size,
+        'Automatic groups cannot select a transitive-only update (no changed direct dependency)',
+    );
     assert.equal(names.size, 1, 'Automatic groups require exactly one changed direct dependency');
     const [name] = names;
     const version = newLock.packages[`node_modules/${name}`]?.version;

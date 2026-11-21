@@ -17,6 +17,7 @@ const {
     SHA,
     REPO,
     SECTIONS,
+    MAX_GROUP_ATTEMPTS,
     planId,
     github,
     pages,
@@ -183,7 +184,7 @@ async function planTrain(
     env = process.env,
     request = (route) => github(route, {token: env.GH_TOKEN}),
     evidence = {fetchCheckRuns, fetchRequiredChecks},
-    {refresh = false, prepareMissing = false, target = ''} = {},
+    {refresh = false, prepareMissing = false, target = '', includeAlternatives = false} = {},
 ) {
     if (env.DEPENDENCY_TRAIN_COHORT_PRS?.trim()) {
         assert.ok(!refresh, 'Refresh only supports automatically discovered groups');
@@ -293,14 +294,20 @@ async function planTrain(
                 const assessment = assess(pr, files, before, after, oldLock, newLock, registry, {
                     maxRisk: risk.maxRisk,
                 });
-                if (mode === 'cohort')
-                    inputs.set(
-                        `${repo}#${pr.number}`,
-                        changedInput(before, after, oldLock, newLock),
+                const proposedBase = stale
+                    ? JSON.parse(await readSource(repo, current, 'package.json'))
+                    : after;
+                if (mode === 'cohort') {
+                    const input = changedInput(before, after, oldLock, newLock);
+                    assert.ok(
+                        declares(proposedBase, input.name),
+                        `${input.name} is no longer a direct dependency on master`,
                     );
+                    inputs.set(`${repo}#${pr.number}`, input);
+                }
                 assert.equal(
                     graph.find((node) => node.repo === repo).manifest.version,
-                    after.version,
+                    proposedBase.version,
                     'Update metapackage submodules before this pilot',
                 );
                 const checks = await evidence.fetchCheckRuns(
@@ -434,8 +441,13 @@ async function planTrain(
             waveNumber <= Math.max(1, automaticReport.groups.length),
             'Group index is out of range',
         );
-        const group = automaticReport.groups[waveNumber - 1];
-        if (group) {
+        const groupsToPlan = automaticReport.groups.slice(
+            waveNumber - 1,
+            waveNumber - 1 + (includeAlternatives ? MAX_GROUP_ATTEMPTS : 1),
+        );
+        const plans = [];
+        const sources = new Map(inventory.map((item) => [`${item.repo}#${item.number}`, item]));
+        for (const group of groupsToPlan) {
             const plan = await planCohort(
                 {
                     ...env,
@@ -449,7 +461,34 @@ async function planTrain(
                 evidence,
                 {graphAt, assess, risk, automatic: true, baseline: group.baseline || []},
             );
-            return {...plan, automaticGroups: automaticReport, excluded};
+            assert.equal(
+                plan.metapackageSha,
+                metapackageSha,
+                'Metapackage advanced during selection',
+            );
+            assert.deepEqual(plan.cli, cli, 'CLI baseline advanced during selection');
+            assert.deepEqual(
+                plan.cohort.dependency,
+                group.dependency,
+                'Group input advanced during selection',
+            );
+            for (const {repo, number, sha, baseSha} of plan.selected) {
+                const original = sources.get(`${repo}#${number}`);
+                assert.ok(
+                    sha === original.sha && baseSha === original.baseSha,
+                    'Group source advanced during selection',
+                );
+            }
+            plans.push(plan);
+        }
+        if (plans.length) {
+            const [plan, ...alternatives] = plans;
+            return {
+                ...plan,
+                automaticGroups: automaticReport,
+                excluded,
+                ...(includeAlternatives ? {alternatives} : {}),
+            };
         }
     }
     const waves = mode === 'cohort' ? [] : candidateWaves(inventory);
@@ -621,10 +660,15 @@ function renderSelection(plan) {
 }
 
 if (require.main === module) {
-    planTrain()
-        .then((plan) => {
+    planTrain(process.env, undefined, undefined, {includeAlternatives: true})
+        .then(({alternatives = [], ...plan}) => {
             write('train-plan.json', plan);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `selected=${plan.selected.length}\n`);
+            for (const [index, alternative] of alternatives.entries())
+                write(`train-plan-${index + 1}.json`, alternative);
+            fs.appendFileSync(
+                process.env.GITHUB_OUTPUT,
+                `selected=${plan.selected.length}\nattempts=${1 + alternatives.length}\n`,
+            );
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, renderSelection(plan));
         })
         .catch((error) => {

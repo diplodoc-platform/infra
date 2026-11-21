@@ -24,8 +24,8 @@ async function inRepository(run) {
     }
 }
 
-const select = (api, variables = env) =>
-    inRepository(() => planTrain(variables, api.request, api.evidence));
+const select = (api, variables = env, options) =>
+    inRepository(() => planTrain(variables, api.request, api.evidence, options));
 const revalidate = (plan, variables, api) =>
     inRepository(() => revalidateSources(plan, variables, api.request, api.evidence));
 
@@ -39,6 +39,61 @@ test('automatic groups use the complete shared input across more than three repo
     await revalidate(plan, env, api);
     const changed = {...env, DEPENDENCY_TRAIN_REPOSITORIES: 'alpha,beta,gamma'};
     await assert.rejects(revalidate(plan, changed, api));
+});
+
+test('Morning freezes up to three complete groups from the starting index and verifies the exact winner', async () => {
+    const api = apiFixture();
+    for (const [index, repo] of ['alpha', 'beta', 'delta', 'gamma'].entries())
+        api.addPull(repo, index + 1, {dependency: `@types/${repo}`});
+
+    const plan = await select(api, env, {includeAlternatives: true});
+    const available = [plan, ...plan.alternatives];
+    assert.deepEqual(
+        available.map(({cohort}) => cohort.dependency.name),
+        ['@types/alpha', '@types/beta', '@types/delta'],
+    );
+    for (const [index, attempt] of available.entries())
+        await revalidate(attempt, {...env, TRAIN_GROUP_OFFSET: String(index)}, api);
+    await assert.rejects(revalidate(available[1], env, api), /Canonical cohort/);
+    await assert.rejects(
+        revalidate(available[2], {...env, TRAIN_GROUP_OFFSET: '3'}, api),
+        /Invalid automatic group offset/,
+    );
+    await assert.rejects(
+        revalidate(
+            available[1],
+            {...env, TRAIN_GROUP_OFFSET: '1', DEPENDENCY_TRAIN_COHORT_PRS: 'beta#2'},
+            api,
+        ),
+        /Only automatic groups/,
+    );
+
+    const shifted = {...env, DEPENDENCY_TRAIN_WAVE: '2'};
+    const next = await select(api, shifted, {includeAlternatives: true});
+    assert.deepEqual(
+        next.alternatives.map(({cohort}) => cohort.dependency.name),
+        ['@types/delta', '@types/gamma'],
+    );
+    await revalidate(next.alternatives[1], {...shifted, TRAIN_GROUP_OFFSET: '2'}, api);
+});
+
+test('a lock-only direct version change can group, but a transitive-only change cannot', () => {
+    const manifest = {dependencies: {direct: '^1.0.0'}};
+    const lock = (direct, transitive) => ({
+        packages: {
+            'node_modules/direct': {version: direct},
+            'node_modules/transitive': {version: transitive},
+        },
+    });
+    const before = lock('1.0.0', '2.0.0');
+    assert.deepEqual(changedInput(manifest, manifest, before, lock('1.0.1', '2.0.1')), {
+        name: 'direct',
+        version: '1.0.1',
+    });
+    assert.throws(
+        () => changedInput(manifest, manifest, before, lock('1.0.0', '2.0.1')),
+        /transitive-only/,
+    );
 });
 
 test('Morning accepts a complete group with an Any source rule and revalidates its exact heads', async () => {

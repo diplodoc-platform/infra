@@ -5,7 +5,16 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
-const {OWNER, SECTIONS, digest, read, write, validatePlan, buildOrder} = require('./common');
+const {
+    OWNER,
+    SECTIONS,
+    digest,
+    read,
+    write,
+    validatePlan,
+    buildOrder,
+    CandidateResolutionMismatch,
+} = require('./common');
 const {assertDependencyDelta, assertSourceBaselines} = require('./dependency-delta');
 const {optInExtension} = require('./model');
 const {runIntegrationSmoke} = require('./integration-smoke');
@@ -252,7 +261,7 @@ function verifyLockedTree(
         if (mismatches.length === 10) break;
     }
 
-    assert.ok(!mismatches.length, mismatches.join('\n'));
+    if (mismatches.length) throw new CandidateResolutionMismatch(mismatches.join('\n'));
     return proof;
 }
 
@@ -349,7 +358,10 @@ function verifyCliArchives(plan, directory, installArchives, archives) {
                 resolutions,
             };
         } catch (error) {
-            throw new Error(
+            const Failure =
+                error instanceof CandidateResolutionMismatch ? CandidateResolutionMismatch : Error;
+
+            throw new Failure(
                 `CLI archive ${archive.repo}@${archive.sha} does not match its canonical source lock:\n` +
                     error.message +
                     '\nCheck the source package-lock.json against CLI overrides and the CLI baseline before retrying.',
@@ -407,6 +419,14 @@ function buildCandidate(plan, output) {
     assert.ok(!fs.existsSync(output), 'Output must be a fresh directory');
     fs.mkdirSync(path.join(output, 'dependency-train', 'payload'), {recursive: true});
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'diplodoc-candidate-build-'));
+    try {
+        return buildLockedCandidate(plan, output, scratch);
+    } finally {
+        fs.rmSync(scratch, {recursive: true, force: true});
+    }
+}
+
+function buildLockedCandidate(plan, output, scratch) {
     const archives = new Map();
     const sourceLocks = new Map();
     const proof = {schema: 3, trainId: plan.id, toolSha: plan.toolSha, packages: []};
@@ -578,9 +598,37 @@ function buildCandidate(plan, output) {
     throw new Error('CLI was not built');
 }
 
+function runAttempt(plan, output, allowFallback, build = buildCandidate, report = () => {}) {
+    try {
+        build(plan, output);
+        return true;
+    } catch (error) {
+        if (!(allowFallback && error instanceof CandidateResolutionMismatch)) throw error;
+
+        report(error.message);
+        return false;
+    }
+}
+
 if (require.main === module) {
     try {
-        buildCandidate(read(process.argv[2]), path.resolve(process.argv[3]));
+        const plan = read(process.argv[2]);
+        const passed = runAttempt(
+            plan,
+            path.resolve(process.argv[3]),
+            process.env.TRAIN_ALLOW_FALLBACK === 'true',
+            buildCandidate,
+            (message) => {
+                const {name, version} = plan.cohort.dependency;
+                console.error(message);
+                fs.appendFileSync(
+                    process.env.GITHUB_STEP_SUMMARY,
+                    `### Skipped ${name}@${version} after a dependency resolution mismatch\n\nSee the build log for the exact difference. Trying the next complete group.\n`,
+                );
+            },
+        );
+        if (process.env.GITHUB_OUTPUT)
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `passed=${passed}\n`);
     } catch (error) {
         console.error(error.message);
         process.exitCode = 1;
@@ -600,4 +648,5 @@ module.exports = {
     verifyCohortInput,
     assertDependencyDelta,
     buildCandidate,
+    runAttempt,
 };

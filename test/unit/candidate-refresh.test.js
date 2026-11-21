@@ -28,6 +28,41 @@ async function select(api, variables = env, {refresh = true, ...options} = {}) {
     }
 }
 
+test('Refresh checks stale PRs against the current package version rather than the old PR version', async () => {
+    const api = apiFixture();
+    const stale = api.addPull('alpha', 1, {stale: true});
+    api.addPull('beta', 2);
+    const alpha = api.graph.find(({repo}) => repo === 'alpha');
+    const current = {
+        ...alpha.manifest,
+        version: '1.0.1',
+        devDependencies: {'@types/example': '^1.0.0'},
+    };
+    const lock = (manifest) => ({
+        lockfileVersion: 3,
+        packages: {'': manifest, 'node_modules/@types/example': {version: '1.0.0'}},
+    });
+    api.addFiles('alpha', alpha.sha, {'package.json': current, 'package-lock.json': lock(current)});
+
+    const plan = await select(api);
+    assert.equal(plan.group.dependency.name, '@types/example');
+    assert.equal(plan.group.sources[0].sha, stale.head.sha);
+    assert.equal(plan.group.sources[0].refreshTo, alpha.sha);
+    assert.equal((await select(api, env, {refresh: false})).selected.length, 0);
+
+    const request = api.request;
+    api.request = async (route) =>
+        route.endsWith('/alpha/branches/master') ? {commit: {sha: sha('e')}} : request(route);
+    api.addFiles('alpha', sha('e'), {'package.json': {...current, version: '1.0.2'}});
+
+    const unsynced = await select(api);
+    assert.equal(unsynced.group, null);
+    assert.match(unsynced.excluded[0].reason, /Update metapackage submodules/);
+
+    api.addFiles('alpha', sha('e'), {'package.json': {...current, devDependencies: {}}});
+    assert.match((await select(api)).excluded[0].reason, /no longer a direct dependency/);
+});
+
 test('refresh selects stale PRs only in a complete group and Morning still requires current heads', async () => {
     const api = apiFixture();
     const stale = api.addPull('alpha', 1, {stale: true});
