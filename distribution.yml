@@ -113,6 +113,9 @@ repos:
     exclude: []
   mermaid-extension:
     exclude: []
+  notes-extension:
+    auto_merge: false
+    exclude: []
   openapi-extension:
     exclude: []
   page-constructor-extension:

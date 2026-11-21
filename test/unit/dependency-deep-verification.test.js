@@ -126,6 +126,7 @@ test('distributes deep verification only where the candidate reaches the test gr
         'latex-extension',
         'liquid',
         'mermaid-extension',
+        'notes-extension',
         'openapi-extension',
         'page-constructor-extension',
         'quote-link-extension',
