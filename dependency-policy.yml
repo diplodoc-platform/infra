@@ -49,6 +49,7 @@ entries:
       - yfmlint
       - vsc
       - ajv
+      - screencaster
       - algolia-extension
       - color-extension
       - cut-extension
@@ -57,6 +58,7 @@ entries:
       - html-extension
       - latex-extension
       - mermaid-extension
+      - notes-extension
       - openapi-extension
       - page-constructor-extension
       - quote-link-extension

@@ -84,7 +84,9 @@ test('distributes deep verification only where the candidate reaches the test gr
     assert.deepStrictEqual(excluded, [
         'algolia-extension',
         'html-extension',
+        'notes-extension',
         'package-template',
+        'screencaster',
         'testpack',
         'vsc',
     ]);
