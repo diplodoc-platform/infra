@@ -7,6 +7,8 @@ const {
     verifiedVerdict,
 } = require('../../scripts/candidate-train/verdict');
 const {mergeTrain} = require('../../scripts/candidate-train/merge');
+const {DEFAULT_PROFILE_BY_RISK} = require('../../scripts/dependency-verification-profiles');
+const {comparisonEvidence} = require('./candidate-deep-profile.test');
 const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
@@ -14,7 +16,7 @@ const yaml = require('js-yaml');
 const tests = [];
 const test = (name, fn) => tests.push({name, fn});
 
-function fixture() {
+function fixture(risk = 'low') {
     const node = (repo, sha, dependencies) => ({
         repo,
         sha: sha.repeat(40),
@@ -34,8 +36,8 @@ function fixture() {
             ...item,
             number: i + 1,
             baseSha: String(i + 1).repeat(40),
-            risk: 'low',
-            profile: 'ecosystem',
+            risk: i === 0 ? 'low' : risk,
+            profile: i === 0 ? 'standard' : DEFAULT_PROFILE_BY_RISK[risk],
         })),
         cohort: {
             requests: [
@@ -319,6 +321,69 @@ test('live merge needs no strict branch policy and leaves candidate cleanup to s
         ],
     );
     assert.equal(f.pulls.get('cli').state, 'open');
+});
+
+function addDeepComparison(f, item) {
+    const {check, run, artifact} = comparisonEvidence(item);
+    const fetchCheckRuns = f.evidence.fetchCheckRuns;
+    const request = f.request;
+    const routePrefix = `/repos/diplodoc-platform/${item.repo}/actions/runs/${run.id}`;
+
+    f.evidence.fetchCheckRuns = async (token, owner, repo, sha) => {
+        const result = await fetchCheckRuns(token, owner, repo, sha);
+        if (repo === item.repo) result.check_runs.push(check);
+        return result;
+    };
+    f.request = (route, options) => {
+        if (route === routePrefix) return run;
+        if (route === `${routePrefix}/artifacts?name=${artifact.name}`) {
+            return {artifacts: [artifact]};
+        }
+        return request(route, options);
+    };
+}
+
+for (const [risk, ceiling] of [
+    ['medium', 'medium'],
+    ['high', 'critical'],
+    ['critical', 'critical'],
+]) {
+    test(`an authorized ${risk} group merges under a ${ceiling} ceiling after required evidence`, async () => {
+        const f = fixture(risk);
+        const env = {DEPENDENCY_TRAIN_MAX_RISK: ceiling};
+
+        if (risk !== 'medium') {
+            await assert.rejects(f.run(true, env), /required .* comparison is not green/);
+            assert.deepEqual(f.writes, []);
+            addDeepComparison(f, f.plan.selected[1]);
+        }
+
+        assert.equal((await f.run(true, env)).complete, true);
+        assert.deepEqual(
+            f.writes.map(({repo}) => repo),
+            ['alpha', 'beta'],
+        );
+    });
+}
+
+test('missing, lower or invalid merge ceilings block all writes and record the reason', async () => {
+    for (const [risk, ceiling, reason] of [
+        ['medium', undefined, /Candidate risk medium exceeds DEPENDENCY_TRAIN_MAX_RISK=low/],
+        ['critical', 'high', /Candidate risk critical exceeds DEPENDENCY_TRAIN_MAX_RISK=high/],
+        ['low', 'invalid', /Unknown candidate risk/],
+    ]) {
+        const f = fixture(risk);
+        await assert.rejects(f.run(true, {DEPENDENCY_TRAIN_MAX_RISK: ceiling}), reason);
+        assert.match(f.reports.at(-1).error, reason);
+        assert.deepEqual(f.writes, []);
+    }
+});
+
+test('preview still checks the group above the merge ceiling without writing', async () => {
+    const f = fixture('medium');
+    const preview = await f.run(false, {DEPENDENCY_TRAIN_MAX_RISK: 'low'});
+    assert.equal(preview.sources.length, 2);
+    assert.deepEqual(f.writes, []);
 });
 
 test('partial failure persists exact progress; rerun independently verifies merged sources and does not merge them twice', async () => {
@@ -679,12 +744,13 @@ test('merge workflow is manual-only with read-only scoped preview and separate w
     assert.equal(workflow.concurrency.group, 'dependency-candidate-train');
     const token = workflow.jobs.merge.steps.find((step) => step.id === 'app');
     assert.equal(token.with.repositories, '${{ needs.preview.outputs.repositories }}');
+    const merge = workflow.jobs.merge.steps.find((step) => step.id === 'merge');
+    assert.equal(merge.env.GH_TOKEN, '${{ steps.app.outputs.token }}');
     assert.equal(
-        workflow.jobs.merge.steps.find(
-            (step) => step.env?.GH_TOKEN === '${{ steps.app.outputs.token }}',
-        ).run,
-        'node scripts/candidate-train/merge.js',
+        merge.env.DEPENDENCY_TRAIN_MAX_RISK,
+        "${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}",
     );
+    assert.equal(merge.run, 'node scripts/candidate-train/merge.js');
 });
 
 module.exports = {tests, fixture};

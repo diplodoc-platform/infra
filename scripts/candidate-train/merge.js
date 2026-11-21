@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const {isDeepStrictEqual} = require('node:util');
 const {OWNER, SHA, github, buildOrder, write} = require('./common');
 const {fetchCheckRuns, fetchRequiredChecks, deriveChecksGreen} = require('../auto-merge');
-const {groupRisk} = require('./risk');
+const {groupRisk, riskWeight} = require('./risk');
 const {requireDeepProfile} = require('./deep-profile');
 const {verifiedVerdict} = require('./verdict');
 const {authorizeControl, requireOperatorWrite} = require('./control-authorization');
@@ -204,11 +204,6 @@ async function mergeTrain(
     const operator = await authorizeControl(env, verified, request);
     if (live) {
         assert.equal(env.CONFIRM_TRAIN_ID, plan.id, 'Confirm the exact verified train ID');
-        assert.equal(
-            groupRisk(plan.selected),
-            'low',
-            'Candidates above low risk require merging the source PRs through their review process',
-        );
     }
     const report = {
         schema: 1,
@@ -224,6 +219,16 @@ async function mergeTrain(
     save(report);
     const registrationsBySha = new Map();
     try {
+        if (live) {
+            const risk = groupRisk(plan.selected);
+            const maxRisk = env.DEPENDENCY_TRAIN_MAX_RISK || 'low';
+
+            assert.ok(
+                riskWeight(risk) <= riskWeight(maxRisk),
+                `Candidate risk ${risk} exceeds DEPENDENCY_TRAIN_MAX_RISK=${maxRisk}`,
+            );
+        }
+
         await baselineUnchanged(plan, request, registrationsBySha);
         const ordered = buildOrder(plan.graph, plan.selected)
             .map((node) => plan.selected.find((item) => item.repo === node.repo))

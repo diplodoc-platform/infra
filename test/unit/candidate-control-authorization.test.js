@@ -13,8 +13,8 @@ const {
 const tests = [];
 const test = (name, fn) => tests.push({name, fn});
 
-function authorized(action = 'merge') {
-    const f = fixture();
+function authorized(action = 'merge', risk = 'low') {
+    const f = fixture(risk);
     const now = new Date().toISOString();
     const receipt = {
         schema: 1,
@@ -62,9 +62,17 @@ test('a REST check with started_at and no created_at authorizes preview without 
     assert.deepEqual(f.writes, []);
 });
 
-test('a fresh exact merge request retains all group checks and never merges the temporary CLI PR', async () => {
-    const {f, env} = authorized();
-    await f.run(true, env);
+test('a fresh medium merge request still requires source review and never merges the temporary CLI PR', async () => {
+    const {f, env} = authorized('merge', 'medium');
+    const configured = {...env, DEPENDENCY_TRAIN_MAX_RISK: 'medium'};
+    f.review = 'REVIEW_REQUIRED';
+
+    await assert.rejects(f.run(true, configured), /required review is missing/);
+    assert.deepEqual(f.writes, []);
+
+    f.review = 'APPROVED';
+    await f.run(true, configured);
+    assert.equal(f.pulls.get('cli').state, 'open');
     assert.deepEqual(
         f.writes.map((item) => [item.repo, item.method]),
         [
