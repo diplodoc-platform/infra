@@ -1,4 +1,5 @@
 name: Morning Dependency Candidate Train
+run-name: "Morning Dependency Candidate Train · ${{ (github.event_name == 'schedule' || inputs.dry_run == false) && 'prepare' || 'dry-run' }}"
 
 on:
   schedule:
@@ -92,11 +93,19 @@ jobs:
             train-plan.json
             train-plan-*.json
           if-no-files-found: error
+      # The private ops webhook reads these step outcomes from this exact attempt.
+      - name: No eligible dependency group
+        if: steps.plan.outputs.selected == '0'
+        run: echo 'No eligible dependency group'
       - name: Check for an open candidate before preparation
+        if: steps.plan.outputs.selected != '0'
         id: open-candidate
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/candidate-train/open-candidate.js
+      - name: Preparation blocked by an open CLI candidate
+        if: steps.plan.outputs.selected != '0' && steps.open-candidate.outputs.available == 'false'
+        run: echo 'Preparation blocked by an open CLI candidate. See the run summary.'
 
   build:
     needs: select
