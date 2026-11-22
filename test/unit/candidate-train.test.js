@@ -636,6 +636,48 @@ test('only a dependency resolution mismatch can request a fallback attempt', () 
     assert.deepEqual(reports, ['wrong installed version']);
 });
 
+test('Morning exposes separate outcomes for ops without starting a build', () => {
+    const workflow = yaml.load(
+        fs.readFileSync(
+            path.join(root, '.github/workflows/dependency-candidate-train.yml'),
+            'utf8',
+        ),
+    );
+    const runName = workflow['run-name'];
+    const expression = runName.slice(runName.indexOf('${{') + 3, -2).trim();
+    for (const dryRun of [true, false]) {
+        assert.equal(
+            runInNewContext(expression, {
+                github: {event_name: 'workflow_dispatch'},
+                inputs: {dry_run: dryRun},
+            }),
+            dryRun ? 'dry-run' : 'prepare',
+        );
+    }
+    assert.equal(
+        runInNewContext(expression, {github: {event_name: 'schedule'}, inputs: {}}),
+        'prepare',
+    );
+
+    const steps = workflow.jobs.select.steps;
+    const empty = steps.find((step) => step.name === 'No eligible dependency group');
+    const blocked = steps.find(
+        (step) => step.name === 'Preparation blocked by an open CLI candidate',
+    );
+    const open = steps.find((step) => step.id === 'open-candidate');
+    for (const selected of ['0', '1']) {
+        for (const available of ['false', 'true']) {
+            const state = {steps: {plan: {outputs: {selected}}, open: {outputs: {available}}}};
+            assert.equal(runInNewContext(empty.if, state), selected === '0');
+            assert.equal(runInNewContext(open.if, state), selected !== '0');
+            assert.equal(
+                runInNewContext(blocked.if.replace('steps.open-candidate', 'steps.open'), state),
+                selected !== '0' && available === 'false',
+            );
+        }
+    }
+});
+
 test('manual wave accepts string and numeric inputs without JSON quotes or a zero fallback', () => {
     const workflow = yaml.load(
         fs.readFileSync(
