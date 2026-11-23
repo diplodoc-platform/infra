@@ -154,4 +154,23 @@ test('repository workflow changes fail before prepared CI can run', async () => 
     await assert.rejects(assertPreparedCI('alpha', sha('d'), request), /has not been reviewed/);
 });
 
+test('Algolia requires the reviewed workflow tree for prepared source PRs', async () => {
+    const repo = 'algolia-extension';
+    const base = sha('a');
+    const check = (tree) =>
+        assertPreparedCI(repo, base, async (route) => {
+            assert.equal(route, `/repos/diplodoc-platform/${repo}/git/trees/${base}?recursive=1`);
+            return {
+                truncated: false,
+                tree: [{path: '.github/workflows', type: 'tree', sha: tree}],
+            };
+        });
+
+    await check('79cfc4a375d42866d6292329ddd4336268e19ca1');
+    await assert.rejects(
+        check('38eb0f75b7eaa8e903a15fad1210a630b40f68d0'),
+        /workflow tree differs from the reviewed candidate CI/,
+    );
+});
+
 module.exports = {tests};

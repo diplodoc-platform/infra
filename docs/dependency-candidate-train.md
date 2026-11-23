@@ -470,7 +470,8 @@ version such as `esbuild-sass-plugin@3.7.0`. The `dependency-refresh-plan`
 artifact includes the candidate lockfiles. A dry run works before the target
 repositories have deployed the reviewed candidate workflows.
 
-Live preparation currently supports `components` and `transform`. The existing
+Live preparation supports the reviewed workflow trees for `algolia-extension`,
+`components` and `transform`. The existing
 infra GitHub App creates branches in the original repositories, and
 `diplodoc-bot` opens the source PRs. The writer validates the complete plan and
 checks the reviewed workflow directory of each repository before writing.
