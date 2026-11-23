@@ -95,6 +95,27 @@ test('an absent optional source peer still uses the independently verified froze
     assert.equal(candidate.packages['node_modules/@diplodoc/leaf/node_modules/react'], undefined);
 });
 
+test('an archive-scoped provider cannot shadow a canonical nested dependency', () => {
+    const f = fixture();
+    const source = f.archive.lock.packages;
+    const namespace = 'node_modules/@diplodoc/leaf/node_modules/';
+    source[''].dependencies = {parser: '1.0.0', shared: '2.0.0'};
+    source['node_modules/parser'] = pkg('1.0.0', {shared: '1.0.0'});
+    source['node_modules/parser/node_modules/shared'] = pkg('1.0.0');
+    source['node_modules/shared'] = pkg('2.0.0');
+
+    const candidate = assembleCliLock(
+        f.baseline,
+        f.manifest,
+        f.archives,
+        () => Buffer.from('archive'),
+        true,
+    );
+    assert.equal(candidate.packages['node_modules/shared'].version, '1.0.0');
+    assert.equal(candidate.packages[namespace + 'shared'].version, '2.0.0');
+    assert.equal(candidate.packages[namespace + 'parser/node_modules/shared'].version, '1.0.0');
+});
+
 test('missing canonical packages, links and unsafe locations are rejected before npm', () => {
     for (const mutate of [
         (f) => delete f.archive.lock.packages['node_modules/shared'],

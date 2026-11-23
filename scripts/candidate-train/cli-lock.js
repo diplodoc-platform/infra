@@ -208,7 +208,11 @@ function assembleCliLock(baseline, manifest, archives, archiveBytes, freezePeers
                 if (!next && optional(entry, child)) continue;
                 assert.ok(next, `Missing canonical dependency ${child} in ${archive.repo}`);
                 const existing = lookup(lock, target, child);
-                if (compatible(next, existing)) continue;
+                // A canonical nested provider shadows another version inside
+                // the archive. Keep its scope even if the CLI currently resolves
+                // to the same version before the rest of the archive is copied.
+                const scoped = next !== `node_modules/${child}`;
+                if (scoped ? existing === `${key}/${next}` : compatible(next, existing)) continue;
                 visit(next, depth + 1);
             }
         };
