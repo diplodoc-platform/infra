@@ -44,6 +44,8 @@ const {DEEP_PROFILES} = require('../dependency-verification-profiles');
 const {isPreparedSource, preparedBranch, validatePreparedLock} = require('./prepare-policy');
 const {findPreparation} = require('./prepare-plan');
 const {packageRegistrationsAt} = require('./metapackage');
+const {reconciliationSeed} = require('./reconcile-lock');
+const {readReconciledInput} = require('./reconcile-source');
 
 function allowlist(value) {
     const repos = (value || '')
@@ -72,11 +74,14 @@ function assess(
     oldLock,
     newLock,
     registry,
-    {manual = false, dependency = '', maxRisk = 'low'} = {},
+    {manual = false, dependency = '', maxRisk = 'low', reconciled = false} = {},
 ) {
     const prepared = isPreparedSource(pr);
     if (!manual)
-        assert.ok(pr.user?.login === 'dependabot[bot]' || prepared, 'Unexpected source author');
+        assert.ok(
+            pr.user?.login === 'dependabot[bot]' || prepared || reconciled,
+            'Unexpected source author',
+        );
     assert.equal(pr.state, 'open');
     assert.equal(pr.draft, false);
     assert.equal(pr.base.ref, 'master');
@@ -142,6 +147,12 @@ function assess(
     const changes = [...assessment.direct, ...assessment.transitive];
     assert.ok(changes.length > 0, 'No dependency changes');
     assertRiskAllowed(assessment.maxRisk, maxRisk);
+    if (reconciled) {
+        assert.ok(
+            !DEEP_PROFILES.includes(assessment.verificationProfile),
+            'Reconciliation requires a Dependabot-only deep profile',
+        );
+    }
     if (prepared) {
         assert.deepEqual(before, after, 'Prepared PR must preserve package.json');
         assert.deepEqual(
@@ -233,6 +244,7 @@ async function planTrain(
     const sourceFiles = new Map();
     const masters = new Map();
     const openPulls = new Map();
+    let cliLock;
     const readSource = (repo, sha, filename) => {
         const key = `${repo}:${sha}:${filename}`;
 
@@ -253,7 +265,7 @@ async function planTrain(
         for (const pr of pulls.filter(
             (item) =>
                 (item.user?.login === 'dependabot[bot]' ||
-                    (mode === 'cohort' && isPreparedSource(item))) &&
+                    (mode === 'cohort' && (isPreparedSource(item) || reconciliationSeed(item)))) &&
                 (!prNumber || item.number === prNumber),
         )) {
             assert.ok(
@@ -291,14 +303,32 @@ async function planTrain(
                     readSource(repo, pr.base.sha, 'package-lock.json'),
                     readSource(repo, pr.head.sha, 'package-lock.json'),
                 ]).then((items) => items.map(JSON.parse));
+                let reconciliation;
+                if (reconciliationSeed(pr)) {
+                    assert.ok(!stale, 'Rebuild reconciliation from the current original PR');
+                    cliLock ||= JSON.parse(await readSource('cli', cli.sha, 'package-lock.json'));
+                    reconciliation = await readReconciledInput(
+                        pr,
+                        before,
+                        after,
+                        oldLock,
+                        newLock,
+                        cli,
+                        cliLock,
+                        readSource,
+                        request,
+                    );
+                }
                 const assessment = assess(pr, files, before, after, oldLock, newLock, registry, {
                     maxRisk: risk.maxRisk,
+                    reconciled: Boolean(reconciliation),
                 });
                 const proposedBase = stale
                     ? JSON.parse(await readSource(repo, current, 'package.json'))
                     : after;
                 if (mode === 'cohort') {
-                    const input = changedInput(before, after, oldLock, newLock);
+                    const input =
+                        reconciliation?.input || changedInput(before, after, oldLock, newLock);
                     assert.ok(
                         declares(proposedBase, input.name),
                         `${input.name} is no longer a direct dependency on master`,
@@ -334,6 +364,7 @@ async function planTrain(
                 );
                 const item = {
                     ...(isPreparedSource(pr) ? {prepared: true} : {}),
+                    ...(reconciliation ? {reconciles: reconciliation.seed} : {}),
                     repo,
                     number: pr.number,
                     sha: pr.head.sha,

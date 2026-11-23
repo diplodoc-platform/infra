@@ -9,6 +9,8 @@ const {repositoryTargets} = require('./waves');
 const {deriveChecksGreen} = require('../auto-merge');
 const {groupRisk} = require('./risk');
 const {requireDeepProfile} = require('./deep-profile');
+const {MAX_EXTRA_DEPENDENCIES, reconciliationSeed} = require('./reconcile-lock');
+const {readReconciledInput} = require('./reconcile-source');
 
 /** Select the entire explicit group or fail; this path is unavailable to schedules. */
 async function planCohort(
@@ -53,6 +55,8 @@ async function planCohort(
     const registry = yaml.load(fs.readFileSync('dependency-policy.yml', 'utf8')).entries;
     const selected = [];
     const versions = new Set();
+    const additional = new Set();
+    let cliLock;
     for (const {repo, number} of requests) {
         const prefix = `/repos/${OWNER}/${repo}`;
         const pr = await request(`${prefix}/pulls/${number}`);
@@ -69,6 +73,28 @@ async function planCohort(
             fileAt(repo, pr.base.sha, 'package-lock.json', request),
             fileAt(repo, pr.head.sha, 'package-lock.json', request),
         ]).then((items) => items.map(JSON.parse));
+        const reconciled = Boolean(reconciliationSeed(pr));
+        if (reconciled) {
+            cliLock ||= JSON.parse(await fileAt('cli', cli.sha, 'package-lock.json', request));
+            const readSource = (name, sha, filename) => fileAt(name, sha, filename, request);
+            const canonical = await readReconciledInput(
+                pr,
+                before,
+                after,
+                oldLock,
+                newLock,
+                cli,
+                cliLock,
+                readSource,
+                request,
+            );
+            assert.equal(dependency, canonical.input.name);
+            for (const name of canonical.additional) additional.add(name);
+            assert.ok(
+                additional.size <= MAX_EXTRA_DEPENDENCIES,
+                'More than five additional dependencies in the group',
+            );
+        }
         const assessment = assess(
             pr,
             await pages(`${prefix}/pulls/${number}/files`, request),
@@ -77,7 +103,7 @@ async function planCohort(
             oldLock,
             newLock,
             registry,
-            {manual: !automatic, dependency, maxRisk: risk.maxRisk},
+            {manual: !automatic, dependency, maxRisk: risk.maxRisk, reconciled},
         );
         const node = graph.find((item) => item.repo === repo);
         assert.equal(
