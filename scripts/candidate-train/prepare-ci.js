@@ -5,6 +5,7 @@ const {OWNER, SHA} = require('./common');
 
 // Review the workflow directory before permitting candidate code to run in the base repository.
 const WORKFLOW_TREES = Object.freeze({
+    'algolia-extension': '79cfc4a375d42866d6292329ddd4336268e19ca1',
     components: '497eb367ebeaa37bc1c4f970b1e6eca06cfde150',
     transform: 'c722ab7b6f3c908cac6913a41a0f9cc98c7f66cb',
 });
