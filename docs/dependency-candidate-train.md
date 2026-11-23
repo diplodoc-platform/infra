@@ -422,6 +422,37 @@ require signed commits block the group before any write.
 The next Morning independently checks source policy and required checks on the
 new heads. Refresh never treats old CI as evidence for the new commits.
 
+### Reconcile additional CLI-pinned versions
+
+Set `reconcile: true` on a manual **Refresh Depends** dispatch. Keep
+`dry_run: true` to calculate proposals without writes. For a specific group,
+supply `reconcile_prs` (one Dependabot PR per source repository) and an exact
+`target` such as `algoliasearch@5.60.0`. With both empty the normal priority
+order selects one complete automatic group. Existing scheduled Refresh can
+also run this step when `DEPENDENCY_TRAIN_RECONCILE_ENABLED=true`; it is off
+by default and uses the existing schedule.
+
+The planner reads the seed, current base and CLI lock at their exact SHAs.
+It aligns up to five additional package names already in the affected CLI
+runtime archives, using exact direct CLI pins or exact, parent-scoped CLI
+overrides. Every incoming range to each changed lock entry must admit the
+target version. Independent nested providers stay pinned. Changes already in
+the original PR, major upgrades, a target with different package metadata,
+and changes outside the canonical candidate graph stop preparation. The
+artifact records dependency paths, ranges, exact changes and publication
+blockers. It does not install or run source package code.
+
+Live Refresh opens a separate source PR with the original diff and the
+validated lock entries under `codex/dependency-group-reconcile-*`, using the existing reviewed workflow-tree allowlist
+and fresh GitHub evidence. It will not duplicate an open competing dependency
+update. A reconciled source replaces its Dependabot seed in Morning's
+inventory after exact-head CI succeeds and canonical revalidation passes.
+The original PR is left open. Morning still builds the combined changes and
+requires the normal exact-install proof and Internal Check. Merge remains a
+separate, explicit action. A group requiring changes to an unselected
+canonical source, a deep profile unavailable to the prepared source, or an
+unreviewed CI workflow needs a separate review.
+
 ### Prepare missing source PRs
 
 If Morning already has a complete eligible group, Refresh leaves it ready for

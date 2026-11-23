@@ -42,7 +42,13 @@ function automaticGroups(graph, inventory, inputs, repositories, baselines = new
     const buckets = new Map();
     const excluded = [];
     const incomplete = [];
+    const replacements = new Set(
+        inventory
+            .filter(({reconciles}) => reconciles)
+            .map(({repo, reconciles}) => `${repo}#${reconciles}`),
+    );
     for (const item of inventory) {
+        if (replacements.has(`${item.repo}#${item.number}`)) continue;
         const input = inputs.get(`${item.repo}#${item.number}`);
         if (!input) continue;
         const key = `${input.name}@${input.version}`;

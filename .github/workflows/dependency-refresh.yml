@@ -21,6 +21,14 @@ on:
         description: 'Optional exact dependency target, e.g. example@1.2.3'
         type: string
         default: ''
+      reconcile:
+        description: 'Check CLI-pinned companion dependencies for one complete group'
+        type: boolean
+        default: false
+      reconcile_prs:
+        description: 'Optional exact source PRs for reconciliation (requires target)'
+        type: string
+        default: ''
 
 permissions:
   actions: read
@@ -33,7 +41,7 @@ concurrency:
 jobs:
   refresh:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && inputs.reconcile != true) ||
       (github.event_name == 'schedule' &&
        vars.DEPENDENCY_TRAIN_REFRESH_ENABLED == 'true' &&
        vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true' &&
@@ -134,3 +142,87 @@ jobs:
           DEPENDENCY_TRAIN_PREPARE_MISSING: 'true'
           DEPENDENCY_TRAIN_REFRESH_TARGET: ${{ inputs.target }}
         run: node scripts/candidate-train/prepare-publish.js
+
+  reconcile:
+    name: Plan additional dependency alignment
+    needs: refresh
+    if: >-
+      !cancelled() &&
+      ((github.event_name == 'workflow_dispatch' && inputs.reconcile == true) ||
+       (github.event_name == 'schedule' && needs.refresh.result == 'success' &&
+        vars.DEPENDENCY_TRAIN_RECONCILE_ENABLED == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      repositories: ${{ steps.reconcile.outputs.repositories }}
+      artifact: ${{ steps.artifact.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
+      - run: npm ci --ignore-scripts
+      - id: reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+          DEPENDENCY_TRAIN_COHORT_PRS: ${{ inputs.reconcile_prs || '' }}
+          DEPENDENCY_TRAIN_RECONCILE_TARGET: ${{ inputs.target || '' }}
+        run: node scripts/candidate-train/reconcile.js
+      - uses: actions/upload-artifact@v4
+        id: artifact
+        with:
+          name: dependency-reconciliation
+          path: dependency-reconciliation.json
+          if-no-files-found: error
+
+  publish-reconciliation:
+    name: Publish reconciled source PRs
+    needs: reconcile
+    if: >-
+      needs.reconcile.outputs.repositories != '' &&
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'schedule' || inputs.dry_run == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          artifact-ids: ${{ needs.reconcile.outputs.artifact }}
+          merge-multiple: true
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ needs.reconcile.outputs.repositories }}
+          permission-contents: write
+      - name: Revalidate the exact group and open source PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_REFRESH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
+          TRAIN_GROUP_APP_TOKEN: ${{ steps.app.outputs.token }}
+          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+          DEPENDENCY_TRAIN_COHORT_PRS: ${{ inputs.reconcile_prs || '' }}
+          DEPENDENCY_TRAIN_RECONCILE_TARGET: ${{ inputs.target || '' }}
+          DEPENDENCY_TRAIN_RECONCILE_REPOS: ${{ needs.reconcile.outputs.repositories }}
+          DEPENDENCY_TRAIN_RECONCILE_APPROVED: 'true'
+        run: node scripts/candidate-train/reconcile.js apply
