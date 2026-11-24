@@ -185,7 +185,10 @@ jobs:
   publish-reconciliation:
     name: Publish reconciled source PRs
     needs: reconcile
+    # A manual reconcile deliberately skips the ordinary refresh ancestor.
     if: >-
+      !cancelled() &&
+      needs.reconcile.result == 'success' &&
       needs.reconcile.outputs.repositories != '' &&
       github.ref == 'refs/heads/master' &&
       (github.event_name == 'schedule' || inputs.dry_run == false)

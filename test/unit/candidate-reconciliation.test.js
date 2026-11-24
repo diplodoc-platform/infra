@@ -224,15 +224,41 @@ test('reconciliation uses the existing schedule only when independently enabled'
         );
     }
     assert.ok(!JSON.stringify(plan).includes('secrets.'));
-    const publish = workflow.jobs['publish-reconciliation'];
-    assert.equal(
-        runInNewContext(publish.if, {
-            github: {event_name: 'workflow_dispatch', ref: 'refs/heads/master'},
-            needs: {reconcile: {outputs: {repositories: 'components'}}},
-            inputs: {dry_run: true},
-        }),
-        false,
+});
+
+test('manual reconciliation can publish after skipping the ordinary refresh', () => {
+    const workflow = yaml.load(
+        fs.readFileSync(
+            path.join(__dirname, '../../.github/workflows/dependency-refresh.yml'),
+            'utf8',
+        ),
     );
+    const publish = workflow.jobs['publish-reconciliation'];
+    // An explicit status function replaces GitHub Actions' implicit success() check,
+    // which would skip this job because an ancestor was skipped.
+    assert.match(publish.if, /^!cancelled\(\) &&/);
+
+    const canPublish = ({
+        dryRun = false,
+        result = 'success',
+        repositories = 'algolia-extension',
+        ref = 'refs/heads/master',
+        cancelled = false,
+    } = {}) =>
+        runInNewContext(publish.if, {
+            github: {event_name: 'workflow_dispatch', ref},
+            needs: {reconcile: {result, outputs: {repositories}}},
+            inputs: {dry_run: dryRun},
+            cancelled: () => cancelled,
+        });
+
+    assert.equal(canPublish(), true);
+    assert.equal(canPublish({dryRun: true}), false);
+    assert.equal(canPublish({result: 'failure'}), false);
+    assert.equal(canPublish({result: 'skipped'}), false);
+    assert.equal(canPublish({repositories: ''}), false);
+    assert.equal(canPublish({ref: 'refs/heads/feature'}), false);
+    assert.equal(canPublish({cancelled: true}), false);
 });
 
 test('reconciliation never requests write credentials without explicit opt-in and master', async () => {
