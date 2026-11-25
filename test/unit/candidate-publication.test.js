@@ -166,7 +166,21 @@ function fixture(options = {}) {
             ...entries,
         ]),
         sourceReads: 0,
+        cliBaseReads: 0,
         writes: [],
+    };
+    const oldPlan = structuredClone(plan);
+    oldPlan.readyBy = '2026-10-22T05:00:00.000Z';
+    if (!options.currentCandidate) oldPlan.cli.sha = 'e'.repeat(40);
+    if (options.otherSource) oldPlan.selected[0].number = 4;
+    oldPlan.id = planId(oldPlan);
+    const oldHead = 'f'.repeat(40);
+    const oldPlanBytes = Buffer.from(JSON.stringify(oldPlan));
+    const oldPR = {
+        ...structuredClone(remote.pr),
+        number: 11,
+        merged: false,
+        head: {...remote.pr.head, ref: `codex/dependency-candidate-${oldPlan.id}`, sha: oldHead},
     };
     const env = {
         GITHUB_SHA: SHA,
@@ -211,7 +225,48 @@ function fixture(options = {}) {
         if (route.startsWith(`${prefix}/pulls?state=all&head=`)) {
             return options.reuse ? [structuredClone(remote.pr)] : [];
         }
-        if (route.startsWith(`${prefix}/pulls?state=open&base=master`)) return [];
+        if (route.startsWith(`${prefix}/pulls?state=open&base=master`)) {
+            if (!options.replacement) return [];
+            return [oldPR, ...(options.reuse ? [remote.pr] : [])];
+        }
+        if (route === `${prefix}/git/trees/${oldHead}`) {
+            return {
+                truncated: false,
+                tree: [
+                    {path: 'dependency-train', type: 'tree', mode: '040000', sha: oldHead + '-dir'},
+                ],
+            };
+        }
+        if (route === `${prefix}/git/trees/${oldHead}-dir`) {
+            return {
+                truncated: false,
+                tree: [{path: 'plan.json', type: 'blob', mode: '100644', sha: oldHead + '-blob'}],
+            };
+        }
+        if (route === `${prefix}/git/blobs/${oldHead}-blob`) {
+            return {
+                encoding: 'base64',
+                content: oldPlanBytes.toString('base64'),
+                size: oldPlanBytes.length,
+            };
+        }
+        if (route === `${prefix}/git/commits/${oldHead}`) {
+            return {sha: oldHead, parents: [{sha: oldPlan.cli.sha}]};
+        }
+        if (route === `${prefix}/branches/master`) {
+            remote.cliBaseReads++;
+            return {commit: {sha: options.cliMoves && remote.cliBaseReads > 1 ? HEAD : SHA}};
+        }
+        if (route === `${prefix}/pulls/11`) {
+            assert.equal(token, env.TRAIN_APP_TOKEN);
+            if (method === 'PATCH') {
+                assert.deepEqual(body, {state: 'closed'});
+                oldPR.state = 'closed';
+            }
+            const pr = structuredClone(oldPR);
+            if (options.staleCandidateChanged) pr.head.sha = HEAD;
+            return pr;
+        }
         if (route === `${prefix}/git/commits/${SHA}`) return {tree: {sha: BASE_TREE}};
         if (route === `${prefix}/git/commits/${HEAD}`) return structuredClone(remote.commit);
         if (route === `${prefix}/git/trees/${BASE_TREE}?recursive=1`) {
@@ -256,6 +311,7 @@ function fixture(options = {}) {
             assert.equal(token, env.TRAIN_BOT_TOKEN);
             assert.equal(body.base, 'master');
             assert.equal(body.head, branch);
+            if (options.openFailed) throw new Error('PR creation failed');
             return structuredClone(remote.pr);
         }
         if (route === `${prefix}/pulls/12`) {
@@ -267,10 +323,67 @@ function fixture(options = {}) {
     };
     return {
         remote,
+        oldPR,
         directory,
         run: () => publish(plan, directory, env, request),
         close: () => fs.rmSync(directory, {recursive: true, force: true}),
     };
+}
+
+test('publisher closes the stale candidate only after publishing its verified replacement', async () => {
+    const context = fixture({replacement: true});
+
+    try {
+        const result = await context.run();
+        assert.equal(result.replaced, 11);
+        assert.equal(context.oldPR.state, 'closed');
+        assert.deepEqual(
+            context.remote.writes.slice(-2).map(({route, method}) => ({route, method})),
+            [
+                {route: `${prefix}/pulls`, method: 'POST'},
+                {route: `${prefix}/pulls/11`, method: 'PATCH'},
+            ],
+        );
+    } finally {
+        context.close();
+    }
+});
+
+test('publisher can retry candidate cleanup without creating a duplicate', async () => {
+    const context = fixture({replacement: true, reuse: true});
+
+    try {
+        const result = await context.run();
+        assert.equal(result.reused, true);
+        assert.equal(result.replaced, 11);
+        assert.equal(context.oldPR.state, 'closed');
+        assert.deepEqual(
+            context.remote.writes.map(({method}) => method),
+            ['PATCH'],
+        );
+    } finally {
+        context.close();
+    }
+});
+
+for (const [options, reason] of [
+    [{currentCandidate: true}, /earlier candidate is still open/],
+    [{otherSource: true}, /earlier candidate is still open/],
+    [{openFailed: true}, /PR creation failed/],
+    [{staleCandidateChanged: true}, /CLI candidate changed before closing/],
+    [{cliMoves: true}, /CLI changed before replacing/],
+]) {
+    test(`publisher leaves the old candidate open (${Object.keys(options)[0]})`, async () => {
+        const context = fixture({replacement: true, ...options});
+
+        try {
+            await assert.rejects(context.run(), reason);
+            assert.equal(context.oldPR.state, 'open');
+            assert.ok(context.remote.writes.every(({method}) => method !== 'PATCH'));
+        } finally {
+            context.close();
+        }
+    });
 }
 
 test('publisher independently rejects unrelated lock drift before any remote write', async () => {

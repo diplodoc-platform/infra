@@ -23,6 +23,8 @@ const {expectedIntegrationEvidence} = require('./integration-smoke');
 const {planTrain} = require('./plan');
 const {parseCohort} = require('./cohort');
 const {runtimeArtifacts, buildReceipts} = require('./artifacts');
+const {preparationStatus} = require('./open-candidate');
+const {closeCandidate} = require('./submodules');
 
 function validatePayload(plan, directory, locks, baselineLock) {
     validatePlan(plan);
@@ -338,6 +340,27 @@ async function verifyExistingCandidate(plan, sha, entries, request) {
     );
 }
 
+async function requirePreparation(plan, request, currentNumber) {
+    const status = await preparationStatus(plan, request, currentNumber);
+    assert.ok(
+        status.available,
+        'An earlier candidate is still open; resolve it before starting another train',
+    );
+    return status.replacement;
+}
+
+async function requireCurrentCli(plan, request) {
+    const cli = await request(`/repos/${OWNER}/cli/branches/master`);
+    assert.equal(cli.commit.sha, plan.cli.sha, 'CLI changed before replacing the stale candidate');
+}
+
+async function closeReplacedCandidate(plan, replacement, readRequest, appRequest) {
+    if (!replacement) return;
+
+    await requireCurrentCli(plan, readRequest);
+    await closeCandidate(replacement, appRequest);
+}
+
 async function publish(plan, directory, env = process.env, request = github) {
     validatePlan(plan);
     assert.equal(plan.toolSha, env.GITHUB_SHA, 'Tooling revision changed');
@@ -378,13 +401,16 @@ async function publish(plan, directory, env = process.env, request = github) {
             ['dependency-train/plan.json', Buffer.from(JSON.stringify(plan, null, 2) + '\n')],
         ];
         await verifyExistingCandidate(plan, pr.head.sha, entries, request);
+        const replacement = await requirePreparation(plan, request, pr.number);
         await unchangedSources(plan, request);
         assertCandidatePr(await request(`${prefix}/pulls/${pr.number}`), branch, pr.head.sha);
+        await closeReplacedCandidate(plan, replacement, request, appRequest);
         return {
             number: pr.number,
             sha: pr.head.sha,
             branch,
             reused: true,
+            replaced: replacement?.number,
             payloadSha256: digest(
                 fs.readFileSync(path.join(directory, 'dependency-train/proof.json')),
             ),
@@ -392,11 +418,7 @@ async function publish(plan, directory, env = process.env, request = github) {
             plan,
         };
     }
-    const active = await pages(`${prefix}/pulls?state=open&base=master`, request);
-    assert.ok(
-        !active.some((pr) => pr.head.ref.startsWith('codex/dependency-candidate-')),
-        'An earlier candidate is still open; resolve it before starting another train',
-    );
+    const replacement = await requirePreparation(plan, request);
     const base = await request(`${prefix}/git/commits/${plan.cli.sha}`);
     const tree = [];
     for (const file of files) {
@@ -451,6 +473,7 @@ async function publish(plan, directory, env = process.env, request = github) {
         commit.sha = ref.object.sha;
     }
     await unchangedSources(plan, request);
+    if (replacement) await requireCurrentCli(plan, request);
     const pr = await botRequest(`${prefix}/pulls`, {
         method: 'POST',
         body: {
@@ -464,12 +487,14 @@ async function publish(plan, directory, env = process.env, request = github) {
     assertCandidatePr(pr, branch, commit.sha);
     await unchangedSources(plan, request);
     assertCandidatePr(await request(`${prefix}/pulls/${pr.number}`), branch, commit.sha);
+    await closeReplacedCandidate(plan, replacement, request, appRequest);
     return {
         number: pr.number,
         sha: commit.sha,
         branch,
         url: pr.html_url,
         reused: false,
+        replaced: replacement?.number,
         plan,
         payloadSha256: digest(fs.readFileSync(path.join(directory, 'dependency-train/proof.json'))),
     };
@@ -498,6 +523,9 @@ if (require.main === module) {
                     `[CLI PR](${result.url})\n\n` +
                     `PR number: ${result.number}\n\nCLI SHA: \`${result.sha}\`\n\n` +
                     `Tooling SHA: \`${result.plan.toolSha}\`\n\n` +
+                    (result.replaced
+                        ? `Closed stale [CLI #${result.replaced}](https://github.com/${OWNER}/cli/pull/${result.replaced}) without merging.\n\n`
+                        : '') +
                     `Hand these identities to the internal operations observer. ` +
                     `No merge, release or distribution was performed.\n`,
             );

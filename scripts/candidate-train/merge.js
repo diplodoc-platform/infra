@@ -12,28 +12,7 @@ const {verifiedVerdict} = require('./verdict');
 const {authorizeControl, requireOperatorWrite} = require('./control-authorization');
 const {packageRegistrationsAt} = require('./metapackage');
 const {selectMergeMethod, rebaseTrees, verifyRebase} = require('./merge-method');
-
-/** Read data as Git blobs, never following a symlink or executing the candidate. */
-async function candidateFile(sha, name, request) {
-    const prefix = `/repos/${OWNER}/cli`;
-    const root = await request(`${prefix}/git/trees/${sha}`);
-    assert.equal(root.truncated, false);
-    const directory = root.tree.find((entry) => entry.path === 'dependency-train');
-    assert.ok(
-        directory?.type === 'tree' && directory.mode === '040000',
-        'Missing candidate data directory',
-    );
-    const tree = await request(`${prefix}/git/trees/${directory.sha}`);
-    assert.equal(tree.truncated, false);
-    const entry = tree.tree.find((item) => item.path === name);
-    assert.ok(
-        entry?.type === 'blob' && entry.mode === '100644',
-        'Candidate metadata must be a regular blob',
-    );
-    const blob = await request(`${prefix}/git/blobs/${entry.sha}`);
-    assert.ok(blob.encoding === 'base64' && blob.size > 0 && blob.size < 8 * 1024 * 1024);
-    return Buffer.from(blob.content.replace(/\s/g, ''), 'base64').toString('utf8');
-}
+const {candidateFile} = require('./open-candidate');
 
 async function readVerifiedCandidate(number, request, token, readChecks = fetchCheckRuns) {
     assert.ok(Number.isSafeInteger(number) && number > 0);
