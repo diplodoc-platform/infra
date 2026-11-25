@@ -153,9 +153,14 @@ Dispatch `dependency-candidate-train.yml` with:
 After inspecting that exact selection, `dry_run: false` explicitly approves
 one preparation of the selected wave. This does not require changing an organization variable.
 With one explicitly named repository, `pr_number` can select an exact open
-Dependabot PR. An open temporary CLI candidate is reported before heavy build
-and prevents another preparation, without closing or certifying the existing PR.
-The publisher repeats the final race check before creating a new candidate.
+Dependabot PR. An open temporary CLI candidate normally blocks another build.
+If its frozen CLI baseline advanced and the currently eligible plan selects
+the same source PRs at the same heads and bases, Morning rebuilds that group
+on the current CLI baseline. After publishing and checking the new PR, Morning
+closes the old PR without merging or deleting its branch. The new head requires
+its own Internal Check. A failed build or PR creation leaves the old PR open.
+If closing the old PR fails, the publisher can be retried against the same plan.
+A dry-run only reports whether replacement is possible.
 Selection/build jobs have no secrets. Publication uses only existing GitHub
 credentials (`INFRA_APP_ID`, `INFRA_APP_PRIVATE_KEY`, `INFRA_APPROVER_PAT`).
 The public summary and `train-candidate.json` contain only public identities;

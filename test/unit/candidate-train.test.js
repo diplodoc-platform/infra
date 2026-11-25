@@ -659,6 +659,15 @@ test('Morning exposes separate outcomes for ops without starting a build', () =>
         'prepare',
     );
 
+    const attempts = workflow.jobs.select.outputs.attempts.slice(3, -2).trim();
+    assert.equal(
+        runInNewContext(attempts.replace('steps.open-candidate', 'steps.open'), {
+            steps: {open: {outputs: {replacing: 'true'}}, plan: {outputs: {attempts: '3'}}},
+        }),
+        '1',
+        'Replacing a stale candidate must keep the same group',
+    );
+
     const steps = workflow.jobs.select.steps;
     const empty = steps.find((step) => step.name === 'No eligible dependency group');
     const blocked = steps.find(

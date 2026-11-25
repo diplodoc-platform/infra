@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       selected: ${{ steps.plan.outputs.selected }}
-      attempts: ${{ steps.plan.outputs.attempts }}
+      attempts: ${{ steps.open-candidate.outputs.replacing == 'true' && '1' || steps.plan.outputs.attempts }}
       plan-artifact: ${{ steps.plan-artifact.outputs.artifact-id }}
       preparation-available: ${{ steps.open-candidate.outputs.available }}
     steps:
