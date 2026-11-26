@@ -12,7 +12,12 @@ const {
 const {tmpdir} = require('node:os');
 const {dirname, join, resolve} = require('node:path');
 const yaml = require('js-yaml');
-const {previewLocalSync} = require('../scripts/preview-sync');
+const {
+    previewLocalSync,
+    previewWorkflowTree,
+    formatWorkflowTreeProposals,
+} = require('../scripts/preview-sync');
+const reviewedWorkflowTrees = require('../scripts/reviewed-workflow-trees.json');
 const {isExcluded} = require('../scripts/scaffolding-blacklist');
 
 const scriptPath = realpathSync(__filename);
@@ -303,6 +308,14 @@ function runSync() {
             });
         } catch (error) {
             console.error(`Failed to clone ${ghRepo}: ${error.message}`);
+            if (dryRun && Object.hasOwn(reviewedWorkflowTrees, repo)) {
+                reports.push({
+                    repoName: repo,
+                    hasChanges: true,
+                    body: 'Cannot verify the workflow tree because the repository could not be cloned.',
+                });
+                process.exitCode = 1;
+            }
             continue;
         }
 
@@ -310,6 +323,10 @@ function runSync() {
 
         if (dryRun) {
             applySyncToTarget(tmpDir, repo, blacklist, false);
+            execFileSync('git', ['add', '--intent-to-add', '--all'], {
+                cwd: tmpDir,
+                stdio: 'pipe',
+            });
             const report = generateDiffReport(tmpDir, repo, blacklist);
             reports.push(report);
             if (report.hasChanges) {
@@ -463,7 +480,7 @@ function generateDiffReport(targetDir, repoName, blacklist) {
     }
 
     try {
-        const diff = execSync('git diff --stat', {
+        const diff = execFileSync('git', ['diff', 'HEAD', '--stat'], {
             cwd: targetDir,
             encoding: 'utf8',
             stdio: 'pipe',
@@ -479,7 +496,8 @@ function generateDiffReport(targetDir, repoName, blacklist) {
         lines.push('Unable to generate diff.');
     }
 
-    return {repoName, hasChanges, body: lines.join('\n')};
+    const workflowTree = previewWorkflowTree(targetDir, repoName);
+    return {repoName, hasChanges, body: lines.join('\n'), workflowTree};
 }
 
 function formatDiffReports(reports) {
@@ -496,7 +514,7 @@ function formatDiffReports(reports) {
         groups.get(key).push(report.repoName);
     }
 
-    const lines = [];
+    const lines = formatWorkflowTreeProposals(reports);
 
     for (const [body, repos] of groups) {
         if (repos.length === 1) {

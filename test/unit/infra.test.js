@@ -4,6 +4,8 @@ const {execSync} = require('node:child_process');
 const {createTempDir, removeTempDir} = require('../helpers/temp-dir');
 const {writeFile, readFile, readJson, writeJson, fileExists} = require('../helpers/file-utils');
 const {mkdirSync} = require('node:fs');
+const {formatWorkflowTreeProposals} = require('../../scripts/preview-sync');
+const reviewedWorkflowTrees = require('../../scripts/reviewed-workflow-trees.json');
 
 const tests = [];
 
@@ -214,6 +216,71 @@ test('should apply scaffolding in dry-run and show diff', async () => {
     } finally {
         await removeTempDir(tempDir);
     }
+});
+
+test('distribution preview matches the workflow tree produced by sync on the enrolled repo', async () => {
+    const tempDir = await createTempDir();
+    try {
+        const workflowDir = join(tempDir, '.github/workflows');
+        mkdirSync(workflowDir, {recursive: true});
+        writeJson(tempDir, 'package.json', {name: 'test-pkg', version: '1.0.0'});
+        writeFile(workflowDir, 'coverage.yml', 'name: Original coverage\n');
+        writeFile(workflowDir, 'security.yml', 'name: Custom security workflow\n');
+        writeFile(tempDir, '.infrarc.yml', 'exclude:\n  - .github/workflows/security.yml\n');
+
+        const git = (args) =>
+            execSync(`git ${args}`, {cwd: tempDir, stdio: 'pipe', encoding: 'utf8'}).trim();
+        git('init');
+        git('add -A');
+        git('-c user.name=Test -c user.email=fixture@example.invalid commit -m baseline');
+        const before = git('rev-parse HEAD:.github/workflows');
+
+        const preview = runInfra('sync --target . --repo components --dry-run', tempDir);
+        assert.strictEqual(git('status --porcelain'), '');
+        assert(preview.includes('.github/workflows/tests.yml'));
+
+        runInfra('sync --target . --repo components', tempDir);
+        git('add -A');
+        const after = git(`rev-parse ${git('write-tree')}:.github/workflows`);
+        assert.notStrictEqual(before, after);
+        assert(fileExists(workflowDir, 'tests.yml'), 'a new workflow must be included');
+        assert.strictEqual(
+            readFile(workflowDir, 'security.yml'),
+            'name: Custom security workflow\n',
+        );
+        assert(
+            preview.includes(
+                `| components | \`${before}\` | \`${after}\` | Review the current tree separately |`,
+            ),
+        );
+    } finally {
+        await removeTempDir(tempDir);
+    }
+});
+
+test('workflow tree proposals retain registered trees and require a reviewed baseline', () => {
+    const [componentsBefore, transformBefore] = [
+        reviewedWorkflowTrees.components[0],
+        reviewedWorkflowTrees.transform[0],
+    ];
+    const newTree = 'a'.repeat(40);
+    const unknownTree = 'b'.repeat(40);
+    const preview = (repoName, before, after) => ({repoName, workflowTree: {before, after}});
+    const report = formatWorkflowTreeProposals([
+        preview('components', componentsBefore, newTree),
+        preview('transform', transformBefore, transformBefore),
+        preview('algolia-extension', unknownTree, 'c'.repeat(40)),
+    ]).join('\n');
+
+    assert.deepStrictEqual(JSON.parse(report.split('```json\n')[1].split('\n```')[0]), {
+        components: [...reviewedWorkflowTrees.components, newTree],
+    });
+    assert(!report.includes('| transform |'));
+    assert(report.includes('Review the current tree separately'));
+    assert.deepStrictEqual(
+        formatWorkflowTreeProposals([preview('components', componentsBefore, componentsBefore)]),
+        [],
+    );
 });
 
 // --- infra sync --target (non-dry-run) applies scaffolding ---
