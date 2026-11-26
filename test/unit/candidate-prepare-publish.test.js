@@ -167,6 +167,7 @@ test('Algolia requires the reviewed workflow tree for prepared source PRs', asyn
         });
 
     await check('ace8f091ee94ac000b0186107ee7e6ac7451af1a');
+    await check('eb83b2f64a32baa8dea0dadf665fd93342d7b41e');
     await assert.rejects(
         check('79cfc4a375d42866d6292329ddd4336268e19ca1'),
         /workflow tree differs/,
@@ -175,6 +176,28 @@ test('Algolia requires the reviewed workflow tree for prepared source PRs', asyn
         check('38eb0f75b7eaa8e903a15fad1210a630b40f68d0'),
         /workflow tree differs from the reviewed candidate CI/,
     );
+});
+
+test('accepts the current and distribution trees for Components and Transform', async () => {
+    const trees = {
+        components: [
+            '497eb367ebeaa37bc1c4f970b1e6eca06cfde150',
+            'fa23f5cd1525692f054eb917d9dd6775d3b15d71',
+        ],
+        transform: [
+            'c722ab7b6f3c908cac6913a41a0f9cc98c7f66cb',
+            '6fd6e36179e20c252ef7e60db388a7c234307ef7',
+        ],
+    };
+
+    for (const [repo, approvedTrees] of Object.entries(trees)) {
+        for (const tree of approvedTrees) {
+            await assertPreparedCI(repo, sha('d'), async () => ({
+                truncated: false,
+                tree: [{path: '.github/workflows', type: 'tree', sha: tree}],
+            }));
+        }
+    }
 });
 
 module.exports = {tests};
