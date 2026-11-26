@@ -497,9 +497,11 @@ infra GitHub App creates branches in the original repositories, and
 `diplodoc-bot` opens the source PRs. The writer validates the complete plan and
 checks the reviewed workflow directory of each repository before writing.
 Refresh also checks the new base workflow tree before rebasing a prepared PR.
-A change under `.github/workflows` requires reviewing and updating that
-repository's approved tree in infra. Regular dependency updates do not affect
-this check.
+A change under `.github/workflows` requires reviewing and registering that
+repository's new tree in infra. For a staged distribution, register the
+rendered workflow trees alongside the previously approved trees before merging
+distribution PRs. Remove the previous trees once rollout finishes. Changes
+outside this directory do not affect this check.
 
 Candidate CI runs tests and uploads their artifacts with read-only repository
 permissions. Privileged report publication skips candidate branches.
