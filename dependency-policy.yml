@@ -30,7 +30,7 @@
 
 schema-version: '1.0'
 registry-owner: diplodoc-platform/infra
-last-updated: 2026-11-09
+last-updated: 2026-11-26
 
 entries:
   - id: DEP-0003
@@ -76,8 +76,8 @@ entries:
       distribution: https://github.com/diplodoc-platform/infra/actions/runs/37463691539
     owner: diplodoc-platform/team
     introduced-at: 2026-10-06
-    review-after: 2026-12-01
-    expires-at: 2026-12-01
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
     exit-criteria:
       - Reassess the managed dev-tool pin contract after stabilization
       - Keep distribution review-only until hosted pilots pass
@@ -96,8 +96,8 @@ entries:
       upstream-patch: https://github.com/svg/svgo/pull/2224
     owner: diplodoc-platform/team
     introduced-at: 2026-06-21
-    review-after: 2026-12-01
-    expires-at: 2026-12-01
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
     exit-criteria:
       - Upstream releases configurable entity limits for the Node entry points
       - Counted-entity regressions pass in Transform and CLI HTML and Markdown builds
@@ -197,3 +197,132 @@ entries:
     exit-criteria:
       - A coordinated dependency update passes canonical lock and installed-version checks
       - Refresh or remove the pin after reviewing the replacement runtime baseline
+
+  - id: DEP-0008
+    dependency: 'markdown-it-directive'
+    repositories: [directive]
+    allowed-version: 2.0.6
+    ignored-versions: []
+    risk: high
+    category: patched-dependency
+    verification-profile: ecosystem
+    reason: 'The Directive adapter applies a source patch to this exact version.'
+    evidence:
+      patch: https://github.com/diplodoc-platform/directive/pull/70
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-26
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
+    exit-criteria:
+      - The verified upstream version includes the required parser fixes
+      - Directive installed-package and workspace patch checks pass without the local patch
+
+  - id: DEP-0009
+    dependency: 'markdown-it'
+    repositories: [transform]
+    allowed-version: 15.0.3
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The Transform build reads the 15.0.3 source map and compiles the native parser for Node and portable entry points.'
+    evidence:
+      build: https://github.com/diplodoc-platform/transform/pull/1126
+      legacy-lint: https://github.com/diplodoc-platform/transform/pull/1200
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-26
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
+    exit-criteria:
+      - Update the source-map build and verify the next parser version in the packed Node and portable entry points
+      - CLI and Viewer pass the reviewed rendering and diagnostics checks
+
+  - id: DEP-0010
+    dependency: 'markdown-it-deflist'
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The definition list adapter and native Markdown-it 15 token types were verified together for Transform 5.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1126
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-26
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
+    exit-criteria:
+      - Verify the replacement definition-list grammar and token types in installed consumers
+
+  - id: DEP-0011
+    dependency: 'markdown-it-footnote'
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Footnote collection and replay depend on the reviewed upstream token and rule shapes.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1144
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-26
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
+    exit-criteria:
+      - Verify token ownership, numbering and references on the replacement version in Node and portable builds
+
+  - id: DEP-0012
+    dependency: 'markdown-it-ins'
+    repositories: [transform]
+    allowed-version: 4.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The underline adapter reuses upstream parsing and delimiter processing with Transform token names.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1137
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-26
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
+    exit-criteria:
+      - Verify the replacement rule shapes, delimiter ownership and adjacent syntax before updating the pin
+
+  - id: DEP-0013
+    dependency: 'markdown-it-sub'
+    repositories: [transform]
+    allowed-version: 2.0.0
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'The subscript adapter relies on the reviewed delimiter and escaping behavior.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1137
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-26
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
+    exit-criteria:
+      - Verify the replacement subscript grammar with strikethrough, escaping and nested inline syntax
+
+  - id: DEP-0014
+    dependency: '@mdit/plugin-tasklist'
+    repositories: [transform]
+    allowed-version: 1.1.4
+    ignored-versions: []
+    risk: critical
+    category: parser-migration
+    verification-profile: ecosystem
+    reason: 'Transform wraps the upstream task-list rules and relies on their checkbox token behavior.'
+    evidence:
+      migration: https://github.com/diplodoc-platform/transform/pull/1144
+    owner: diplodoc-platform/team
+    introduced-at: 2026-11-26
+    review-after: 2027-01-15
+    expires-at: 2027-02-01
+    exit-criteria:
+      - Verify the replacement token and checkbox behavior on repeated, nested and mixed task lists
