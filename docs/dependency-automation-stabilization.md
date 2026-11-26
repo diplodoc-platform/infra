@@ -264,7 +264,7 @@ and generated scaffolding stay together. DEP-0003 records this centrally with
 `pin-policy: managed-infra`, rather than adding an exception for each release.
 Only `devDependencies`, explicitly listed distribution repositories, numeric
 stable versions and the infra publisher's `-rc-<branch>-<run-id>` versions match.
-The rule expires on 2026-12-01; unscoped, malformed or expired rules fail closed.
+The current rule expires on 2027-02-01. Unscoped, malformed or expired rules fail closed.
 Runtime/peer/optional infra pins and unrelated new pins still require their own
 entries. The risk remains high and human review remains required.
 
@@ -315,18 +315,26 @@ distribution, schedules, live merge, or CI-gate mutations.
    distribution PRs merge. Before starting a major release train, verify CI
    again on the new heads and confirm the package order against its release graph.
 
+### Transform 5 policy before distribution
+
+The policy registry carries the exact stable parser versions tested in Transform 5
+and the patched dependency used by Directive. Use normal version ranges for
+published Diplodoc packages. The temporary beta exceptions stay on their
+historical branches for consumers that still checkout those immutable revisions.
+
 ### Preserve trusted workflow pins
 
 These refs retain the commits used by the infra templates or the Notes
 exception during the 2.4.0 rollout. Keep them reachable while any consumer
 still uses the pin.
 
-| Workflow tooling                           | Pinned commit | Retaining branch in infra         |
-| ------------------------------------------ | ------------- | --------------------------------- |
-| Risk assessment and deep profile selection | `eb3a8c6`     | `codex/infra-audit-correctness`   |
-| Exact-pin policy enforcement               | `31bdd5e`     | `codex/register-runtime-baseline` |
-| Privileged risk-comment publisher          | `73f63f0`     | `codex/security-hardening`        |
-| Notes policy and risk assessment           | `b4304bb`     | `codex/register-notes-extension`  |
+| Workflow tooling                                                       | Pinned commit | Retaining branch in infra             |
+| ---------------------------------------------------------------------- | ------------- | ------------------------------------- |
+| Exact-pin enforcement and risk assessment after the 2.4.0 distribution | `2770bc7`     | `codex/transform5-stable-parser-pins` |
+| Risk assessment and deep profile selection                             | `eb3a8c6`     | `codex/infra-audit-correctness`       |
+| Exact-pin policy enforcement                                           | `31bdd5e`     | `codex/register-runtime-baseline`     |
+| Privileged risk-comment publisher                                      | `73f63f0`     | `codex/security-hardening`            |
+| Notes policy and risk assessment                                       | `b4304bb`     | `codex/register-notes-extension`      |
 
 Check current workflow refs before pruning branches. A durable tag can also
 retain a commit. Keep the workflow checkout pinned to the reviewed commit and
