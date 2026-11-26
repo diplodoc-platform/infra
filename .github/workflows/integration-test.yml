@@ -7,6 +7,9 @@ on:
       - '*-config.js'
       - 'bin/**'
       - 'scripts/**'
+      - 'distribution.yml'
+      - 'package.json'
+      - '.github/workflows/integration-test.yml'
 
 permissions:
   contents: read
