@@ -183,6 +183,18 @@ For example, rebuilding translation for a tabs update must not silently carry
 CLI baseline blocks preparation; this change does not repair source lockfiles
 or hide existing baseline vulnerabilities. Dependency review remains required.
 
+## Bot review pilot
+
+Set the infra Actions variable `DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES`
+to a comma-separated list of explicitly selected repositories. An empty value
+disables the writer. The Viewer dispatches approval after the trusted Internal
+Check completes successfully. The workflow verifies the latest check, frozen
+candidate and group, current baselines and required CI before reviewing exact
+source heads through the existing `diplodoc-bot` credential. It only accepts
+native Dependabot PRs in the pilot, never overrides a requested change, and
+does not submit the same approval again. Merge candidates remains a separate
+operation.
+
 ## Manual coordinated groups
 
 For an explicit group, dispatch `dependency-candidate-train.yml` with

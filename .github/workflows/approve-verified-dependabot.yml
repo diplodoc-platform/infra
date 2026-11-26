@@ -1,0 +1,79 @@
+name: Approve Verified Dependabot Sources
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_pr:
+        type: number
+        required: true
+      candidate_sha:
+        type: string
+        required: true
+      verifier_check_id:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: approve-verified-dependabot-${{ inputs.candidate_pr }}
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    if: >-
+      github.repository == 'diplodoc-platform/infra' &&
+      github.ref == 'refs/heads/master' &&
+      github.actor == 'diplodoc-app[bot]' &&
+      vars.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CANDIDATE_PR: ${{ inputs.candidate_pr }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      VERIFIER_CHECK_ID: ${{ inputs.verifier_check_id }}
+      DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES: ${{ vars.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES }}
+      DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
+      - run: npm ci --ignore-scripts
+      - uses: actions/create-github-app-token@v3
+        id: candidate-reader
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: cli
+          permission-contents: read
+          permission-checks: read
+          permission-pull-requests: read
+      - name: Verify candidate and determine the repository scope
+        id: scope
+        env:
+          GH_TOKEN: ${{ steps.candidate-reader.outputs.token }}
+        run: node scripts/candidate-train/approve.js inventory
+      - uses: actions/create-github-app-token@v3
+        id: reader
+        with:
+          app-id: ${{ secrets.INFRA_APP_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: diplodoc-platform
+          repositories: ${{ steps.scope.outputs.repositories }}
+          permission-contents: read
+          permission-checks: read
+          permission-pull-requests: read
+          permission-administration: read
+      - name: Approve exact verified Dependabot heads
+        env:
+          GH_TOKEN: ${{ steps.reader.outputs.token }}
+          TRAIN_APPROVER_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
+        run: node scripts/candidate-train/approve.js apply

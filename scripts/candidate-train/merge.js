@@ -76,6 +76,21 @@ async function baselineUnchanged(plan, request, registrationsBySha = new Map()) 
     }
 }
 
+async function verifyOpenSource(item, pr, request, token, evidence) {
+    const prefix = `/repos/${OWNER}/${item.repo}`;
+    assert.equal(pr.state, 'open');
+    assert.equal(pr.draft, false);
+    assert.equal(pr.base.sha, item.baseSha, `${item.repo}: source base changed`);
+    assert.equal((await request(`${prefix}/branches/master`)).commit.sha, item.baseSha);
+    const checks = await evidence.fetchCheckRuns(token, OWNER, item.repo, item.sha);
+    const required = await evidence.fetchRequiredChecks(token, OWNER, item.repo, 'master');
+    assert.ok(
+        deriveChecksGreen(checks, required, item.sha, {allowUnboundPublisher: true}),
+        `${item.repo}: required exact-head CI is not green`,
+    );
+    await requireDeepProfile(item, checks, request);
+}
+
 async function sourceReady(item, request, token, evidence, operator) {
     assert.ok(!['cli', 'vsc', 'infra'].includes(item.repo), 'Unsupported merge target');
     if (operator) await requireOperatorWrite(item.repo, operator, request);
@@ -103,17 +118,7 @@ async function sourceReady(item, request, token, evidence, operator) {
             commit: pr.merge_commit_sha,
         };
     }
-    assert.equal(pr.state, 'open');
-    assert.equal(pr.draft, false);
-    assert.equal(pr.base.sha, item.baseSha, `${item.repo}: source base changed`);
-    assert.equal((await request(`${prefix}/branches/master`)).commit.sha, item.baseSha);
-    const checks = await evidence.fetchCheckRuns(token, OWNER, item.repo, item.sha);
-    const required = await evidence.fetchRequiredChecks(token, OWNER, item.repo, 'master');
-    assert.ok(
-        deriveChecksGreen(checks, required, item.sha, {allowUnboundPublisher: true}),
-        `${item.repo}: required exact-head CI is not green`,
-    );
-    await requireDeepProfile(item, checks, request);
+    await verifyOpenSource(item, pr, request, token, evidence);
     const review = await request('/graphql', {
         method: 'POST',
         body: {
@@ -328,4 +333,11 @@ if (require.main === module && process.argv[2] === 'inventory') {
         });
 }
 
-module.exports = {candidateFile, readVerifiedCandidate, baselineUnchanged, sourceReady, mergeTrain};
+module.exports = {
+    candidateFile,
+    readVerifiedCandidate,
+    baselineUnchanged,
+    verifyOpenSource,
+    sourceReady,
+    mergeTrain,
+};
