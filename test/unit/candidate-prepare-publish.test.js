@@ -166,7 +166,11 @@ test('Algolia requires the reviewed workflow tree for prepared source PRs', asyn
             };
         });
 
-    await check('79cfc4a375d42866d6292329ddd4336268e19ca1');
+    await check('ace8f091ee94ac000b0186107ee7e6ac7451af1a');
+    await assert.rejects(
+        check('79cfc4a375d42866d6292329ddd4336268e19ca1'),
+        /workflow tree differs/,
+    );
     await assert.rejects(
         check('38eb0f75b7eaa8e903a15fad1210a630b40f68d0'),
         /workflow tree differs from the reviewed candidate CI/,

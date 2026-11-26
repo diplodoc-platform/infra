@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const {isDeepStrictEqual} = require('node:util');
+const {OWNER} = require('./common');
 const {PACKAGE} = require('./cohort');
 const {lookup, sourceOwnedContexts} = require('./peer-policy');
 const {satisfiesStable} = require('./peer-range');
@@ -10,6 +11,9 @@ const MAX_EXTRA_DEPENDENCIES = 5;
 const RUNTIME = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const BRANCH = /^codex\/dependency-group-reconcile-([1-9]\d*)-([a-f0-9]{40})$/;
+const APP_RECONCILE_REPO = 'algolia-extension';
+const APP_RECONCILE_AUTHOR = 'diplodoc-app[bot]';
+const APP_RECONCILE_AUTHOR_ID = 238451397;
 
 function reconciliationBranch(number, sha) {
     const branch = `codex/dependency-group-reconcile-${number}-${sha}`;
@@ -19,7 +23,14 @@ function reconciliationBranch(number, sha) {
 
 function reconciliationSeed(pr) {
     const match = BRANCH.exec(pr.head?.ref || '');
-    if (!match || pr.user?.login !== 'diplodoc-bot') return null;
+    const appRepository = `${OWNER}/${APP_RECONCILE_REPO}`;
+    const appAuthored =
+        pr.user?.login === APP_RECONCILE_AUTHOR &&
+        pr.user?.id === APP_RECONCILE_AUTHOR_ID &&
+        pr.base?.repo?.full_name === appRepository &&
+        pr.head?.repo?.full_name === appRepository &&
+        pr.base.ref === 'master';
+    if (!match || (pr.user?.login !== 'diplodoc-bot' && !appAuthored)) return null;
     const number = Number(match[1]);
     if (!Number.isSafeInteger(number) || pr.number === number) return null;
     return {number, sha: match[2]};
@@ -174,6 +185,8 @@ function reconcileLock(before, source, cli, cliManifest, primary) {
 
 module.exports = {
     MAX_EXTRA_DEPENDENCIES,
+    APP_RECONCILE_REPO,
+    APP_RECONCILE_AUTHOR,
     reconciliationSeed,
     reconciliationBranch,
     reconcileLock,
