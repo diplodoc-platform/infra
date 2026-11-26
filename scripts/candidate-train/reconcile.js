@@ -14,6 +14,7 @@ const {
     buildOrder,
     validatePlan,
 } = require('./common');
+const {approvalRepositories} = require('./approval-scope');
 const {planTrain, assess} = require('./plan');
 const {readPolicy} = require('./prepare-lock');
 const {assertPreparedCI} = require('./prepare-ci');
@@ -256,10 +257,10 @@ async function publishReconciliation(report, env, request = github) {
     assert.ok(pending.length && !canonical.blockers.length);
     assert.equal(env.DEPENDENCY_TRAIN_RECONCILE_REPOS, pending.map(({repo}) => repo).join(','));
 
-    const appAuthorEnabled = (env.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES || '')
-        .split(',')
-        .map((repo) => repo.trim())
-        .includes(APP_RECONCILE_REPO);
+    const appAuthorEnabled = approvalRepositories(
+        env.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES,
+        plan.graph,
+    ).has(APP_RECONCILE_REPO);
     let bot;
     if (!appAuthorEnabled || pending.some(({repo}) => repo !== APP_RECONCILE_REPO)) {
         bot = await botRequest('/user');

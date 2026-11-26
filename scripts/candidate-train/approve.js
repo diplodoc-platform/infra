@@ -2,7 +2,8 @@
 
 const assert = require('node:assert/strict');
 const {appendFileSync} = require('node:fs');
-const {OWNER, SHA, REPO, github, pages, fileAt} = require('./common');
+const {OWNER, SHA, github, pages, fileAt} = require('./common');
+const {approvalRepositories} = require('./approval-scope');
 const {baselineUnchanged, readVerifiedCandidate, verifyOpenSource} = require('./merge');
 const {APP_RECONCILE_AUTHOR, reconciliationSeed} = require('./reconcile-lock');
 const {readReconciledInput} = require('./reconcile-source');
@@ -31,17 +32,11 @@ async function verifiedApproval(env, request, evidence) {
     assert.equal(verified.candidate.sha, env.CANDIDATE_SHA);
     assert.equal(verified.checkId, checkId, 'Internal Check was superseded');
 
-    const allowed = (env.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES || '')
-        .split(',')
-        .map((repo) => repo.trim());
+    const scope = env.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES;
+    assert.ok(scope?.trim(), 'Configure a pilot repository list or all');
+    const allowed = approvalRepositories(scope, verified.plan.graph);
     assert.ok(
-        allowed.every((repo) => REPO.test(repo)),
-        'Configure an explicit pilot repository list',
-    );
-    assert.ok(
-        verified.plan.selected.every(
-            ({repo}) => allowed.includes(repo) && !['cli', 'vsc', 'infra'].includes(repo),
-        ),
+        verified.plan.selected.every(({repo}) => allowed.has(repo)),
         'The verified group is outside the bot approval pilot',
     );
     assert.ok(
