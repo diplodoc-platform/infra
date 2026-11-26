@@ -498,10 +498,13 @@ infra GitHub App creates branches in the original repositories, and
 checks the reviewed workflow directory of each repository before writing.
 Refresh also checks the new base workflow tree before rebasing a prepared PR.
 A change under `.github/workflows` requires reviewing and registering that
-repository's new tree in infra. For a staged distribution, register the
-rendered workflow trees alongside the previously approved trees before merging
-distribution PRs. Remove the previous trees once rollout finishes. Changes
-outside this directory do not affect this check.
+repository's new tree in `scripts/reviewed-workflow-trees.json`. The Integration
+Test diff report previews the exact workflow trees produced by distribution for
+already enrolled repositories and proposes additions based on reviewed current
+trees. An unregistered current tree requires its own review. Review the
+workflow changes, then add the proposed trees alongside the previously approved
+ones before merging distribution PRs. Remove the previous trees once rollout
+finishes. Changes outside this directory do not affect this check.
 
 Candidate CI runs tests and uploads their artifacts with read-only repository
 permissions. Privileged report publication skips candidate branches.
