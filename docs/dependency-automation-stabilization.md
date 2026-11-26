@@ -5,7 +5,29 @@ while testpack and dependency distribution are being stabilized. Do not treat
 them as dead code or remove the guards without completing the activation gates
 below.
 
-## Current stabilization state
+## Where to start
+
+| Area                                                 | Source of truth                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Dependabot config, risk and exact pins               | [Generated config template](../scaffolding/.github/dependabot.yml), [dependency policy](../dependency-policy.yml) and [SVGO patch notes](svgo-exception-tagging.md). Keep pin review dates, expiry, evidence and exit criteria together.                                                                                                                                                                                                                                                                     |
+| Deep verification and test maintenance               | [Testpack verification](https://github.com/diplodoc-platform/testpack/blob/master/VERIFICATION.md), [fixture maintenance contract](https://github.com/diplodoc-platform/testpack/blob/master/AGENTS.md#testpack-maintenance-contract) and [reproducer fixtures](https://github.com/diplodoc-platform/testpack/blob/master/REPRODUCER_FIXTURES.md). Testpack owns cross-package behavior through the CLI. Keep package-local coverage upstream and use minimal Testpack fixtures for integration regressions. |
+| Refresh, Morning, exact CLI evidence and group merge | [Candidate train runbook](dependency-candidate-train.md) and the [workflow definitions](../.github/workflows/). GitHub consumes the exact-train verdict. Deployment, document CI and private notifications belong to the internal operations runbook.                                                                                                                                                                                                                                                        |
+| Published versions, drift and major releases         | [Metapackage Release Train](https://github.com/diplodoc-platform/diplodoc/blob/master/scripts/release-train/README.ru.md). This process coordinates published packages. Candidate Train instead verifies an unpublished dependency group in an exact CLI build.                                                                                                                                                                                                                                              |
+| Infra release and required checks                    | [Distribution checklist](#stable-infra-distribution-checklist), [distribution config](../distribution.yml) and [CI rulesets](../adr/ADR-002-dynamic-ci-gate.md).                                                                                                                                                                                                                                                                                                                                             |
+
+For a Testpack golden difference, inspect the semantic diff and exact candidate
+evidence. Follow the current reviewed digest procedure in Testpack for expected
+changes. Check that the review still covers the PR head and comparison digest
+after any rebase. A passing retry does not erase a failed first attempt when
+investigating a flaky fixture.
+
+## Defaults and activation state
+
+The table describes repository defaults. Check live organization and infra
+repository Actions variables and the workflow's exact ref before diagnosing a
+missed run or describing an activation as live. An unset or inaccessible
+organization variable falls back to the workflow default. An explicit infra
+repository override of `false` takes precedence over the organization value.
 
 | Mechanism                   | Current behavior                            | Deliberately disabled                              |
 | --------------------------- | ------------------------------------------- | -------------------------------------------------- |
@@ -265,6 +287,50 @@ summary can report a low-risk anchor generator or omit sanitizer browser coverag
 while the deep caller uses the corrected rules. The privileged comment publisher
 retains its separately reviewed source revision. These safeguards do not activate
 distribution, schedules, live merge, or CI-gate mutations.
+
+## Stable infra distribution checklist
+
+1. Inspect the current release PR against `infra/master`. Run the Integration
+   Test preview across `distribution.yml` and review consumer overrides and
+   stateful files. For example, Notes owns its release manifest and keeps a
+   local policy with two matching workflow pins through `.infrarc.yml`
+   ([Notes #13](https://github.com/diplodoc-platform/notes-extension/pull/13)).
+   A package prerelease version can differ from the last stable release manifest.
+2. For any enrolled repository whose workflow tree changes, follow the
+   [workflow tree rollout](dependency-candidate-train.md#prepare-missing-source-prs).
+   Keep the previous and new reviewed trees during the rollout. Check that
+   trusted tooling commits referenced by distributed workflows stay reachable
+   and that managed-infra exceptions are valid for the planned release date.
+3. Merge the reviewed Release Please PR to publish the stable release. The
+   published GitHub release starts [Distribute Infrastructure](../.github/workflows/distribute-infra.yml).
+   It waits for the exact version in npm and opens the consumer PRs. Use a manual
+   dispatch with the exact published version and target for recovery or an
+   explicitly scoped rollout. Keep distribution auto-merge off by default.
+4. Review the actual consumer diffs and lockfiles and check CI on each PR head.
+   If a required check stays `Expected`, compare the effective ruleset and check
+   contexts with the workflow triggers. Required jobs need a result even on a
+   PR with no matching dependency paths. Notes runs its required risk assessment
+   on every PR, with its reviewed policy unchanged.
+5. Refresh existing dependency or release-train PRs after the relevant
+   distribution PRs merge. Before starting a major release train, verify CI
+   again on the new heads and confirm the package order against its release graph.
+
+### Preserve trusted workflow pins
+
+These refs retain the commits used by the infra templates or the Notes
+exception during the 2.4.0 rollout. Keep them reachable while any consumer
+still uses the pin.
+
+| Workflow tooling                           | Pinned commit | Retaining branch in infra         |
+| ------------------------------------------ | ------------- | --------------------------------- |
+| Risk assessment and deep profile selection | `eb3a8c6`     | `codex/infra-audit-correctness`   |
+| Exact-pin policy enforcement               | `31bdd5e`     | `codex/register-runtime-baseline` |
+| Privileged risk-comment publisher          | `73f63f0`     | `codex/security-hardening`        |
+| Notes policy and risk assessment           | `b4304bb`     | `codex/register-notes-extension`  |
+
+Check current workflow refs before pruning branches. A durable tag can also
+retain a commit. Keep the workflow checkout pinned to the reviewed commit and
+verify previously distributed consumer workflows before retiring its last ref.
 
 ## Release-audit corrections (2026-10-23)
 

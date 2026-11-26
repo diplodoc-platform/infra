@@ -1,4 +1,9 @@
-# @diplodoc/infra Release Preparation
+# @diplodoc/infra 2.3.0 release preparation (historical)
+
+> This records the original 2.3.0 rollout proposal. For a new release, use the
+> [current distribution checklist](dependency-automation-stabilization.md#stable-infra-distribution-checklist).
+> The workflow permissions, repository inventory and exact dependency pins below
+> describe an earlier design.
 
 > **Story:** T1.3 — Sync Infra Workflows
 > **Current version:** 2.2.3

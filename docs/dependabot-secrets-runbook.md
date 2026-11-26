@@ -1,4 +1,9 @@
-# Runbook — Share CI Secrets to Dependabot
+# Historical runbook — Share CI Secrets to Dependabot
+
+> Retained for rollout history. This procedure is superseded by the read-only
+> lock validation and unprivileged coverage paths described in the
+> [current maintenance guide](dependency-automation-stabilization.md#where-to-start).
+> Do not run the credential-provisioning steps below.
 
 > **Story:** T1.1 — Share CI Secrets to Dependabot
 > **Epic:** E1 — Dependabot Automation

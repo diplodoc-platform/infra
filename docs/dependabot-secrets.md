@@ -1,4 +1,9 @@
-# Dependabot workflow secrets
+# Dependabot workflow secrets (historical)
+
+> This describes the original 2.2.x rollout proposal. The current Dependabot
+> and prepared-candidate paths use read-only lock validation and skip privileged
+> coverage publishing. Use the [current maintenance guide](dependency-automation-stabilization.md#where-to-start).
+> Do not use the commands below to provision Dependabot credentials.
 
 GitHub Actions runs initiated by Dependabot cannot access Actions secrets. GitHub
 populates the `secrets` context from the separate Dependabot secret store instead.
