@@ -20,6 +20,8 @@ const {assertPreparedCI} = require('./prepare-ci');
 const {BOT} = require('./prepare-policy');
 const {
     MAX_EXTRA_DEPENDENCIES,
+    APP_RECONCILE_REPO,
+    APP_RECONCILE_AUTHOR,
     reconciliationSeed,
     reconciliationBranch,
     reconcileLock,
@@ -254,28 +256,37 @@ async function publishReconciliation(report, env, request = github) {
     assert.ok(pending.length && !canonical.blockers.length);
     assert.equal(env.DEPENDENCY_TRAIN_RECONCILE_REPOS, pending.map(({repo}) => repo).join(','));
 
-    const bot = await botRequest('/user');
-    assert.equal(bot.login, BOT);
-    assert.ok(Number.isSafeInteger(bot.id) && bot.id > 0);
+    const appAuthorEnabled = (env.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES || '')
+        .split(',')
+        .map((repo) => repo.trim())
+        .includes(APP_RECONCILE_REPO);
+    let bot;
+    if (!appAuthorEnabled || pending.some(({repo}) => repo !== APP_RECONCILE_REPO)) {
+        bot = await botRequest('/user');
+        assert.equal(bot.login, BOT);
+        assert.ok(Number.isSafeInteger(bot.id) && bot.id > 0);
+    }
 
     const opened = [];
     for (const item of pending) {
+        const appAuthored = appAuthorEnabled && item.repo === APP_RECONCILE_REPO;
         opened.push(
             await openReconciliation(
                 item,
                 plan.cohort.dependency,
-                bot,
+                appAuthored ? undefined : bot,
                 reader,
                 appRequest,
-                botRequest,
+                appAuthored ? appRequest : botRequest,
             ),
         );
     }
     return opened;
 }
 
-async function openReconciliation(item, dependency, bot, request, appRequest, botRequest) {
+async function openReconciliation(item, dependency, bot, request, appRequest, opener) {
     const prefix = `/repos/${OWNER}/${item.repo}`;
+    const author = bot ? BOT : APP_RECONCILE_AUTHOR;
     const branch = reconciliationBranch(item.number, item.sha);
     const title = `chore(deps): reconcile ${dependency.name}@${dependency.version} with the CLI lock`;
     const contents = [
@@ -300,7 +311,9 @@ async function openReconciliation(item, dependency, bot, request, appRequest, bo
             message: title,
             tree: tree.sha,
             parents: [item.baseSha],
-            author: {name: BOT, email: `${bot.id}+${BOT}@users.noreply.github.com`},
+            ...(bot
+                ? {author: {name: BOT, email: `${bot.id}+${BOT}@users.noreply.github.com`}}
+                : {}),
         },
     });
     const seed = await request(`${prefix}/pulls/${item.number}`);
@@ -332,7 +345,7 @@ async function openReconciliation(item, dependency, bot, request, appRequest, bo
         );
     }
     const changes = item.changes.map(({key, from, to}) => `- \`${key}\` \`${from}\` → \`${to}\``);
-    const pr = await botRequest(`${prefix}/pulls`, {
+    const pr = await opener(`${prefix}/pulls`, {
         method: 'POST',
         body: {
             head: branch,
@@ -346,6 +359,7 @@ async function openReconciliation(item, dependency, bot, request, appRequest, bo
             ].join('\n'),
         },
     });
+    assert.equal(pr.user?.login, author);
     assert.equal(pr.head.sha, head);
     assert.equal(pr.base.sha, item.baseSha);
     assert.deepEqual(reconciliationSeed(pr), {number: item.number, sha: item.sha});
@@ -398,4 +412,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = {planReconciliation, publishReconciliation};
+module.exports = {openReconciliation, planReconciliation, publishReconciliation};

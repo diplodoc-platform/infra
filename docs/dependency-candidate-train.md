@@ -190,8 +190,8 @@ to a comma-separated list of explicitly selected repositories. An empty value
 disables the writer. The Viewer dispatches approval after the trusted Internal
 Check completes successfully. The workflow verifies the latest check, frozen
 candidate and group, current baselines and required CI before reviewing exact
-source heads through the existing `diplodoc-bot` credential. It only accepts
-native Dependabot PRs in the pilot, never overrides a requested change, and
+source heads through the existing `diplodoc-bot` credential. It accepts native
+Dependabot PRs and revalidated App-authored Algolia reconciliation PRs, never overrides a requested change, and
 does not submit the same approval again. Merge candidates remains a separate
 operation.
 
@@ -464,6 +464,10 @@ validated lock entries under `codex/dependency-group-reconcile-*`, using the exi
 and fresh GitHub evidence. It will not duplicate an open competing dependency
 update. A reconciled source replaces its Dependabot seed in Morning's
 inventory after exact-head CI succeeds and canonical revalidation passes.
+For Algolia listed in `DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES`, Refresh
+uses the existing `diplodoc-app[bot]` installation to open the PR. This lets
+`diplodoc-bot` approve the verified head as a separate reviewer. Existing
+reconciliation PRs from `diplodoc-bot` can still be verified and reviewed manually.
 The original PR is left open. Morning still builds the combined changes and
 requires the normal exact-install proof and Internal Check. Merge remains a
 separate, explicit action. A group requiring changes to an unselected

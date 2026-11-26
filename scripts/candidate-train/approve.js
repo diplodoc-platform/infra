@@ -2,8 +2,10 @@
 
 const assert = require('node:assert/strict');
 const {appendFileSync} = require('node:fs');
-const {OWNER, SHA, REPO, github, pages} = require('./common');
+const {OWNER, SHA, REPO, github, pages, fileAt} = require('./common');
 const {baselineUnchanged, readVerifiedCandidate, verifyOpenSource} = require('./merge');
+const {APP_RECONCILE_AUTHOR, reconciliationSeed} = require('./reconcile-lock');
+const {readReconciledInput} = require('./reconcile-source');
 const {fetchCheckRuns, fetchRequiredChecks} = require('../auto-merge');
 const {groupRisk, riskWeight} = require('./risk');
 
@@ -51,15 +53,38 @@ async function verifiedApproval(env, request, evidence) {
     return verified.plan;
 }
 
-async function reviewTarget(item, request, token, evidence) {
+async function verifyReconciliation(pr, item, plan, request) {
+    const readSource = (repo, sha, file) => fileAt(repo, sha, file, request);
+    const [before, after, oldLock, revisedLock, cliLock] = await Promise.all([
+        readSource(item.repo, item.baseSha, 'package.json').then(JSON.parse),
+        readSource(item.repo, item.sha, 'package.json').then(JSON.parse),
+        readSource(item.repo, item.baseSha, 'package-lock.json').then(JSON.parse),
+        readSource(item.repo, item.sha, 'package-lock.json').then(JSON.parse),
+        readSource('cli', plan.cli.sha, 'package-lock.json').then(JSON.parse),
+    ]);
+    const {input} = await readReconciledInput(
+        pr,
+        before,
+        after,
+        oldLock,
+        revisedLock,
+        plan.cli,
+        cliLock,
+        readSource,
+        request,
+    );
+    assert.deepEqual(input, plan.cohort.dependency, 'Reconciliation target changed');
+}
+
+async function reviewTarget(item, plan, request, token, evidence) {
     const route = `/repos/${OWNER}/${item.repo}/pulls/${item.number}`;
     const pr = await request(route);
-    assert.equal(
-        pr.user?.login,
-        'dependabot[bot]',
-        'The pilot only approves native Dependabot PRs',
+    const reconcile = pr.user?.login === APP_RECONCILE_AUTHOR && reconciliationSeed(pr);
+    assert.ok(
+        reconcile ||
+            (pr.user?.login === 'dependabot[bot]' && pr.head.ref.startsWith('dependabot/')),
+        'The pilot only approves native Dependabot PRs or trusted App reconciliation PRs',
     );
-    assert.ok(pr.head.ref.startsWith('dependabot/'));
     assert.equal(pr.head.repo?.full_name, `${OWNER}/${item.repo}`);
     assert.equal(pr.base.repo?.full_name, `${OWNER}/${item.repo}`);
     assert.equal(pr.base.ref, 'master');
@@ -76,6 +101,8 @@ async function reviewTarget(item, request, token, evidence) {
             ),
         'Only dependency manifests and lockfiles may be approved',
     );
+
+    if (reconcile) await verifyReconciliation(pr, item, plan, request);
 
     const result = await request('/graphql', {
         method: 'POST',
@@ -126,12 +153,19 @@ async function approveVerified(
     assert.equal((await botRequest('/user')).login, BOT);
     await baselineUnchanged(plan, request);
     // Check every source before writing the first review.
-    for (const item of plan.selected) await reviewTarget(item, request, env.GH_TOKEN, evidence);
+    for (const item of plan.selected)
+        await reviewTarget(item, plan, request, env.GH_TOKEN, evidence);
     const results = [];
     for (const item of plan.selected) {
         await verifiedApproval(env, request, evidence);
         await baselineUnchanged(plan, request);
-        const {route, alreadyApproved} = await reviewTarget(item, request, env.GH_TOKEN, evidence);
+        const {route, alreadyApproved} = await reviewTarget(
+            item,
+            plan,
+            request,
+            env.GH_TOKEN,
+            evidence,
+        );
         if (!alreadyApproved) {
             const review = await botRequest(`${route}/reviews`, {
                 method: 'POST',

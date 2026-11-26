@@ -217,6 +217,7 @@ jobs:
           owner: diplodoc-platform
           repositories: ${{ needs.reconcile.outputs.repositories }}
           permission-contents: write
+          permission-pull-requests: write
       - name: Revalidate the exact group and open source PRs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -227,5 +228,6 @@ jobs:
           DEPENDENCY_TRAIN_COHORT_PRS: ${{ inputs.reconcile_prs || '' }}
           DEPENDENCY_TRAIN_RECONCILE_TARGET: ${{ inputs.target || '' }}
           DEPENDENCY_TRAIN_RECONCILE_REPOS: ${{ needs.reconcile.outputs.repositories }}
+          DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES: ${{ vars.DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES }}
           DEPENDENCY_TRAIN_RECONCILE_APPROVED: 'true'
         run: node scripts/candidate-train/reconcile.js apply
