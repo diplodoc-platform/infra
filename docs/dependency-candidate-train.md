@@ -186,16 +186,19 @@ or hide existing baseline vulnerabilities. Dependency review remains required.
 ## Bot review pilot
 
 Set the infra Actions variable `DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES`
-to a comma-separated list of explicitly selected repositories. An empty value
-disables the writer. The Viewer dispatches approval after the trusted Internal
+to a comma-separated list of repository names or to `all`. The `all` value
+covers registered repositories supported by the verified CLI build graph.
+Both modes exclude `cli`, `vsc` and `infra`. An empty value disables the
+writer. The Viewer dispatches approval after the trusted Internal
 Check completes successfully. The workflow verifies the latest check, frozen
 candidate and group, current baselines and required CI before reviewing exact
 source heads through the existing `diplodoc-bot` credential. Every source
-repository in the group must be explicitly listed. Native Dependabot sources
-can use this review path in listed repositories. Reconciliation PRs are eligible
-only in the Algolia pilot, where the App opens the PR and the bot can review it
-independently. The workflow respects requested changes and avoids duplicate
-approvals. Merge candidates remains a separate, human-authorized operation.
+repository in the group must be covered by the configured scope. Native
+Dependabot sources can use this review path in those repositories.
+Reconciliation PRs are eligible only in the Algolia pilot, where the App
+opens the PR and the bot can review it independently. The workflow respects
+requested changes and avoids duplicate approvals. Merge candidates remains a
+separate, human-authorized operation.
 
 ## Manual coordinated groups
 
@@ -474,7 +477,7 @@ validated lock entries under `codex/dependency-group-reconcile-*`, using the exi
 and fresh GitHub evidence. It will not duplicate an open competing dependency
 update. A reconciled source replaces its Dependabot seed in Morning's
 inventory after exact-head CI succeeds and canonical revalidation passes.
-For Algolia listed in `DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES`, Refresh
+When `DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES` covers Algolia, Refresh
 uses the existing `diplodoc-app[bot]` installation to open the PR. This lets
 `diplodoc-bot` approve the verified head as a separate reviewer. Existing
 reconciliation PRs from `diplodoc-bot` can still be verified and reviewed manually.

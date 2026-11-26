@@ -1,11 +1,12 @@
 const assert = require('node:assert/strict');
 const {approveVerified} = require('../../scripts/candidate-train/approve');
+const {approvalRepositories} = require('../../scripts/candidate-train/approval-scope');
 const {fixture} = require('./candidate-merge.test');
 
 const tests = [];
 const test = (name, fn) => tests.push({name, fn});
 
-function approvalFixture() {
+function approvalFixture(repositories = 'alpha,beta') {
     const f = fixture();
     const reviews = new Map();
     const writes = [];
@@ -22,7 +23,7 @@ function approvalFixture() {
         GITHUB_ACTOR: 'diplodoc-app[bot]',
         CANDIDATE_SHA: f.candidate.sha,
         VERIFIER_CHECK_ID: '10',
-        DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES: 'alpha,beta',
+        DEPENDENCY_TRAIN_BOT_APPROVAL_REPOSITORIES: repositories,
     };
     const request = (route, options) => {
         const repo = route.split('/')[3];
@@ -63,7 +64,34 @@ test('approved train reviews exact Dependabot heads only once', async () => {
     assert.ok(writes.every((route) => route.endsWith('/reviews')));
 });
 
-for (const [name, mutate, error] of [
+test('all approves a verified group of supported repositories', async () => {
+    const {run, writes} = approvalFixture('all');
+
+    assert.deepEqual(
+        (await run()).map(({repo}) => repo),
+        ['alpha', 'beta'],
+    );
+    assert.equal(writes.length, 2);
+});
+
+test('all uses the build graph and preserves approval exclusions', () => {
+    const {plan} = fixture();
+    for (const repo of ['algolia-extension', 'vsc', 'infra', 'unrelated']) {
+        const name = `@diplodoc/${repo}`;
+        plan.graph.push({repo, manifest: {name, version: '1.0.0'}});
+        if (repo !== 'unrelated') plan.cli.manifest.dependencies[name] = '*';
+    }
+
+    assert.deepEqual(
+        [...approvalRepositories(' all ', plan.graph)],
+        ['algolia-extension', 'alpha', 'beta'],
+    );
+    assert.deepEqual([...approvalRepositories('cli,vsc,infra,alpha', plan.graph)], ['alpha']);
+    assert.equal(approvalRepositories('', plan.graph).size, 0);
+    assert.throws(() => approvalRepositories('alpha,all', plan.graph), /cannot be combined/);
+});
+
+for (const [name, mutate, error, repositories] of [
     [
         'new head',
         ({f}) => {
@@ -84,6 +112,7 @@ for (const [name, mutate, error] of [
             f.badCi = 'beta';
         },
         /exact-head CI/,
+        'all',
     ],
     [
         'new Internal Check',
@@ -136,7 +165,7 @@ for (const [name, mutate, error] of [
     ],
 ]) {
     test(`approval writes nothing after ${name}`, async () => {
-        const context = approvalFixture();
+        const context = approvalFixture(repositories);
         mutate(context);
         await assert.rejects(context.run(), error);
         assert.deepEqual(context.writes, []);
