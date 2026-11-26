@@ -152,8 +152,21 @@ test('resolveRegistryPath: returns explicit override verbatim', () => {
 
 const SCRIPT = join(__dirname, '../../scripts/generate-dependency-policy.js');
 const REAL_REGISTRY = join(__dirname, '../../dependency-policy.yml');
+const TRANSFORM_POLICY_IDS = [
+    'DEP-0001',
+    'DEP-0003',
+    'DEP-0004',
+    'DEP-0005',
+    'DEP-0006',
+    'DEP-0009',
+    'DEP-0010',
+    'DEP-0011',
+    'DEP-0012',
+    'DEP-0013',
+    'DEP-0014',
+];
 
-test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001', async () => {
+test('CLI: generates the scoped dependency policy for Transform', async () => {
     const tempDir = await createTempDir();
     try {
         writeJson(tempDir, 'package.json', {name: '@diplodoc/transform', version: '1.0.0'});
@@ -165,13 +178,10 @@ test('CLI: generates .github/dependency-policy.yml for transform with DEP-0001',
         const content = readFile(tempDir, '.github/dependency-policy.yml');
         const parsed = yaml.load(content);
         assert.strictEqual(parsed['generated-for'], 'transform');
-        assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
-            'DEP-0001',
-            'DEP-0003',
-            'DEP-0004',
-            'DEP-0005',
-            'DEP-0006',
-        ]);
+        assert.deepStrictEqual(
+            parsed.entries.map((entry) => entry.id).sort(),
+            TRANSFORM_POLICY_IDS,
+        );
     } finally {
         await removeTempDir(tempDir);
     }
@@ -205,13 +215,10 @@ test('CLI: INFRA_REPO_NAME env var overrides package.json derivation', async () 
         const content = readFile(tempDir, '.github/dependency-policy.yml');
         const parsed = yaml.load(content);
         assert.strictEqual(parsed['generated-for'], 'transform');
-        assert.deepStrictEqual(parsed.entries.map((entry) => entry.id).sort(), [
-            'DEP-0001',
-            'DEP-0003',
-            'DEP-0004',
-            'DEP-0005',
-            'DEP-0006',
-        ]);
+        assert.deepStrictEqual(
+            parsed.entries.map((entry) => entry.id).sort(),
+            TRANSFORM_POLICY_IDS,
+        );
     } finally {
         await removeTempDir(tempDir);
     }
