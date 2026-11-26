@@ -1,8 +1,13 @@
 # AGENTS.md
 
-Dependency automation security contract: see
-`docs/dependency-automation-stabilization.md`. Keep policy tooling pinned and
-separate from PR dependencies, reject incomplete manifest/check evidence,
+For dependency automation, start with the
+[maintenance guide](docs/dependency-automation-stabilization.md#where-to-start)
+and the [candidate train runbook](docs/dependency-candidate-train.md).
+Read the linked Testpack contract before changing fixtures, expected artifacts
+or golden approval.
+
+Keep policy tooling pinned and separate from PR dependencies. Reject incomplete
+manifest/check evidence,
 preserve user files in previews, and keep all activation switches disabled unless
 the owner separately approves them. Broad App installation-token permissions
 were explicitly accepted on 2026-09-30; do not silently change those permissions

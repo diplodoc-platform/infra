@@ -190,10 +190,12 @@ to a comma-separated list of explicitly selected repositories. An empty value
 disables the writer. The Viewer dispatches approval after the trusted Internal
 Check completes successfully. The workflow verifies the latest check, frozen
 candidate and group, current baselines and required CI before reviewing exact
-source heads through the existing `diplodoc-bot` credential. It accepts native
-Dependabot PRs and revalidated App-authored Algolia reconciliation PRs, never overrides a requested change, and
-does not submit the same approval again. Merge candidates remains a separate
-operation.
+source heads through the existing `diplodoc-bot` credential. Every source
+repository in the group must be explicitly listed. Native Dependabot sources
+can use this review path in listed repositories. Reconciliation PRs are eligible
+only in the Algolia pilot, where the App opens the PR and the bot can review it
+independently. The workflow respects requested changes and avoids duplicate
+approvals. Merge candidates remains a separate, human-authorized operation.
 
 ## Manual coordinated groups
 
@@ -258,8 +260,12 @@ control this central workflow. No variable is created or changed by this feature
 
 The cron is 01:00 Europe/Moscow (22:00 UTC on the previous day), with an 08:00
 readiness target in the plan. GitHub scheduling and preparation duration do not
-provide an 08:00 SLA. Scheduled selection prepares the oldest complete group only;
-an open candidate blocks another preparation.
+provide an 08:00 SLA. Morning can try up to three eligible complete groups and
+publish one candidate. An open candidate normally blocks another preparation.
+For a single bot-owned candidate whose CLI base has changed, Morning can replace
+it if the selected group and all source SHAs and bases still match. It closes
+the stale PR only after publishing its replacement. For other cases, read the
+blocker and per-repository evidence before deciding whether to close the PR.
 Manual dispatch defaults to selection-only and needs no enabled schedule variables.
 Deploy the compatible private builder and Viewer worker before enabling the private
 `enable_dependency_candidate_checks` flag, then validate one complete manual cycle.
@@ -437,7 +443,11 @@ GitHub may create an unsigned rebased commit, so effective branch rulesets that
 require signed commits block the group before any write.
 
 The next Morning independently checks source policy and required checks on the
-new heads. Refresh never treats old CI as evidence for the new commits.
+new heads. Refresh never treats old CI as evidence for the new commits. If the
+report says no eligible group, inspect the exclusions in `dependency-refresh-plan`
+before concluding that all updates are exhausted. An outdated base, missing
+consumer, competing PR, incompatible range or unmet required check can keep an
+existing update out of the selection.
 
 ### Reconcile additional CLI-pinned versions
 
