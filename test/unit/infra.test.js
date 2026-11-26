@@ -2,7 +2,7 @@ const assert = require('node:assert');
 const {join} = require('node:path');
 const {execSync} = require('node:child_process');
 const {createTempDir, removeTempDir} = require('../helpers/temp-dir');
-const {writeFile, readFile, writeJson, fileExists} = require('../helpers/file-utils');
+const {writeFile, readFile, readJson, writeJson, fileExists} = require('../helpers/file-utils');
 const {mkdirSync} = require('node:fs');
 
 const tests = [];
@@ -258,7 +258,13 @@ test('should skip blacklisted files during sync', async () => {
     try {
         const targetDir = join(tempDir, 'target');
         mkdirSync(targetDir, {recursive: true});
-        writeJson(targetDir, 'package.json', {name: 'test-pkg', version: '1.0.0'});
+        writeJson(targetDir, 'package.json', {name: 'test-pkg', version: '1.0.0-beta.1'});
+        writeJson(targetDir, '.release-please-manifest.json', {'.': '0.0.0'});
+        writeFile(
+            targetDir,
+            '.infrarc.yml',
+            ['exclude:', '  - path: .release-please-manifest.json', ''].join('\n'),
+        );
 
         writeFile(
             tempDir,
@@ -284,6 +290,9 @@ test('should skip blacklisted files during sync', async () => {
             !fileExists(targetDir, '.editorconfig'),
             '.editorconfig should NOT be created (blacklisted)',
         );
+        assert.deepStrictEqual(readJson(targetDir, '.release-please-manifest.json'), {
+            '.': '0.0.0',
+        });
     } finally {
         await removeTempDir(tempDir);
     }
