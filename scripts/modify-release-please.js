@@ -1,6 +1,7 @@
 const {join} = require('node:path');
 const {readFileSync, writeFileSync, existsSync} = require('node:fs');
 const {dirname} = require('node:path');
+const {isExcluded, readBlacklist} = require('./scaffolding-blacklist');
 
 const targetDir = process.env.INFRA_TARGET_DIR || process.cwd();
 const packageJsonPath = join(targetDir, 'package.json');
@@ -45,10 +46,14 @@ const manifestContent =
 const configOutputPath = join(targetDir, '.release-please-config.json');
 const manifestOutputPath = join(targetDir, '.release-please-manifest.json');
 
-if (!existsSync(configOutputPath)) {
+const blacklist = readBlacklist();
+
+if (!isExcluded('.release-please-config.json', blacklist) && !existsSync(configOutputPath)) {
     console.log('[@diplodoc/infra]', '=> Create .release-please-config.json');
     writeFileSync(configOutputPath, configContent, 'utf8');
 }
 
-console.log('[@diplodoc/infra]', '=> Update .release-please-manifest.json');
-writeFileSync(manifestOutputPath, manifestContent, 'utf8');
+if (!isExcluded('.release-please-manifest.json', blacklist)) {
+    console.log('[@diplodoc/infra]', '=> Update .release-please-manifest.json');
+    writeFileSync(manifestOutputPath, manifestContent, 'utf8');
+}
