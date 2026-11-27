@@ -189,6 +189,29 @@ test('Algolia requires the reviewed workflow tree for prepared source PRs', asyn
     );
 });
 
+test('prepared PRs in Liquid and OpenAPI require their exact reviewed workflow tree', async () => {
+    const reviewed = '68d6a687d5efbd0c0f2f940b7ae603297df345df';
+    const base = sha('a');
+    for (const repo of ['liquid', 'openapi-extension']) {
+        const check = (tree) =>
+            assertPreparedCI(repo, base, async (route) => {
+                assert.equal(
+                    route,
+                    `/repos/diplodoc-platform/${repo}/git/trees/${base}?recursive=1`,
+                );
+                return {
+                    truncated: false,
+                    tree: [{path: '.github/workflows', type: 'tree', sha: tree}],
+                };
+            });
+        await check(reviewed);
+        await assert.rejects(
+            check(sha('b')),
+            /workflow tree differs from the reviewed candidate CI/,
+        );
+    }
+});
+
 test('accepts the current and distribution trees for Components and Transform', async () => {
     const trees = {
         components: [

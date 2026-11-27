@@ -525,8 +525,8 @@ artifact includes the candidate lockfiles. A dry run works before the target
 repositories have deployed the reviewed candidate workflows.
 
 Live preparation supports the reviewed workflow trees for `algolia-extension`,
-`components` and `transform`. The existing
-infra GitHub App creates branches in the original repositories, and
+`components`, `liquid`, `openapi-extension` and `transform`. The infra GitHub App
+creates branches in the original repositories, and
 `diplodoc-bot` opens the source PRs. The writer validates the complete plan and
 checks the reviewed workflow directory of each repository before writing.
 Refresh also checks the new base workflow tree before rebasing a prepared PR.
