@@ -77,6 +77,52 @@ test('Morning freezes up to three complete groups from the starting index and ve
     await revalidate(next.alternatives[1], {...shifted, TRAIN_GROUP_OFFSET: '2'}, api);
 });
 
+test('Morning and its publisher revalidate the refreshed group instead of selecting a new first group', async () => {
+    const api = apiFixture();
+    api.addPull('alpha', 1, {dependency: '@types/alpha'});
+    api.addPull('beta', 2, {dependency: '@types/beta'});
+    const [first, second] = await select(api, env, {includeAlternatives: true}).then((plan) => [
+        plan,
+        ...plan.alternatives,
+    ]);
+    const sources = second.selected.map(({repo, number, sha, baseSha, risk, profile}) => ({
+        repo,
+        number,
+        sha,
+        baseSha,
+        risk,
+        profile,
+    }));
+    const refreshed = {
+        ...env,
+        GITHUB_REPOSITORY: 'diplodoc-platform/infra',
+        GITHUB_REF: 'refs/heads/master',
+        DEPENDENCY_TRAIN_REFRESH_RECEIPT: JSON.stringify({
+            toolSha: env.GITHUB_SHA,
+            dependency: second.cohort.dependency,
+            baseline: second.cohort.baseline || [],
+            sources,
+        }),
+    };
+
+    const resumed = await select(api, refreshed, {includeAlternatives: true});
+    assert.deepEqual(resumed.selected, second.selected);
+    assert.deepEqual(resumed.alternatives, [], 'Only the refreshed group can be built');
+    await revalidate(resumed, refreshed, api);
+    await assert.rejects(revalidate(first, refreshed, api), /Canonical cohort/);
+
+    const changed = JSON.parse(refreshed.DEPENDENCY_TRAIN_REFRESH_RECEIPT);
+    changed.sources[0].sha = '9'.repeat(40);
+    await assert.rejects(
+        revalidate(
+            resumed,
+            {...refreshed, DEPENDENCY_TRAIN_REFRESH_RECEIPT: JSON.stringify(changed)},
+            api,
+        ),
+        /refreshed sha changed/,
+    );
+});
+
 test('a lock-only direct version change can group, but a transitive-only change cannot', () => {
     const manifest = {dependencies: {direct: '^1.0.0'}};
     const lock = (direct, transitive) => ({

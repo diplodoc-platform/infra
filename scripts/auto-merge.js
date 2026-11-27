@@ -151,20 +151,27 @@ function deriveChecksGreen(
     if (!Array.isArray(requiredChecks) || requiredChecks.length === 0) return false;
     if (!/^[a-f0-9]{40}$/i.test(headSha || '')) return false;
     return requiredChecks.every((check) => {
-        if (!check) return false;
-        const anySource = allowUnboundPublisher && check.appId === null;
-        if (!anySource && (!Number.isSafeInteger(check.appId) || check.appId <= 0)) return false;
+        const run = latestRequiredRun(checkRunsResponse.check_runs, check, headSha, {
+            allowUnboundPublisher,
+        });
+        return Boolean(run && run.status === 'completed' && run.conclusion === 'success');
+    });
+}
 
-        const runs = checkRunsResponse.check_runs.filter(
+function latestRequiredRun(runs, check, headSha, {allowUnboundPublisher = false} = {}) {
+    if (!check) return undefined;
+    const anySource = allowUnboundPublisher && check.appId === null;
+    if (!anySource && (!Number.isSafeInteger(check.appId) || check.appId <= 0)) return undefined;
+
+    return runs
+        .filter(
             (run) =>
                 run &&
                 run.name === check.context &&
                 (anySource || run.app?.id === check.appId) &&
                 run.head_sha === headSha,
-        );
-        const run = runs.sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0];
-        return Boolean(run && run.status === 'completed' && run.conclusion === 'success');
-    });
+        )
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0];
 }
 
 /**
@@ -846,6 +853,7 @@ module.exports = {
     deriveIsGrouped,
     deriveCiCompletedAt,
     deriveChecksGreen,
+    latestRequiredRun,
     deriveHasException,
     buildEvaluationInput,
     classifyPrForAutoMerge,

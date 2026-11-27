@@ -11,16 +11,24 @@ const WORKFLOWS = [
 ];
 const TESTPACK = 'diplodoc-platform/testpack/.github/workflows/downstream-check.yml@master';
 
-async function requireDeepProfile(item, checks, request) {
-    if (item.risk === 'low' || !DEEP_PROFILES.includes(item.profile)) return;
+function needsDeepProfile(item) {
+    return item.risk !== 'low' && DEEP_PROFILES.includes(item.profile);
+}
 
-    const prefix = `/repos/diplodoc-platform/${item.repo}/actions/runs/`;
-    const check = checks.check_runs
+function deepProfileRun(item, checks) {
+    return checks.check_runs
         .filter(
             (run) =>
                 run.name === COMPARISON && run.app?.id === ACTIONS_APP && run.head_sha === item.sha,
         )
         .sort((a, b) => b.id - a.id)[0];
+}
+
+async function requireDeepProfile(item, checks, request) {
+    if (!needsDeepProfile(item)) return;
+
+    const prefix = `/repos/diplodoc-platform/${item.repo}/actions/runs/`;
+    const check = deepProfileRun(item, checks);
     const failure = `${item.repo}#${item.number}: required ${item.profile} comparison is not green on the exact head`;
     assert.ok(check?.status === 'completed' && check.conclusion === 'success', failure);
     const detailsPrefix = `https://github.com/diplodoc-platform/${item.repo}/actions/runs/`;
@@ -52,4 +60,4 @@ async function requireDeepProfile(item, checks, request) {
     );
 }
 
-module.exports = {requireDeepProfile};
+module.exports = {requireDeepProfile, needsDeepProfile, deepProfileRun};

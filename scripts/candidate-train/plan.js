@@ -23,6 +23,7 @@ const {
     pages,
     fileAt,
     buildOrder,
+    read,
     write,
     validatePlan,
 } = require('./common');
@@ -46,6 +47,7 @@ const {findPreparation} = require('./prepare-plan');
 const {packageRegistrationsAt} = require('./metapackage');
 const {reconciliationSeed} = require('./reconcile-lock');
 const {readReconciledInput} = require('./reconcile-source');
+const {readRefreshReceipt, waitForRefreshedGroup} = require('./refresh-receipt');
 
 function allowlist(value) {
     const repos = (value || '')
@@ -197,6 +199,8 @@ async function planTrain(
     evidence = {fetchCheckRuns, fetchRequiredChecks},
     {refresh = false, prepareMissing = false, target = '', includeAlternatives = false} = {},
 ) {
+    const refreshed = readRefreshReceipt(env);
+    assert.ok(!refreshed || !refresh, 'Refresh cannot consume its own receipt');
     if (env.DEPENDENCY_TRAIN_COHORT_PRS?.trim()) {
         assert.ok(!refresh, 'Refresh only supports automatically discovered groups');
         return planCohort(env, request, evidence, {
@@ -419,12 +423,16 @@ async function planTrain(
                 dependency: group.dependency,
                 risk: group.risk,
                 sources: group.requests.map(({repo, number}) => {
-                    const {sha, baseSha, refreshTo, prepared} = sources.get(`${repo}#${number}`);
+                    const {sha, baseSha, refreshTo, prepared, risk, profile} = sources.get(
+                        `${repo}#${number}`,
+                    );
                     return {
                         repo,
                         number,
                         sha,
                         baseSha,
+                        risk,
+                        profile,
                         ...(refreshTo ? {refreshTo} : {}),
                         ...(prepared ? {prepared} : {}),
                     };
@@ -444,7 +452,9 @@ async function planTrain(
                         .filter(isPreparedSource)
                         .map((pr) => pr.head.ref),
                 );
-                const candidates = incomplete.filter(matchesTarget);
+                const candidates = incomplete.filter(
+                    (item) => matchesTarget(item) && (!risk.exact || item.risk === risk.exact),
+                );
                 const waiting = candidates.filter(({dependency}) =>
                     active.has(preparedBranch(dependency)),
                 );
@@ -472,10 +482,12 @@ async function planTrain(
             waveNumber <= Math.max(1, automaticReport.groups.length),
             'Group index is out of range',
         );
-        const groupsToPlan = automaticReport.groups.slice(
-            waveNumber - 1,
-            waveNumber - 1 + (includeAlternatives ? MAX_GROUP_ATTEMPTS : 1),
-        );
+        const groupsToPlan = refreshed
+            ? [refreshedGroup(refreshed, eligibleGroups, inventory)]
+            : automaticReport.groups.slice(
+                  waveNumber - 1,
+                  waveNumber - 1 + (includeAlternatives ? MAX_GROUP_ATTEMPTS : 1),
+              );
         const plans = [];
         const sources = new Map(inventory.map((item) => [`${item.repo}#${item.number}`, item]));
         for (const group of groupsToPlan) {
@@ -503,12 +515,16 @@ async function planTrain(
                 group.dependency,
                 'Group input advanced during selection',
             );
-            for (const {repo, number, sha, baseSha} of plan.selected) {
-                const original = sources.get(`${repo}#${number}`);
+            for (const item of plan.selected) {
+                const original = sources.get(`${item.repo}#${item.number}`);
                 assert.ok(
-                    sha === original.sha && baseSha === original.baseSha,
+                    item.sha === original.sha && item.baseSha === original.baseSha,
                     'Group source advanced during selection',
                 );
+                if (refreshed) {
+                    assert.equal(item.risk, original.risk, 'Refreshed group risk changed');
+                    assert.equal(item.profile, original.profile, 'Refreshed group profile changed');
+                }
             }
             plans.push(plan);
         }
@@ -564,6 +580,29 @@ async function planTrain(
     plan.id = planId(plan);
     if (selected.length) buildOrder(graph, selected);
     return validatePlan(plan);
+}
+
+function refreshedGroup(receipt, groups, inventory) {
+    const group = groups.find(
+        (item) =>
+            isDeepStrictEqual(item.dependency, receipt.dependency) &&
+            isDeepStrictEqual(item.requests, receipt.requests) &&
+            isDeepStrictEqual(item.baseline || [], receipt.baseline),
+    );
+    assert.ok(group, 'Refreshed group is no longer eligible; inspect the current sources');
+    for (const source of receipt.sources) {
+        const item = inventory.find(
+            ({repo, number}) => repo === source.repo && number === source.number,
+        );
+        for (const key of ['sha', 'baseSha', 'risk', 'profile']) {
+            assert.equal(
+                item?.[key],
+                source[key],
+                `${source.repo}#${source.number}: refreshed ${key} changed`,
+            );
+        }
+    }
+    return group;
 }
 
 function renderSelection(plan) {
@@ -690,22 +729,45 @@ function renderSelection(plan) {
     return lines.join('\n') + '\n';
 }
 
-if (require.main === module) {
-    planTrain(process.env, undefined, undefined, {includeAlternatives: true})
-        .then(({alternatives = [], ...plan}) => {
-            write('train-plan.json', plan);
-            for (const [index, alternative] of alternatives.entries())
-                write(`train-plan-${index + 1}.json`, alternative);
-            fs.appendFileSync(
-                process.env.GITHUB_OUTPUT,
-                `selected=${plan.selected.length}\nattempts=${1 + alternatives.length}\n`,
-            );
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, renderSelection(plan));
-        })
-        .catch((error) => {
-            console.error(error.message);
-            process.exitCode = 1;
-        });
+async function select(env, mode) {
+    const receipt = readRefreshReceipt(env);
+    if (mode === 'resume' && !receipt) {
+        const plan = validatePlan(read('train-plan.json'));
+        let attempts = 1;
+        while (attempts < MAX_GROUP_ATTEMPTS && fs.existsSync(`train-plan-${attempts}.json`))
+            attempts++;
+        fs.appendFileSync(
+            env.GITHUB_OUTPUT,
+            `selected=${plan.selected.length}\nattempts=${attempts}\n`,
+        );
+        return;
+    }
+    if (receipt) {
+        assert.equal(mode, 'resume');
+        assert.equal(validatePlan(read('train-plan.json')).selected.length, 0);
+        const request = (route) => github(route, {token: env.GH_TOKEN});
+        await waitForRefreshedGroup(receipt, request, env.GH_TOKEN);
+    }
+
+    const {alternatives = [], ...plan} = await planTrain(env, undefined, undefined, {
+        includeAlternatives: true,
+    });
+    write('train-plan.json', plan);
+    for (const [index, alternative] of alternatives.entries()) {
+        write(`train-plan-${index + 1}.json`, alternative);
+    }
+    fs.appendFileSync(
+        env.GITHUB_OUTPUT,
+        `selected=${plan.selected.length}\nattempts=${1 + alternatives.length}\n`,
+    );
+    fs.appendFileSync(env.GITHUB_STEP_SUMMARY, renderSelection(plan));
 }
 
-module.exports = {allowlist, assess, graphAt, planTrain, renderSelection};
+if (require.main === module) {
+    select(process.env, process.argv[2]).catch((error) => {
+        console.error(error.message);
+        process.exitCode = 1;
+    });
+}
+
+module.exports = {allowlist, assess, graphAt, planTrain, renderSelection, refreshedGroup};
