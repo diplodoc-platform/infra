@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.5.0](https://github.com/diplodoc-platform/infra/compare/v2.4.0...v2.5.0) (2026-11-27)
+
+
+### Features
+
+* **dependabot:** allow prepared PRs in Liquid and OpenAPI ([6e5a81c](https://github.com/diplodoc-platform/infra/commit/6e5a81ca213d4e00ed28a18e98d474a4d85209de))
+* **dependabot:** refresh one group from Morning ([11a4c7f](https://github.com/diplodoc-platform/infra/commit/11a4c7fb2a5b89a687eb29f2c518f1faa7d88e4d))
+* **dependabot:** support all repositories for verified approvals ([e6e0289](https://github.com/diplodoc-platform/infra/commit/e6e0289d36d45f07be2772536e62163783ce4944))
+
+
+### Bug Fixes
+
+* **distribution:** wait for the published npm tarball ([5701afb](https://github.com/diplodoc-platform/infra/commit/5701afb1c9455e7ced9a892722c336a81699e49a))
+
 ## [2.4.0](https://github.com/diplodoc-platform/infra/compare/v2.3.0...v2.4.0) (2026-11-26)
 
 
