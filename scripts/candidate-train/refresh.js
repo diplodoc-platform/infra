@@ -10,6 +10,7 @@ const {OWNER, REPO, SHA, github, read, write} = require('./common');
 const {planTrain} = require('./plan');
 const {BOT, isPreparedSource} = require('./prepare-policy');
 const {assertPreparedCI} = require('./prepare-ci');
+const {writeRefreshReceipt} = require('./refresh-receipt');
 
 const REBASE = `
 mutation Rebase($id: ID!, $head: GitObjectID!) {
@@ -144,7 +145,7 @@ async function readSource(request, source) {
 }
 
 async function applyRefresh(plan, request, prepare = prepareTree, report = () => {}) {
-    if (!plan.group) return;
+    if (!plan.group) return [];
     assert.equal((await request('/user')).login, 'diplodoc-bot');
     const {sources, baseline} = plan.group;
     assert.ok(sources.length && sources.length <= 40);
@@ -162,6 +163,7 @@ async function applyRefresh(plan, request, prepare = prepareTree, report = () =>
 
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dependency-refresh-'));
     try {
+        const refreshed = new Map(sources.map((source) => [source.repo, source]));
         const pending = [];
         await checkBaseline();
         for (const [index, source] of sources.entries()) {
@@ -194,8 +196,10 @@ async function applyRefresh(plan, request, prepare = prepareTree, report = () =>
                 'GitHub rebased onto an unexpected master',
             );
             await verify(pr.headRefOid);
+            refreshed.set(source.repo, {...source, sha: pr.headRefOid, baseSha: source.refreshTo});
             report(source, pr.headRefOid, 'Verified identical update; CI pending');
         }
+        return [...refreshed.values()];
     } finally {
         fs.rmSync(directory, {recursive: true, force: true});
     }
@@ -210,12 +214,13 @@ async function run(env) {
         const plan = read(file);
         assert.equal(plan.toolSha, env.GITHUB_SHA);
 
-        await applyRefresh(
+        const sources = await applyRefresh(
             plan,
             (route, options) => github(route, {...options, token: env.TRAIN_REFRESH_TOKEN}),
             prepareTree,
             (item, sha, result) => summary(`- ${item.repo}#${item.number} @ \`${sha}\`: ${result}`),
         );
+        writeRefreshReceipt(plan, sources, env);
         return;
     }
     const plan = await planTrain(env, undefined, undefined, refreshOptions(env));

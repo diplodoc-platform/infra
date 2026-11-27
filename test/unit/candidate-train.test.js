@@ -510,6 +510,8 @@ test('manual preparation does not require enabling scheduled execution', () => {
     assert.equal(workflow.on.workflow_dispatch.inputs.pr_number.default, 0);
     assert.equal(workflow.on.workflow_dispatch.inputs.wave.default, 1);
     assert.deepEqual(Object.keys(workflow.jobs), [
+        'discover',
+        'refresh',
         'select',
         'build',
         'build-second',
@@ -524,11 +526,11 @@ test('manual preparation does not require enabling scheduled execution', () => {
         };
 
         assert.equal(
-            runInNewContext(workflow.jobs.select.if, {github: {event_name: 'schedule'}, vars}),
+            runInNewContext(workflow.jobs.discover.if, {github: {event_name: 'schedule'}, vars}),
             enabled === 'true',
         );
         assert.equal(
-            runInNewContext(workflow.jobs.select.if, {
+            runInNewContext(workflow.jobs.discover.if, {
                 github: {event_name: 'schedule'},
                 vars: {...vars, DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED: 'false'},
             }),
@@ -674,9 +676,22 @@ test('Morning exposes separate outcomes for ops without starting a build', () =>
         (step) => step.name === 'Preparation blocked by an open CLI candidate',
     );
     const open = steps.find((step) => step.id === 'open-candidate');
+    const initialBlock = {
+        needs: {discover: {outputs: {'refresh-available': 'false'}}},
+        steps: {plan: {outputs: {selected: '0'}}},
+    };
+    assert.equal(runInNewContext(empty.if, initialBlock), false);
+    assert.equal(
+        runInNewContext(blocked.if.replace('steps.open-candidate', 'steps.open'), initialBlock),
+        true,
+    );
+
     for (const selected of ['0', '1']) {
         for (const available of ['false', 'true']) {
-            const state = {steps: {plan: {outputs: {selected}}, open: {outputs: {available}}}};
+            const state = {
+                steps: {plan: {outputs: {selected}}, open: {outputs: {available}}},
+                needs: {discover: {outputs: {}}},
+            };
             assert.equal(runInNewContext(empty.if, state), selected === '0');
             assert.equal(runInNewContext(open.if, state), selected !== '0');
             assert.equal(
@@ -687,6 +702,75 @@ test('Morning exposes separate outcomes for ops without starting a build', () =>
     }
 });
 
+test('Morning only offers inline Refresh for an empty automatic apply run on master', () => {
+    const load = (name) =>
+        yaml.load(fs.readFileSync(path.join(root, `.github/workflows/${name}.yml`), 'utf8'));
+    const {jobs} = load('dependency-candidate-train');
+    const gate = jobs.discover.steps.find((step) => step.id === 'refresh-gate');
+    const github = {
+        event_name: 'workflow_dispatch',
+        repository: 'diplodoc-platform/infra',
+        ref: 'refs/heads/master',
+    };
+    const inputs = {
+        dry_run: false,
+        selection_mode: 'cohort',
+        cohort_prs: '',
+        cohort_dependency: '',
+        pr_number: 0,
+        wave: 1,
+    };
+    const allowed = (event, dispatch, selected = '0', flag = '') =>
+        runInNewContext(gate.if, {
+            github: {...github, ...event},
+            inputs: {...inputs, ...dispatch},
+            steps: {plan: {outputs: {selected}}},
+            vars: {DEPENDENCY_TRAIN_MORNING_REFRESH_ENABLED: flag},
+            toJSON: JSON.stringify,
+        });
+    assert.equal(allowed(), true);
+    assert.equal(allowed({}, {}, '1'), false);
+    assert.equal(allowed({ref: 'refs/heads/codex/test'}), false);
+    for (const override of [
+        {dry_run: true},
+        {selection_mode: 'wave'},
+        {cohort_prs: 'transform#1'},
+        {cohort_dependency: 'lodash'},
+        {pr_number: 1},
+        {wave: 2},
+    ]) {
+        assert.equal(allowed({}, override), false);
+    }
+    assert.equal(allowed({event_name: 'schedule'}), false);
+    assert.equal(allowed({event_name: 'schedule'}, {}, '0', 'true'), true);
+    assert.equal(jobs.refresh.uses, './.github/workflows/dependency-refresh.yml');
+    assert.deepEqual(Object.keys(jobs.refresh.secrets), [
+        'INFRA_APPROVER_PAT',
+        'INFRA_APP_ID',
+        'INFRA_APP_PRIVATE_KEY',
+    ]);
+    const refresh = load('dependency-refresh').jobs;
+    const inline = {
+        inputs: {from_morning: true},
+        github: {
+            workflow_ref:
+                'diplodoc-platform/infra/.github/workflows/dependency-candidate-train.yml@refs/heads/master',
+        },
+    };
+    assert.equal(runInNewContext(refresh.refresh.if, inline), true);
+    assert.equal(runInNewContext(refresh.refresh.if, {...inline, github: {}}), false);
+    assert.equal(runInNewContext(refresh.reconcile.if, {...inline, cancelled: () => false}), false);
+    for (const result of ['success', 'skipped', 'failure', 'cancelled']) {
+        assert.equal(
+            runInNewContext(jobs.select.if, {
+                cancelled: () => false,
+                needs: {discover: {result: 'success'}, refresh: {result}},
+            }),
+            ['success', 'skipped'].includes(result),
+        );
+    }
+});
+
 test('manual wave accepts string and numeric inputs without JSON quotes or a zero fallback', () => {
     const workflow = yaml.load(
         fs.readFileSync(
@@ -694,10 +778,7 @@ test('manual wave accepts string and numeric inputs without JSON quotes or a zer
             'utf8',
         ),
     );
-    const expression = workflow.jobs.select.steps
-        .find((step) => step.id === 'plan')
-        .env.DEPENDENCY_TRAIN_WAVE.slice(3, -2)
-        .trim();
+    const expression = workflow.env.DEPENDENCY_TRAIN_WAVE.slice(3, -2).trim();
 
     const format = (pattern, value) => {
         assert.equal(pattern, '{0}');
@@ -760,6 +841,7 @@ test('GitHub preparation cannot access internal APIs or notification credentials
 
     assert.ok(!JSON.stringify(workflow.jobs.build).includes('secrets.'));
     assert.ok(!JSON.stringify(workflow.jobs.select).includes('secrets.'));
+    assert.ok(!JSON.stringify(workflow.jobs.discover).includes('secrets.'));
     assert.doesNotMatch(
         source,
         /TRAIN_(?:CI|REVIEW|MESSENGER|CA)|OBSERVER_RUNNER|preflight|observe\.js|notify\.js/,

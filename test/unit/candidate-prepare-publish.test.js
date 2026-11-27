@@ -90,7 +90,7 @@ function fixture() {
         try {
             return await publishPreparation(plan, locks, env, request, {
                 canonicalPlan: () => plan,
-                refresh: () => {},
+                refresh: () => [],
                 checkCI: (repo) => assert.ok(reviewedCI.has(repo), 'CI has not been reviewed'),
                 report: (message) => reports.push(message),
             });
@@ -120,7 +120,18 @@ test('validates every missing lock and its reviewed workflows before the first w
 
 test('publishes only the missing lockfiles for the selected group in its source repositories', async () => {
     const f = fixture();
-    await f.run();
+    const sources = await f.run();
+    assert.deepEqual(
+        sources,
+        f.plan.group.missing.map(({repo, baseSha}) => ({
+            repo,
+            number: 10,
+            sha: sha('d'),
+            baseSha,
+            risk: 'low',
+            profile: 'standard',
+        })),
+    );
     assert.equal(f.writes.length, 8);
     for (const [i, {repo}] of f.plan.group.missing.entries()) {
         const [tree, commit, ref, pr] = f.writes.slice(i * 4, i * 4 + 4);

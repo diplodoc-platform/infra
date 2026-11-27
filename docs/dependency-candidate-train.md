@@ -452,6 +452,26 @@ before concluding that all updates are exhausted. An outdated base, missing
 consumer, competing PR, incompatible range or unmet required check can keep an
 existing update out of the selection.
 
+### Refresh from Morning when no group is ready
+
+Set `DEPENDENCY_TRAIN_MORNING_REFRESH_ENABLED=true` to enable this fallback on
+scheduled Morning runs. The variable defaults to disabled. An explicit manual
+Morning dispatch on `infra/master` with `dry_run: false`, `selection_mode: cohort`,
+`wave: 1` and no explicit PRs also allows the fallback. Dry runs only report
+selection. A ready group follows the ordinary path. An open temporary CLI PR
+blocks the fallback.
+
+Morning calls Refresh for at most one group and honors the same repository
+scope and risk selection. `DEPENDENCY_TRAIN_PREPARE_MISSING_ENABLED=true` also
+allows the reviewed missing-lockfile path below. The fallback can run without
+the separate Refresh schedule.
+
+Morning waits up to 40 minutes for the required checks on each recorded source
+head, including the deep comparison and its artifact when required. A failed
+check, changed head or base, or timeout stops the run. Once checks pass, Morning
+revalidates that same group and continues the normal CLI build, exact version
+verification and publication. Merging the source PRs remains a separate action.
+
 ### Reconcile additional CLI-pinned versions
 
 Set `reconcile: true` on a manual **Refresh Depends** dispatch. Keep

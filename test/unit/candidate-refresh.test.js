@@ -241,6 +241,7 @@ function applicationFixture() {
         writes,
         verified,
         plan,
+        refreshed,
         request: async (route, options) => {
             if (route === '/user') return {login: 'diplodoc-bot'};
             for (const [repo, value] of masters)
@@ -279,7 +280,15 @@ function applicationFixture() {
 
 test('preflights the complete group and verifies each stale source after the exact-head rebase', async () => {
     const f = applicationFixture();
-    await applyRefresh(f.plan, f.request, f.prepare);
+    const sources = await applyRefresh(f.plan, f.request, f.prepare);
+    assert.deepEqual(
+        sources.map(({repo, sha, baseSha}) => ({repo, sha, baseSha})),
+        f.plan.group.sources.map((item) => ({
+            repo: item.repo,
+            sha: f.refreshed.get(item.repo) || item.sha,
+            baseSha: item.refreshTo || item.baseSha,
+        })),
+    );
     assert.deepEqual(f.writes, ['alpha', 'gamma']);
     assert.deepEqual(f.verified, f.writes);
 });

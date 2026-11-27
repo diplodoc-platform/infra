@@ -29,6 +29,30 @@ on:
         description: 'Optional exact source PRs for reconciliation (requires target)'
         type: string
         default: ''
+  workflow_call:
+    inputs:
+      from_morning:
+        type: boolean
+        required: true
+      repositories:
+        type: string
+      risk_level:
+        type: string
+        default: auto
+      prepare_missing:
+        type: boolean
+        default: false
+    secrets:
+      INFRA_APPROVER_PAT:
+        required: true
+      INFRA_APP_ID:
+        required: false
+      INFRA_APP_PRIVATE_KEY:
+        required: false
+    outputs:
+      receipt:
+        description: 'Exact source heads and bases after successful group preparation'
+        value: ${{ jobs.publish-group.outputs.receipt || jobs.refresh.outputs.receipt }}
 
 permissions:
   actions: read
@@ -41,8 +65,10 @@ concurrency:
 jobs:
   refresh:
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.reconcile != true) ||
-      (github.event_name == 'schedule' &&
+      (inputs.from_morning == true &&
+       github.workflow_ref == 'diplodoc-platform/infra/.github/workflows/dependency-candidate-train.yml@refs/heads/master') ||
+      (inputs.from_morning != true && github.event_name == 'workflow_dispatch' && inputs.reconcile != true) ||
+      (inputs.from_morning != true && github.event_name == 'schedule' &&
        vars.DEPENDENCY_TRAIN_REFRESH_ENABLED == 'true' &&
        vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true' &&
        vars.DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED == 'true')
@@ -51,6 +77,7 @@ jobs:
     outputs:
       missing: ${{ steps.plan.outputs.missing }}
       plan-artifact: ${{ steps.plan-artifact.outputs.artifact-id }}
+      receipt: ${{ steps.apply.outputs.receipt }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -68,15 +95,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEPENDENCY_TRAIN_SELECTION_MODE: cohort
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+          DEPENDENCY_TRAIN_RISK_LEVEL: ${{ inputs.risk_level || 'auto' }}
           DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
-          DEPENDENCY_TRAIN_PREPARE_MISSING: ${{ (github.event_name == 'schedule' && vars.DEPENDENCY_TRAIN_PREPARE_MISSING_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.prepare_missing) }}
+          DEPENDENCY_TRAIN_PREPARE_MISSING: ${{ (inputs.from_morning == true && inputs.prepare_missing == true) || (inputs.from_morning != true && github.event_name == 'schedule' && vars.DEPENDENCY_TRAIN_PREPARE_MISSING_ENABLED == 'true') || (inputs.from_morning != true && github.event_name == 'workflow_dispatch' && inputs.prepare_missing == true) }}
           DEPENDENCY_TRAIN_REFRESH_TARGET: ${{ inputs.target }}
         run: node scripts/candidate-train/refresh.js
       - name: Generate and validate locks without write credentials
         if: steps.plan.outputs.missing != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ inputs.risk_level && inputs.risk_level != 'auto' && inputs.risk_level || vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
         run: node scripts/candidate-train/prepare-lock.js
       - uses: actions/upload-artifact@v4
         id: plan-artifact
@@ -88,13 +116,15 @@ jobs:
             dependency-refresh-locks.json
           if-no-files-found: error
       - name: Rebase eligible stale PRs and verify their resulting trees
+        id: apply
         if: >-
           steps.plan.outputs.found == 'true' &&
           steps.plan.outputs.missing == '' &&
           github.ref == 'refs/heads/master' &&
-          (github.event_name == 'schedule' || inputs.dry_run == false)
+          (inputs.from_morning == true || github.event_name == 'schedule' || inputs.dry_run == false)
         env:
           TRAIN_REFRESH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
+          DEPENDENCY_TRAIN_INLINE_REFRESH: ${{ inputs.from_morning == true }}
         run: node scripts/candidate-train/refresh.js apply
 
   publish-group:
@@ -103,9 +133,11 @@ jobs:
     if: >-
       needs.refresh.outputs.missing != '' &&
       github.ref == 'refs/heads/master' &&
-      (github.event_name == 'schedule' || inputs.dry_run == false)
+      (inputs.from_morning == true || github.event_name == 'schedule' || inputs.dry_run == false)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    outputs:
+      receipt: ${{ steps.apply.outputs.receipt }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -131,16 +163,19 @@ jobs:
           repositories: ${{ needs.refresh.outputs.missing }}
           permission-contents: write
       - name: Revalidate the plan and publish one group
+        id: apply
         env:
           GH_TOKEN: ${{ github.token }}
           TRAIN_REFRESH_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
           TRAIN_GROUP_APP_TOKEN: ${{ steps.app.outputs.token }}
           DEPENDENCY_TRAIN_SELECTION_MODE: cohort
           DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
-          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+          DEPENDENCY_TRAIN_RISK_LEVEL: ${{ inputs.risk_level || 'auto' }}
+          DEPENDENCY_TRAIN_MAX_RISK: ${{ inputs.risk_level && inputs.risk_level != 'auto' && inputs.risk_level || vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
           DEPENDENCY_TRAIN_MISSING_REPOS: ${{ needs.refresh.outputs.missing }}
           DEPENDENCY_TRAIN_PREPARE_MISSING: 'true'
           DEPENDENCY_TRAIN_REFRESH_TARGET: ${{ inputs.target }}
+          DEPENDENCY_TRAIN_INLINE_REFRESH: ${{ inputs.from_morning == true }}
         run: node scripts/candidate-train/prepare-publish.js
 
   reconcile:
@@ -148,6 +183,7 @@ jobs:
     needs: refresh
     if: >-
       !cancelled() &&
+      inputs.from_morning != true &&
       ((github.event_name == 'workflow_dispatch' && inputs.reconcile == true) ||
        (github.event_name == 'schedule' && needs.refresh.result == 'success' &&
         vars.DEPENDENCY_TRAIN_RECONCILE_ENABLED == 'true'))

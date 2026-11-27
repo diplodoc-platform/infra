@@ -49,13 +49,85 @@ concurrency:
   group: dependency-candidate-train
   cancel-in-progress: false
 
+env:
+  DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+  DEPENDENCY_TRAIN_RISK_LEVEL: ${{ inputs.risk_level || 'auto' }}
+  DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
+  DEPENDENCY_TRAIN_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'cohort' || inputs.selection_mode || 'cohort' }}
+  DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
+  DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
+  DEPENDENCY_TRAIN_COHORT_PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_prs || '' }}
+  DEPENDENCY_TRAIN_COHORT_DEPENDENCY: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_dependency || '' }}
+
 jobs:
-  select:
+  discover:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'schedule' && vars.DEPENDENCY_CANDIDATE_TRAIN_ENABLED == 'true' && vars.DEPENDENCY_TRAIN_AUTOMATIC_GROUPS_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      inventory: ${{ steps.inventory.outputs.artifact-id }}
+      refresh-available: ${{ steps.refresh-gate.outputs.available }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: diplodoc-platform/setup-node-action@v1
+        with:
+          node-version: ${{ vars.NODE_VERSION || '24' }}
+          cache: ''
+          run-install: 'false'
+      - run: npm ci --ignore-scripts
+      - name: Select immutable Dependabot candidates (data only)
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/candidate-train/plan.js
+      - name: Check whether Morning may refresh a group
+        id: refresh-gate
+        if: >-
+          steps.plan.outputs.selected == '0' &&
+          github.repository == 'diplodoc-platform/infra' &&
+          github.ref == 'refs/heads/master' &&
+          ((github.event_name == 'schedule' && vars.DEPENDENCY_TRAIN_MORNING_REFRESH_ENABLED == 'true') ||
+           (github.event_name == 'workflow_dispatch' && toJSON(inputs.dry_run) == 'false' &&
+            inputs.selection_mode == 'cohort' && inputs.cohort_prs == '' &&
+            inputs.cohort_dependency == '' && inputs.pr_number == 0 && inputs.wave == 1))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/candidate-train/open-candidate.js
+      - uses: actions/upload-artifact@v4
+        id: inventory
+        with:
+          name: dependency-train-discovery
+          path: |
+            train-plan.json
+            train-plan-*.json
+          if-no-files-found: error
+
+  refresh:
+    needs: discover
+    if: needs.discover.outputs['refresh-available'] == 'true'
+    uses: ./.github/workflows/dependency-refresh.yml
+    with:
+      from_morning: true
+      repositories: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
+      risk_level: ${{ inputs.risk_level || 'auto' }}
+      prepare_missing: ${{ vars.DEPENDENCY_TRAIN_PREPARE_MISSING_ENABLED == 'true' }}
+    secrets:
+      INFRA_APPROVER_PAT: ${{ secrets.INFRA_APPROVER_PAT }}
+      INFRA_APP_ID: ${{ secrets.INFRA_APP_ID }}
+      INFRA_APP_PRIVATE_KEY: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+
+  select:
+    needs: [discover, refresh]
+    if: >-
+      !cancelled() && needs.discover.result == 'success' &&
+      (needs.refresh.result == 'success' || needs.refresh.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     outputs:
       selected: ${{ steps.plan.outputs.selected }}
       attempts: ${{ steps.open-candidate.outputs.replacing == 'true' && '1' || steps.plan.outputs.attempts }}
@@ -72,19 +144,16 @@ jobs:
           cache: ''
           run-install: 'false'
       - run: npm ci --ignore-scripts
-      - name: Select immutable Dependabot candidates (data only)
+      - uses: actions/download-artifact@v7
+        with:
+          artifact-ids: ${{ needs.discover.outputs.inventory }}
+          merge-multiple: true
+      - name: Wait for refreshed source CI and select the exact group
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
-          DEPENDENCY_TRAIN_RISK_LEVEL: ${{ inputs.risk_level || 'auto' }}
-          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
-          DEPENDENCY_TRAIN_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'cohort' || inputs.selection_mode || 'cohort' }}
-          DEPENDENCY_TRAIN_PR_NUMBER: ${{ inputs.pr_number || '0' }}
-          DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
-          DEPENDENCY_TRAIN_COHORT_PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_prs || '' }}
-          DEPENDENCY_TRAIN_COHORT_DEPENDENCY: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_dependency || '' }}
-        run: node scripts/candidate-train/plan.js
+          DEPENDENCY_TRAIN_REFRESH_RECEIPT: ${{ needs.refresh.outputs.receipt }}
+        run: node scripts/candidate-train/plan.js resume
       - uses: actions/upload-artifact@v4
         id: plan-artifact
         with:
@@ -95,7 +164,7 @@ jobs:
           if-no-files-found: error
       # The private ops webhook reads these step outcomes from this exact attempt.
       - name: No eligible dependency group
-        if: steps.plan.outputs.selected == '0'
+        if: steps.plan.outputs.selected == '0' && needs.discover.outputs['refresh-available'] != 'false'
         run: echo 'No eligible dependency group'
       - name: Check for an open candidate before preparation
         if: steps.plan.outputs.selected != '0'
@@ -104,7 +173,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/candidate-train/open-candidate.js
       - name: Preparation blocked by an open CLI candidate
-        if: steps.plan.outputs.selected != '0' && steps.open-candidate.outputs.available == 'false'
+        if: >-
+          needs.discover.outputs['refresh-available'] == 'false' ||
+          (steps.plan.outputs.selected != '0' && steps.open-candidate.outputs.available == 'false')
         run: echo 'Preparation blocked by an open CLI candidate. See the run summary.'
 
   build:
@@ -139,7 +210,7 @@ jobs:
       allow-fallback: false
 
   publish:
-    needs: [select, build, build-second, build-third]
+    needs: [select, refresh, build, build-second, build-third]
     if: >-
       !cancelled() &&
       ((needs.build.result == 'success' && needs.build.outputs['payload-artifact'] != '') ||
@@ -180,15 +251,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
-          DEPENDENCY_TRAIN_REPOSITORIES: ${{ inputs.repositories || vars.DEPENDENCY_TRAIN_REPOSITORIES }}
-          DEPENDENCY_TRAIN_RISK_LEVEL: ${{ inputs.risk_level || 'auto' }}
-          DEPENDENCY_TRAIN_MAX_RISK: ${{ vars.DEPENDENCY_TRAIN_MAX_RISK || 'low' }}
-          DEPENDENCY_TRAIN_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'cohort' || inputs.selection_mode || 'cohort' }}
-          DEPENDENCY_TRAIN_WAVE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.wave) || '1' }}
           DEPENDENCY_CANDIDATE_PREPARE_APPROVED: 'true'
           TRAIN_GROUP_OFFSET: ${{ needs.build-third.outputs['payload-artifact'] && '2' || needs.build-second.outputs['payload-artifact'] && '1' || '0' }}
-          DEPENDENCY_TRAIN_COHORT_PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_prs || '' }}
-          DEPENDENCY_TRAIN_COHORT_DEPENDENCY: ${{ github.event_name == 'workflow_dispatch' && inputs.cohort_dependency || '' }}
+          DEPENDENCY_TRAIN_REFRESH_RECEIPT: ${{ needs.refresh.outputs.receipt }}
           TRAIN_APP_TOKEN: ${{ steps.app.outputs.token }}
           TRAIN_BOT_TOKEN: ${{ secrets.INFRA_APPROVER_PAT }}
           TRAIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
